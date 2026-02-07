@@ -1182,10 +1182,14 @@ var WheelRenderer = {
         
         this.debugDiscoveryMode();
         
+        if (!this.spokesLayer || !this.edgesLayer || !this.nodesLayer) {
+            console.warn('[WheelRenderer] SVG layers not initialized - call init() first');
+            return;
+        }
         this.spokesLayer.innerHTML = '';
         this.edgesLayer.innerHTML = '';
         this.nodesLayer.innerHTML = '';
-        this.centerHub.innerHTML = '';
+        if (this.centerHub) this.centerHub.innerHTML = '';
         this.nodeElements.clear();
         this.edgeElements.clear();
         this._visibleNodes.clear();

@@ -244,7 +244,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 // =============================================================================
 
 SKSEPluginInfo(
-    .Version = { 1, 2, 5, 1 },
+    .Version = { 1, 2, 5, 2 },
     .Name = "SpellLearning",
     .Author = "Spooky",
     .SupportEmail = "",

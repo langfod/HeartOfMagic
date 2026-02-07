@@ -68,7 +68,8 @@ var CanvasRenderer = {
     _heartPulseDelay: 5.0,  // Time (in seconds) between pulse groups (default 5s)
     _heartAnimationEnabled: true,
     _heartBgOpacity: 1.0,
-    _heartBgColor: '#0a0a14',
+    _heartBgColor: '#000000',
+    _bgColor: '#000000',
     _heartRingColor: '#b8a878',
     _learningPathColor: '#00ffff',
     
@@ -737,7 +738,7 @@ var CanvasRenderer = {
         ctx.globalCompositeOperation = 'source-over';
         
         // Clear the ENTIRE canvas buffer (including offscreen areas)
-        ctx.fillStyle = '#0a0a14';  // Match background color
+        ctx.fillStyle = this._bgColor || '#000000';
         ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
         // Scale for DPR
@@ -880,7 +881,7 @@ var CanvasRenderer = {
         
         var baseRadius = 45;
         var ringColor = this._heartRingColor || '#b8a878';
-        var bgColor = this._heartBgColor || '#0a0a14';
+        var bgColor = this._heartBgColor || '#000000';
         var bgOpacity = this._heartBgOpacity !== undefined ? this._heartBgOpacity : 1.0;
         
         // Parse ring color for glow

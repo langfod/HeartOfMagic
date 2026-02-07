@@ -153,7 +153,8 @@ window.updateSpellData = function(jsonStr) {
         state.lastSpellData = data;
         
         var formatted = JSON.stringify(data, null, 2);
-        document.getElementById('outputArea').value = formatted;
+        var outputArea = document.getElementById('outputArea');
+        if (outputArea) outputArea.value = formatted;
         
         if (state.fullAutoMode) {
             updateStatus('Step 2/3: Generating trees for ' + data.spellCount + ' spells...');
@@ -206,15 +207,18 @@ window.updateSpellData = function(jsonStr) {
         
     } catch (e) {
         console.error('[SpellLearning] Failed to parse spell data:', e);
-        document.getElementById('outputArea').value = jsonStr;
+        var outputAreaFallback = document.getElementById('outputArea');
+        if (outputAreaFallback) outputAreaFallback.value = jsonStr;
         updateStatus('Received data (parse error)');
         setStatusIcon('!');
         state.fullAutoMode = false;
     }
     
     var scanBtn = document.getElementById('scanBtn');
-    scanBtn.disabled = false;
-    scanBtn.innerHTML = '<span class="btn-icon">ðŸ”</span>Scan All Spells';
+    if (scanBtn) {
+        scanBtn.disabled = false;
+        scanBtn.innerHTML = '<span class="btn-icon">ðŸ”</span>Scan All Spells';
+    }
     
     // Continue to auto-generation if in full auto mode
     if (state.fullAutoMode && scanSuccess) {
@@ -262,23 +266,28 @@ window.updateStatus = function(message) {
     if (msg.startsWith('"') && msg.endsWith('"')) {
         try { msg = JSON.parse(msg); } catch (e) {}
     }
-    document.getElementById('statusText').textContent = msg;
+    var el = document.getElementById('statusText');
+    if (el) el.textContent = msg;
 };
 
 window.updatePrompt = function(promptContent) {
     console.log('[SpellLearning] Received prompt, length:', promptContent.length);
     
     if (promptContent && promptContent.length > 0) {
-        document.getElementById('promptArea').value = promptContent;
         state.originalPrompt = promptContent;
         state.promptModified = false;
-        setPromptStatus('Loaded', '');
+        var promptArea = document.getElementById('promptArea');
+        if (promptArea) {
+            promptArea.value = promptContent;
+            setPromptStatus('Loaded', '');
+        }
     }
 };
 
 window.onPromptSaved = function(success) {
     if (success === 'true' || success === true) {
-        state.originalPrompt = document.getElementById('promptArea').value;
+        var promptArea = document.getElementById('promptArea');
+        if (promptArea) state.originalPrompt = promptArea.value;
         state.promptModified = false;
         setPromptStatus('Saved', '');
     } else {
@@ -578,7 +587,7 @@ window.updateSpellState = function(jsonOrFormId, newState) {
     
     WheelRenderer.render();
     
-    document.getElementById('unlocked-count').textContent = 
+    var unlockedEl = document.getElementById('unlocked-count'); if (unlockedEl) unlockedEl.textContent = 
         state.treeData.nodes.filter(function(n) { return n.state === 'unlocked'; }).length;
 };
 
@@ -610,7 +619,7 @@ window.onResetTreeStates = function() {
         // Re-render tree
         WheelRenderer.render();
         
-        document.getElementById('unlocked-count').textContent = '0';
+        var unlockedEl = document.getElementById('unlocked-count'); if (unlockedEl) unlockedEl.textContent = '0';
     }
 };
 
@@ -995,7 +1004,7 @@ window.onPlayerKnownSpells = function(dataStr) {
             var unlockedCount = state.treeData.nodes.filter(function(n) { 
                 return n.state === 'unlocked'; 
             }).length;
-            document.getElementById('unlocked-count').textContent = unlockedCount;
+            var unlockedEl = document.getElementById('unlocked-count'); if (unlockedEl) unlockedEl.textContent = unlockedCount;
         }
     } catch (e) {
         console.error('[SpellLearning] Failed to parse player known spells:', e);

@@ -37,17 +37,19 @@ function onFullAutoClick() {
         setStatusIcon('X');
         // Flash the settings button
         var settingsBtn = document.getElementById('settingsBtn');
-        settingsBtn.style.animation = 'pulse 0.5s ease-in-out 3';
-        setTimeout(function() { settingsBtn.style.animation = ''; }, 1500);
+        if (settingsBtn) {
+            settingsBtn.style.animation = 'pulse 0.5s ease-in-out 3';
+            setTimeout(function() { settingsBtn.style.animation = ''; }, 1500);
+        }
         return;
     }
     
     // Disable both buttons during full auto
     var scanBtn = document.getElementById('scanBtn');
     var fullAutoBtn = document.getElementById('fullAutoBtn');
-    scanBtn.disabled = true;
-    fullAutoBtn.disabled = true;
-    fullAutoBtn.innerHTML = '<span class="btn-icon">â³</span> Working...';
+    if (scanBtn) scanBtn.disabled = true;
+    if (fullAutoBtn) fullAutoBtn.disabled = true;
+    if (fullAutoBtn) fullAutoBtn.innerHTML = '<span class="btn-icon">â³</span> Working...';
     
     // Start scan with auto-generate flag
     startScan(true);
@@ -57,7 +59,8 @@ function startScan(autoGenerate) {
     state.fullAutoMode = autoGenerate;
     
     // Check scan mode
-    var useTomeMode = document.getElementById('scanModeTomes').checked;
+    var scanModeTomesEl = document.getElementById('scanModeTomes');
+    var useTomeMode = scanModeTomesEl ? scanModeTomesEl.checked : false;
     var statusMsg = useTomeMode ? 'Scanning spell tomes...' : 'Scanning all spells...';
     if (autoGenerate) {
         statusMsg = 'Step 1/3: ' + statusMsg;
@@ -67,8 +70,10 @@ function startScan(autoGenerate) {
     setStatusIcon('...');
     
     var scanBtn = document.getElementById('scanBtn');
-    scanBtn.disabled = true;
-    scanBtn.textContent = 'Scanning...';
+    if (scanBtn) {
+        scanBtn.disabled = true;
+        scanBtn.textContent = 'Scanning...';
+    }
     
     var scanConfig = {
         fields: state.fields,
@@ -98,7 +103,8 @@ function startScan(autoGenerate) {
 }
 
 function onSaveClick() {
-    var content = document.getElementById('outputArea').value;
+    var outputAreaEl = document.getElementById('outputArea');
+    var content = outputAreaEl ? outputAreaEl.value : '';
     
     if (!content || content.trim().length === 0) {
         updateStatus('Nothing to save - scan spells first');
@@ -115,7 +121,8 @@ function onSaveClick() {
 }
 
 function onSaveBySchoolClick() {
-    var content = document.getElementById('outputArea').value;
+    var outputAreaEl = document.getElementById('outputArea');
+    var content = outputAreaEl ? outputAreaEl.value : '';
     
     if (!content || content.trim().length === 0) {
         updateStatus('Nothing to save - scan spells first');
@@ -197,7 +204,7 @@ function onSaveBySchoolClick() {
 
 function onCopyClick() {
     var outputArea = document.getElementById('outputArea');
-    var content = outputArea.value;
+    var content = outputArea ? outputArea.value : '';
     
     if (!content || content.trim().length === 0) {
         updateStatus('Nothing to copy - scan spells first');

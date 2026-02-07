@@ -46,7 +46,7 @@ var settings = {
     globeTextSize: 16,
     particleTrailEnabled: true,
     
-    heartBgColor: '#0a0a14',
+    heartBgColor: '#000000',
     heartRingColor: '#b8a878',
     learningPathColor: '#00ffff',
 

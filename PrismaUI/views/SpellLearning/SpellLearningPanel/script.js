@@ -579,21 +579,27 @@ function initializeTextareaEnterKey() {
 }
 
 function initializePanel() {
-    // Button event listeners
-    document.getElementById('scanBtn').addEventListener('click', onScanClick);
-    document.getElementById('blacklistBtn').addEventListener('click', showBlacklistModal);
-    document.getElementById('whitelistBtn').addEventListener('click', showWhitelistModal);
-    document.getElementById('fullAutoBtn').addEventListener('click', onFullAutoClick);
-    document.getElementById('proceduralBtn').addEventListener('click', onProceduralClick);
-    document.getElementById('proceduralPlusBtn').addEventListener('click', onProceduralPlusClick);
-    document.getElementById('saveBtn').addEventListener('click', onSaveClick);
-    document.getElementById('saveBySchoolBtn').addEventListener('click', onSaveBySchoolClick);
-    document.getElementById('copyBtn').addEventListener('click', onCopyClick);
-    document.getElementById('pasteBtn').addEventListener('click', onPasteClick);
-    document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
-    document.getElementById('minimizeBtn').addEventListener('click', toggleMinimize);
-    document.getElementById('closeBtn').addEventListener('click', onCloseClick);
-    document.getElementById('settingsBtn').addEventListener('click', toggleSettings);
+    // Helper to safely add event listener (null-safe for removed elements)
+    function safeAddListener(id, event, handler) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener(event, handler);
+    }
+    
+    // Button event listeners (some may be removed during UI revamp)
+    safeAddListener('scanBtn', 'click', onScanClick);
+    safeAddListener('blacklistBtn', 'click', showBlacklistModal);
+    safeAddListener('whitelistBtn', 'click', showWhitelistModal);
+    safeAddListener('fullAutoBtn', 'click', onFullAutoClick);
+    safeAddListener('proceduralBtn', 'click', onProceduralClick);
+    safeAddListener('proceduralPlusBtn', 'click', onProceduralPlusClick);
+    safeAddListener('saveBtn', 'click', onSaveClick);
+    safeAddListener('saveBySchoolBtn', 'click', onSaveBySchoolClick);
+    safeAddListener('copyBtn', 'click', onCopyClick);
+    safeAddListener('pasteBtn', 'click', onPasteClick);
+    safeAddListener('fullscreenBtn', 'click', toggleFullscreen);
+    safeAddListener('minimizeBtn', 'click', toggleMinimize);
+    safeAddListener('closeBtn', 'click', onCloseClick);
+    safeAddListener('settingsBtn', 'click', toggleSettings);
     
     // Keyboard shortcuts - Escape and Tab close the panel
     initializeKeyboardShortcuts();
@@ -618,15 +624,15 @@ function initializePanel() {
     }
     
     // API Settings handlers
-    document.getElementById('saveApiKeyBtn').addEventListener('click', onSaveApiSettings);
-    document.getElementById('toggleApiKeyBtn').addEventListener('click', toggleApiKeyVisibility);
-    document.getElementById('pasteApiKeyBtn').addEventListener('click', onPasteApiKey);
-    document.getElementById('modelSelect').addEventListener('change', onModelChange);
+    safeAddListener('saveApiKeyBtn', 'click', onSaveApiSettings);
+    safeAddListener('toggleApiKeyBtn', 'click', toggleApiKeyVisibility);
+    safeAddListener('pasteApiKeyBtn', 'click', onPasteApiKey);
+    safeAddListener('modelSelect', 'change', onModelChange);
     
     // Custom model handlers
-    document.getElementById('pasteModelBtn').addEventListener('click', onPasteCustomModel);
-    document.getElementById('clearModelBtn').addEventListener('click', onClearCustomModel);
-    document.getElementById('customModelInput').addEventListener('input', onCustomModelInput);
+    safeAddListener('pasteModelBtn', 'click', onPasteCustomModel);
+    safeAddListener('clearModelBtn', 'click', onClearCustomModel);
+    safeAddListener('customModelInput', 'input', onCustomModelInput);
     
     // Max tokens handler
     var maxTokensInput = document.getElementById('maxTokensInput');
@@ -646,9 +652,9 @@ function initializePanel() {
     loadApiSettings();
     
     // Preset buttons
-    document.getElementById('presetMinimal').addEventListener('click', function() { applyPreset('minimal'); });
-    document.getElementById('presetBalanced').addEventListener('click', function() { applyPreset('balanced'); });
-    document.getElementById('presetFull').addEventListener('click', function() { applyPreset('full'); });
+    safeAddListener('presetMinimal', 'click', function() { applyPreset('minimal'); });
+    safeAddListener('presetBalanced', 'click', function() { applyPreset('balanced'); });
+    safeAddListener('presetFull', 'click', function() { applyPreset('full'); });
     
     // Field checkbox listeners
     var fieldIds = ['editorId', 'magickaCost', 'minimumSkill', 'castingType', 'delivery', 
@@ -661,17 +667,22 @@ function initializePanel() {
                 state.fields[fieldId] = e.target.checked;
                 if (fieldId === 'effects' && e.target.checked) {
                     state.fields.effectNames = false;
-                    document.getElementById('field_effectNames').checked = false;
+                    var effectNamesEl = document.getElementById('field_effectNames');
+                    if (effectNamesEl) effectNamesEl.checked = false;
                 }
                 if (fieldId === 'effectNames' && e.target.checked) {
                     state.fields.effects = false;
-                    document.getElementById('field_effects').checked = false;
+                    var effectsEl = document.getElementById('field_effects');
+                    if (effectsEl) effectsEl.checked = false;
                 }
             });
         }
     });
     
-    document.getElementById('outputArea').addEventListener('input', updateCharCount);
+    var outputArea = document.getElementById('outputArea');
+    if (outputArea) {
+        outputArea.addEventListener('input', updateCharCount);
+    }
     updateCharCount();
 }
 
@@ -773,8 +784,6 @@ function switchTab(tabId) {
     
     if (tabId === 'spellScan') {
         document.getElementById('contentSpellScan').classList.add('active');
-    } else if (tabId === 'treeRules') {
-        document.getElementById('contentTreeRules').classList.add('active');
     } else if (tabId === 'spellTree') {
         document.getElementById('contentSpellTree').classList.add('active');
         // Initialize tree viewer if not done yet
@@ -796,6 +805,15 @@ function switchTab(tabId) {
 
 function initializePromptEditor() {
     var promptArea = document.getElementById('promptArea');
+    if (!promptArea) {
+        // Tree Rules tab removed - prompt editor not available
+        // Still load prompt from C++ for internal use
+        if (window.callCpp) {
+            window.callCpp('LoadPrompt', '');
+        }
+        return;
+    }
+    
     var resetBtn = document.getElementById('resetPromptBtn');
     var saveBtn = document.getElementById('savePromptBtn');
     
@@ -810,19 +828,25 @@ function initializePromptEditor() {
         updatePromptStatus();
     });
     
-    resetBtn.addEventListener('click', function() {
-        if (confirm('Reset tree rules to default? Your changes will be lost.')) {
-            promptArea.value = DEFAULT_TREE_RULES;
-            state.promptModified = true;
-            updatePromptStatus();
-        }
-    });
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function() {
+            if (confirm('Reset tree rules to default? Your changes will be lost.')) {
+                promptArea.value = DEFAULT_TREE_RULES;
+                state.promptModified = true;
+                updatePromptStatus();
+            }
+        });
+    }
     
-    saveBtn.addEventListener('click', onSavePromptClick);
+    if (saveBtn) {
+        saveBtn.addEventListener('click', onSavePromptClick);
+    }
 }
 
 function onSavePromptClick() {
-    var content = document.getElementById('promptArea').value;
+    var promptArea = document.getElementById('promptArea');
+    if (!promptArea) return;
+    var content = promptArea.value;
     
     if (window.callCpp) {
         window.callCpp('SavePrompt', content);
@@ -842,6 +866,7 @@ function updatePromptStatus() {
 
 function setPromptStatus(text, className) {
     var statusEl = document.getElementById('promptStatus');
+    if (!statusEl) return;
     statusEl.textContent = text;
     statusEl.className = 'prompt-status';
     if (className) {
@@ -850,7 +875,10 @@ function setPromptStatus(text, className) {
 }
 
 function getTreeRulesPrompt() {
-    return document.getElementById('promptArea').value;
+    var promptArea = document.getElementById('promptArea');
+    if (promptArea) return promptArea.value;
+    // Fallback: use stored prompt or default
+    return state.originalPrompt || (typeof DEFAULT_TREE_RULES !== 'undefined' ? DEFAULT_TREE_RULES : '');
 }
 
 // =============================================================================
@@ -860,10 +888,10 @@ function getTreeRulesPrompt() {
 function toggleSettings() {
     state.isSettingsOpen = !state.isSettingsOpen;
     var panel = document.getElementById('settingsPanel');
-    panel.classList.toggle('hidden', !state.isSettingsOpen);
+    if (panel) panel.classList.toggle('hidden', !state.isSettingsOpen);
     
     var btn = document.getElementById('settingsBtn');
-    btn.classList.toggle('active', state.isSettingsOpen);
+    if (btn) btn.classList.toggle('active', state.isSettingsOpen);
 }
 
 // =============================================================================
@@ -1293,12 +1321,16 @@ function updateEarlyLearningUI() {
 // =============================================================================
 
 function setStatusIcon(icon) {
-    document.getElementById('statusIcon').textContent = icon;
+    var el = document.getElementById('statusIcon');
+    if (el) el.textContent = icon;
 }
 
 function updateCharCount() {
-    var content = document.getElementById('outputArea').value;
-    var count = content.length;
+    var outputArea = document.getElementById('outputArea');
+    var charCountEl = document.getElementById('charCount');
+    if (!outputArea || !charCountEl) return;
+    
+    var count = outputArea.value.length;
     
     var countText;
     if (count >= 1000000) {
@@ -1309,7 +1341,7 @@ function updateCharCount() {
         countText = count + ' chars';
     }
     
-    document.getElementById('charCount').textContent = countText;
+    charCountEl.textContent = countText;
 }
 
 console.log('[SpellLearning] Script loaded');

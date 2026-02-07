@@ -1220,6 +1220,7 @@ function saveUnifiedConfig() {
         starfieldEnabled: settings.starfieldEnabled,
         starfieldFixed: settings.starfieldFixed,
         starfieldColor: settings.starfieldColor,
+        starfieldBgColor: settings.starfieldBgColor,
         starfieldDensity: settings.starfieldDensity,
         starfieldMaxSize: settings.starfieldMaxSize,
         // Globe settings
@@ -1959,13 +1960,14 @@ window.onUnifiedConfigLoaded = function(dataStr) {
         settings.heartPulseSpeed = data.heartPulseSpeed !== undefined ? data.heartPulseSpeed : 0.2;
         settings.heartPulseDelay = data.heartPulseDelay !== undefined ? data.heartPulseDelay : 5.0;
         settings.heartBgOpacity = data.heartBgOpacity !== undefined ? data.heartBgOpacity : 1.0;
-        settings.heartBgColor = data.heartBgColor || '#0a0a14';
+        settings.heartBgColor = data.heartBgColor || '#000000';
         settings.heartRingColor = data.heartRingColor || '#b8a878';
         
         // === Starfield Settings ===
         settings.starfieldEnabled = data.starfieldEnabled !== false;
         settings.starfieldFixed = data.starfieldFixed !== false;
         settings.starfieldColor = data.starfieldColor || '#ffffff';
+        settings.starfieldBgColor = data.starfieldBgColor || '#000000';
         settings.starfieldDensity = data.starfieldDensity !== undefined ? data.starfieldDensity : 100;
         settings.starfieldMaxSize = data.starfieldMaxSize !== undefined ? data.starfieldMaxSize : 2;
         
@@ -2709,10 +2711,30 @@ function initializeHeartSettings() {
     }
     
     // Setup color swatches
-    setupColorSwatch('heart-bg-color-swatch', 'heart-bg-color', 'heartBgColor', '#0a0a14');
+    setupColorSwatch('heart-bg-color-swatch', 'heart-bg-color', 'heartBgColor', '#000000');
     setupColorSwatch('heart-ring-color-swatch', 'heart-ring-color', 'heartRingColor', '#b8a878');
     setupColorSwatch('learning-path-color-swatch', 'learning-path-color', 'learningPathColor', '#00ffff');
+    setupColorSwatch('starfield-bg-color-swatch', 'starfield-bg-color', 'starfieldBgColor', '#000000');
     setupColorSwatch('starfield-color-swatch', 'starfield-color', 'starfieldColor', '#ffffff');
+    
+    // Starfield background color Apply button
+    var starfieldBgApply = document.getElementById('starfield-bg-apply');
+    if (starfieldBgApply) {
+        starfieldBgApply.addEventListener('click', function() {
+            var color = settings.starfieldBgColor || '#000000';
+            var treeContainer = document.getElementById('tree-container');
+            if (treeContainer) {
+                treeContainer.style.background = color;
+            }
+            // Also update canvas renderer background
+            if (typeof CanvasRenderer !== 'undefined') {
+                CanvasRenderer._bgColor = color;
+                CanvasRenderer._needsRender = true;
+            }
+            autoSaveSettings();
+            console.log('[HeartSettings] Applied starfield background color:', color);
+        });
+    }
     setupColorSwatch('divider-custom-color-swatch', 'popup-divider-custom-color', 'dividerCustomColor', '#ffffff');
     setupColorSwatch('globe-color-swatch', 'popup-globe-color', 'globeColor', '#b8a878');
     setupColorSwatch('magic-text-color-swatch', 'popup-magic-text-color', 'magicTextColor', '#b8a878');
@@ -3978,7 +4000,7 @@ function applyHeartSettingsToRenderer() {
         CanvasRenderer._heartPulseDelay = settings.heartPulseDelay !== undefined ? settings.heartPulseDelay : 5.0;
         CanvasRenderer._heartAnimationEnabled = settings.heartAnimationEnabled !== false;
         CanvasRenderer._heartBgOpacity = settings.heartBgOpacity !== undefined ? settings.heartBgOpacity : 1.0;
-        CanvasRenderer._heartBgColor = settings.heartBgColor || '#0a0a14';
+        CanvasRenderer._heartBgColor = settings.heartBgColor || '#000000';
         CanvasRenderer._heartRingColor = settings.heartRingColor || '#b8a878';
         CanvasRenderer._learningPathColor = settings.learningPathColor || '#00ffff';
         
@@ -3994,8 +4016,17 @@ function applyHeartSettingsToRenderer() {
         CanvasRenderer._starfieldColor = settings.starfieldColor || '#ffffff';
         CanvasRenderer._starfieldDensity = settings.starfieldDensity || 200;
         CanvasRenderer._starfieldMaxSize = settings.starfieldMaxSize || 2.5;
+        CanvasRenderer._bgColor = settings.starfieldBgColor || '#000000';
         
         CanvasRenderer._needsRender = true;
+    }
+    
+    // Apply background color to tree container
+    if (settings.starfieldBgColor) {
+        var treeContainer = document.getElementById('tree-container');
+        if (treeContainer) {
+            treeContainer.style.background = settings.starfieldBgColor;
+        }
     }
 }
 

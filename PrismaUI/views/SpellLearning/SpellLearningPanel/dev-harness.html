@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heart of Magic — Dev Harness</title>
+    <style>
+        /* Harness chrome - toolbar at top */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #1a1a2e; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+
+        #harness-toolbar {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 10000;
+            background: #0d1117; border-bottom: 1px solid #30363d;
+            display: flex; align-items: center; gap: 8px;
+            padding: 4px 12px; height: 36px; font-size: 13px; color: #c9d1d9;
+        }
+        #harness-toolbar .toolbar-title { font-weight: 600; color: #58a6ff; margin-right: 12px; }
+        #harness-toolbar button {
+            background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+            padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
+        }
+        #harness-toolbar button:hover { background: #30363d; border-color: #58a6ff; }
+        #harness-toolbar button.active { background: #388bfd33; border-color: #58a6ff; color: #58a6ff; }
+        #harness-toolbar .separator { width: 1px; height: 20px; background: #30363d; }
+        #harness-toolbar .status { color: #8b949e; font-size: 11px; margin-left: auto; }
+        #harness-toolbar .status .ok { color: #3fb950; }
+        #harness-toolbar .status .warn { color: #d29922; }
+
+        /* Game viewport simulation */
+        #game-viewport {
+            position: fixed; top: 36px; left: 0; right: 0; bottom: 28px;
+            background: #0a0a14;
+            display: flex; align-items: center; justify-content: center;
+        }
+        #game-viewport .game-bg-text {
+            color: rgba(255,255,255,0.05); font-size: 48px; font-weight: bold;
+            user-select: none; pointer-events: none;
+        }
+
+        /* Panel container - the actual PrismaUI panel lives here */
+        #panel-host {
+            position: fixed; top: 36px; left: 0; right: 0; bottom: 28px;
+            z-index: 100; pointer-events: none;
+        }
+        #panel-host > * { pointer-events: auto; }
+
+        /* Status bar at bottom */
+        #harness-status {
+            position: fixed; bottom: 0; left: 0; right: 0; z-index: 10000;
+            background: #0d1117; border-top: 1px solid #30363d;
+            display: flex; align-items: center; gap: 16px;
+            padding: 4px 12px; height: 28px; font-size: 11px; color: #8b949e;
+        }
+        #harness-status .log-entry { display: flex; gap: 4px; }
+        #harness-status .log-entry .method { color: #58a6ff; }
+        #harness-status .log-entry .data { color: #8b949e; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* C++ call log panel */
+        #cpp-log {
+            position: fixed; top: 36px; right: 0; width: 360px; bottom: 28px;
+            background: rgba(13,17,23,0.95); border-left: 1px solid #30363d;
+            z-index: 9999; display: none; overflow-y: auto; font-size: 11px;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+        }
+        #cpp-log.visible { display: block; }
+        #cpp-log .log-header {
+            position: sticky; top: 0; background: #161b22;
+            padding: 8px; border-bottom: 1px solid #30363d;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        #cpp-log .log-header span { color: #c9d1d9; font-weight: 600; }
+        #cpp-log .log-body { padding: 4px; }
+        #cpp-log .log-item {
+            padding: 3px 6px; border-bottom: 1px solid #21262d;
+            display: flex; gap: 6px; word-break: break-all;
+        }
+        #cpp-log .log-item .dir { width: 16px; text-align: center; flex-shrink: 0; }
+        #cpp-log .log-item .dir.out { color: #58a6ff; }
+        #cpp-log .log-item .dir.in { color: #3fb950; }
+        #cpp-log .log-item .method { color: #d2a8ff; flex-shrink: 0; }
+        #cpp-log .log-item .payload { color: #8b949e; }
+    </style>
+
+    <!-- MOCK C++ BRIDGE - Must be BEFORE all module scripts -->
+    <script src="dev-harness-bridge.js"></script>
+
+    <!-- Load the real Skyrim CSS theme -->
+    <link rel="stylesheet" href="styles-skyrim.css">
+    <script>window.AUTO_TEST_BUILD = false;</script>
+</head>
+<body>
+    <!-- Harness Toolbar -->
+    <div id="harness-toolbar">
+        <span class="toolbar-title">HoM Dev Harness</span>
+        <button id="btn-toggle-panel" class="active">Panel</button>
+        <button id="btn-scan-mock">Mock Scan</button>
+        <button id="btn-load-test-data">Load Test Data</button>
+        <button id="btn-build-tree">Build Tree</button>
+        <span class="separator"></span>
+        <button id="btn-toggle-log">C++ Log</button>
+        <button id="btn-clear-log">Clear</button>
+        <span class="status">
+            Bridge: <span class="ok">MOCK</span> |
+            Spells: <span id="status-spell-count">0</span> |
+            Schools: <span id="status-school-count">0</span>
+        </span>
+    </div>
+
+    <!-- Simulated game background -->
+    <div id="game-viewport">
+        <span class="game-bg-text">SKYRIM GAME VIEWPORT</span>
+    </div>
+
+    <!-- Panel Host - the actual UI panel renders here -->
+    <div id="panel-host">
+        <!-- Focus overlay -->
+        <div id="focusOverlay" class="focus-overlay"></div>
+
+        <div id="spellPanel" class="spell-panel">
+            <!-- Draggable Header -->
+            <div class="panel-header" id="panelHeader">
+                <div class="header-left">
+                    <span class="panel-title">HEART OF MAGIC</span>
+                    <span class="version-tag">v2.0.0-dev</span>
+                </div>
+                <div class="header-right">
+                    <button class="header-btn" id="fullscreenBtn" title="Toggle Fullscreen">Full Screen</button>
+                    <button class="header-btn" id="closeBtn" title="Close (Esc/Tab)">X</button>
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="tab-nav">
+                <button class="tab-btn active" id="tabSpellScan" data-tab="spellScan">Spell Scan</button>
+                <button class="tab-btn" id="tabSpellTree" data-tab="spellTree">Spell Tree</button>
+                <button class="tab-btn" id="tabSettings" data-tab="settings">&cog;</button>
+            </div>
+
+            <!-- Main Content -->
+            <div class="panel-content" id="panelContent">
+
+                <!-- TAB: Spell Scan -->
+                <div class="tab-content active" id="contentSpellScan">
+                    <!-- REVAMP: Spell Scan page emptied for rebuild -->
+                </div>
+
+                <!-- TAB: Spell Tree (full from index.html) -->
+                <div class="tab-content" id="contentSpellTree">
+                    <div id="tree-container" class="tree-container">
+                        <svg id="tree-svg" class="tree-svg">
+                            <defs>
+                                <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3"
+                                        orient="auto" markerUnits="strokeWidth">
+                                    <path d="M0,0 L0,6 L6,3 z" fill="#334155"/>
+                                </marker>
+                                <marker id="arrow-active" markerWidth="6" markerHeight="6" refX="5" refY="3"
+                                        orient="auto" markerUnits="strokeWidth">
+                                    <path d="M0,0 L0,6 L6,3 z" fill="#fbbf24"/>
+                                </marker>
+                                <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                                    <feGaussianBlur stdDeviation="6" result="blur"/>
+                                    <feMerge>
+                                        <feMergeNode in="blur"/>
+                                        <feMergeNode in="SourceGraphic"/>
+                                    </feMerge>
+                                </filter>
+                            </defs>
+                            <g id="wheel-group">
+                                <g id="spokes-layer"></g>
+                                <g id="edges-layer"></g>
+                                <g id="nodes-layer"></g>
+                            </g>
+                            <g id="center-hub"></g>
+                        </svg>
+
+                        <div class="zoom-controls">
+                            <button id="zoom-in" class="zoom-btn" title="Zoom In">+</button>
+                            <span id="zoom-level">100%</span>
+                            <button id="zoom-out" class="zoom-btn" title="Zoom Out">-</button>
+                            <span id="renderer-badge" class="renderer-badge" title="Active renderer">SVG</span>
+                            <button id="heart-settings-btn" class="zoom-btn" title="Heart Animation Settings">S</button>
+                            <button id="edit-tree-btn" class="zoom-btn" title="Edit Tree">E</button>
+                            <span id="edit-tools" class="edit-tools" style="display: none;">
+                                <button id="edit-tool-move" class="zoom-btn edit-tool active" title="Move Tool">M</button>
+                                <button id="edit-tool-pen" class="zoom-btn edit-tool" title="Pen Tool">P</button>
+                                <button id="edit-tool-eraser" class="zoom-btn edit-tool" title="Eraser Tool">X</button>
+                            </span>
+                        </div>
+
+                        <!-- Heart Animation Settings Popup (minimal stub) -->
+                        <div id="heart-settings-popup" class="heart-settings-popup" style="display: none;">
+                            <div class="popup-header">
+                                <span>Heart Animation</span>
+                                <button id="heart-settings-close" class="popup-close">x</button>
+                            </div>
+                            <div class="popup-content">
+                                <div class="popup-row"><label>Enable Animation</label>
+                                    <label class="toggle-switch toggle-sm"><input type="checkbox" id="heart-animation-enabled" checked><span class="toggle-slider"></span></label>
+                                </div>
+                                <div class="popup-row"><label>Pulse Speed</label>
+                                    <input type="range" id="heart-pulse-speed" min="0" max="1" step="0.05" value="0.2"><span id="heart-pulse-speed-val">0.20</span>
+                                </div>
+                                <div class="popup-row"><label>Pulse Delay</label>
+                                    <input type="range" id="heart-pulse-delay" min="0" max="5" step="0.25" value="2"><span id="heart-pulse-delay-val">2.0s</span>
+                                </div>
+                                <div class="popup-row"><label>Background Opacity</label>
+                                    <input type="range" id="heart-bg-opacity" min="0" max="1" step="0.05" value="1"><span id="heart-bg-opacity-val">1.0</span>
+                                </div>
+                                <div class="popup-row"><label>Background Color</label>
+                                    <div class="color-swatch" id="heart-bg-color-swatch" data-target="heart-bg-color" style="background: #000000;"></div>
+                                    <input type="hidden" id="heart-bg-color" value="#000000">
+                                </div>
+                                <div class="popup-row"><label>Ring Color</label>
+                                    <div class="color-swatch" id="heart-ring-color-swatch" data-target="heart-ring-color" style="background: #b8a878;"></div>
+                                    <input type="hidden" id="heart-ring-color" value="#b8a878">
+                                </div>
+                                <div class="popup-row"><label>Learning Path</label>
+                                    <div class="color-swatch" id="learning-path-color-swatch" data-target="learning-path-color" style="background: #00ffff;"></div>
+                                    <input type="hidden" id="learning-path-color" value="#00ffff">
+                                </div>
+                                <div class="popup-divider"></div>
+                                <div class="popup-section-title">Starfield</div>
+                                <div class="popup-row"><label>Enable Stars</label>
+                                    <label class="toggle-switch toggle-sm"><input type="checkbox" id="starfield-enabled" checked><span class="toggle-slider"></span></label>
+                                </div>
+                                <div class="popup-row"><label>Fixed to Screen</label>
+                                    <label class="toggle-switch toggle-sm"><input type="checkbox" id="starfield-fixed" checked><span class="toggle-slider"></span></label>
+                                </div>
+                                <div class="popup-row"><label>Star Color</label>
+                                    <div class="color-swatch" id="starfield-color-swatch" data-target="starfield-color" style="background: #ffffff;"></div>
+                                    <input type="hidden" id="starfield-color" value="#ffffff">
+                                </div>
+                                <div class="popup-row"><label>Star Density</label>
+                                    <input type="range" id="starfield-density" min="50" max="500" step="25" value="200"><span id="starfield-density-val">200</span>
+                                </div>
+                                <div class="popup-row"><label>Star Size</label>
+                                    <input type="range" id="starfield-size" min="0.5" max="5" step="0.5" value="2.5"><span id="starfield-size-val">2.5</span>
+                                </div>
+                                <div class="popup-row"><label>Background Color</label>
+                                    <div class="color-swatch" id="starfield-bg-color-swatch" data-target="starfield-bg-color" style="background: #000000;"></div>
+                                    <input type="hidden" id="starfield-bg-color" value="#000000">
+                                    <button class="popup-apply-btn" id="starfield-bg-apply" title="Apply">Apply</button>
+                                </div>
+                                <div class="popup-divider"></div>
+                                <div class="popup-section-title">School Dividers</div>
+                                <div class="popup-row"><label>Show Dividers</label>
+                                    <label class="toggle-switch toggle-sm"><input type="checkbox" id="popup-show-dividers" checked><span class="toggle-slider"></span></label>
+                                </div>
+                                <div class="popup-row"><label>Divider Length</label>
+                                    <input type="range" id="popup-divider-length" min="100" max="2000" step="50" value="800"><span id="popup-divider-length-val">800</span>
+                                </div>
+                                <div class="popup-row"><label>Line Width</label>
+                                    <input type="range" id="popup-divider-width" min="1" max="10" step="1" value="3"><span id="popup-divider-width-val">3px</span>
+                                </div>
+                                <div class="popup-row"><label>Fade Amount</label>
+                                    <input type="range" id="popup-divider-fade" min="0" max="100" step="5" value="50"><span id="popup-divider-fade-val">50%</span>
+                                </div>
+                                <div class="popup-row"><label>Color Mode</label>
+                                    <select id="popup-divider-color-mode" class="popup-select">
+                                        <option value="school">Match School</option><option value="custom">Custom Color</option>
+                                    </select>
+                                </div>
+                                <div class="popup-row" id="popup-divider-custom-row" style="display: none;"><label>Custom Color</label>
+                                    <div class="color-swatch" id="divider-custom-color-swatch" data-target="popup-divider-custom-color" style="background: #ffffff;"></div>
+                                    <input type="hidden" id="popup-divider-custom-color" value="#ffffff">
+                                </div>
+                                <div class="popup-divider"></div>
+                                <div class="popup-section-title">Connections</div>
+                                <div class="popup-row"><label>Selection Path</label>
+                                    <label class="toggle-switch toggle-sm"><input type="checkbox" id="show-selection-path" checked><span class="toggle-slider"></span></label>
+                                </div>
+                                <div class="popup-row"><label>Base Lines</label>
+                                    <label class="toggle-switch toggle-sm"><input type="checkbox" id="show-base-connections" checked><span class="toggle-slider"></span></label>
+                                </div>
+                                <div class="popup-divider"></div>
+                                <div class="popup-section-title">Globe</div>
+                                <div class="popup-row"><label>Globe Size</label>
+                                    <input type="range" id="popup-globe-size" min="15" max="60" step="5" value="30"><span id="popup-globe-size-val">30</span>
+                                </div>
+                                <div class="popup-row"><label>Particle Count</label>
+                                    <input type="range" id="popup-globe-density" min="50" max="500" step="25" value="200"><span id="popup-globe-density-val">200</span>
+                                </div>
+                                <div class="popup-row"><label>Dot Size Min</label>
+                                    <input type="range" id="popup-globe-dot-min" min="0.5" max="3" step="0.5" value="1"><span id="popup-globe-dot-min-val">1</span>
+                                </div>
+                                <div class="popup-row"><label>Dot Size Max</label>
+                                    <input type="range" id="popup-globe-dot-max" min="1" max="6" step="0.5" value="3"><span id="popup-globe-dot-max-val">3</span>
+                                </div>
+                                <div class="popup-row"><label>Globe Color</label>
+                                    <div class="color-swatch" id="globe-color-swatch" data-target="popup-globe-color" style="background: #b8a878;"></div>
+                                    <input type="hidden" id="popup-globe-color" value="#b8a878">
+                                </div>
+                                <div class="popup-row"><label>Text Color</label>
+                                    <div class="color-swatch" id="magic-text-color-swatch" data-target="popup-magic-text-color" style="background: #b8a878;"></div>
+                                    <input type="hidden" id="popup-magic-text-color" value="#b8a878">
+                                </div>
+                                <div class="popup-row"><label>Globe Text</label>
+                                    <input type="text" id="popup-globe-text" class="popup-input" value="HoM" placeholder="Text">
+                                </div>
+                                <div class="popup-row"><label>Text Size</label>
+                                    <input type="range" id="popup-globe-text-size" min="8" max="32" step="1" value="16"><span id="popup-globe-text-size-val">16</span>
+                                </div>
+                                <div class="popup-row"><label>Particle Trail</label>
+                                    <label class="toggle-switch toggle-sm"><input type="checkbox" id="popup-particle-trail" checked><span class="toggle-slider"></span></label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Color Picker Modal -->
+                        <div id="color-picker-modal" class="color-picker-modal" style="display: none;">
+                            <div class="color-picker-content">
+                                <div class="color-picker-header"><span>Select Color</span><button id="color-picker-close" class="popup-close">x</button></div>
+                                <div class="color-picker-body">
+                                    <div class="color-gradient" id="color-gradient"><div class="color-gradient-cursor" id="color-gradient-cursor"></div></div>
+                                    <div class="color-hue-bar" id="color-hue-bar"><div class="color-hue-cursor" id="color-hue-cursor"></div></div>
+                                    <div class="color-preview-row">
+                                        <div class="color-preview" id="color-preview"></div>
+                                        <input type="text" id="color-hex-input" class="color-hex-input" value="#ffffff" maxlength="7">
+                                    </div>
+                                    <div class="color-presets">
+                                        <div class="color-preset" style="background:#ff0000" data-color="#ff0000"></div>
+                                        <div class="color-preset" style="background:#ff8800" data-color="#ff8800"></div>
+                                        <div class="color-preset" style="background:#ffff00" data-color="#ffff00"></div>
+                                        <div class="color-preset" style="background:#00ff00" data-color="#00ff00"></div>
+                                        <div class="color-preset" style="background:#00ffff" data-color="#00ffff"></div>
+                                        <div class="color-preset" style="background:#0088ff" data-color="#0088ff"></div>
+                                        <div class="color-preset" style="background:#8800ff" data-color="#8800ff"></div>
+                                        <div class="color-preset" style="background:#ff00ff" data-color="#ff00ff"></div>
+                                        <div class="color-preset" style="background:#ffffff" data-color="#ffffff"></div>
+                                        <div class="color-preset" style="background:#b8a878" data-color="#b8a878"></div>
+                                        <div class="color-preset" style="background:#1a1a2e" data-color="#1a1a2e"></div>
+                                        <div class="color-preset" style="background:#0a0a14" data-color="#0a0a14"></div>
+                                    </div>
+                                    <button id="color-picker-apply" class="btn btn-primary btn-sm">Apply</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="tree-instructions"><span>Drag to pan / Scroll to zoom / Click node to select</span></div>
+                        <div id="empty-state" class="empty-state">
+                            <div class="empty-icon">*</div>
+                            <div class="empty-text">No spell tree loaded</div>
+                            <div class="empty-hint">Use "Load Test Data" in toolbar to load sample spells,<br>then "Build Tree" to generate.</div>
+                            <button id="load-saved-btn" class="btn btn-secondary">Load Saved Tree</button>
+                        </div>
+                    </div>
+
+                    <!-- Spell Details Sidebar -->
+                    <div id="details-panel" class="details-panel hidden">
+                        <div class="details-close"><button id="close-details" class="header-btn">x</button></div>
+                        <div class="details-header">
+                            <h3 id="spell-name">-</h3>
+                            <span id="spell-school" class="school-badge">-</span>
+                        </div>
+                        <div class="details-body">
+                            <div class="detail-row"><span class="detail-label">Level</span><span id="spell-level" class="detail-value">-</span></div>
+                            <div class="detail-row"><span class="detail-label">Magicka</span><span id="spell-cost" class="detail-value">-</span></div>
+                            <div class="detail-row"><span class="detail-label">Type</span><span id="spell-type" class="detail-value">-</span></div>
+                            <div class="detail-section"><span class="detail-label">Effects</span><ul id="spell-effects" class="detail-list"></ul></div>
+                            <div class="detail-section"><span class="detail-label">Description</span><p id="spell-description" class="detail-desc">-</p></div>
+                            <div class="detail-section prereq-section">
+                                <span class="detail-label">Prerequisites</span>
+                                <div id="prereq-summary" class="prereq-summary"></div>
+                                <div id="hard-prereqs-section" class="prereq-group hidden"><span class="prereq-type-label hard">Required (all)</span><ul id="hard-prereqs-list" class="detail-list clickable"></ul></div>
+                                <div id="soft-prereqs-section" class="prereq-group hidden"><span class="prereq-type-label soft">Optional <span id="soft-needed-count"></span></span><ul id="soft-prereqs-list" class="detail-list clickable"></ul></div>
+                                <ul id="spell-prereqs" class="detail-list clickable hidden"></ul>
+                            </div>
+                            <div class="detail-section"><span class="detail-label">Unlocks</span><ul id="spell-unlocks" class="detail-list clickable"></ul></div>
+                        </div>
+                        <div id="progress-section" class="progress-section hidden">
+                            <div id="learning-status-container" class="learning-status-container">
+                                <span id="learning-status-badge" class="learning-status-badge locked">LOCKED</span>
+                                <span id="learning-effectiveness" class="learning-effectiveness"></span>
+                            </div>
+                            <div id="learning-status-hint" class="learning-status-hint"></div>
+                            <div class="progress-label">
+                                <span>Learning Progress</span>
+                                <span id="progress-text" class="progress-text-normal">0 / 100 XP</span>
+                                <span id="progress-edit" class="progress-edit hidden">
+                                    <input type="number" id="xp-current-input" class="xp-input" min="0" value="0">
+                                    <span>/</span>
+                                    <input type="number" id="xp-required-input" class="xp-input xp-required" min="1" value="100">
+                                    <span>XP</span>
+                                </span>
+                            </div>
+                            <div class="progress-bar-container"><div id="progress-bar" class="progress-bar" style="width: 0%"></div></div>
+                        </div>
+                        <div class="details-footer">
+                            <span id="spell-state" class="state-badge locked">Locked</span>
+                            <button id="learn-btn" class="btn btn-learn hidden">Learn This</button>
+                            <button id="unlock-btn" class="btn btn-unlock hidden" disabled>Unlock Spell</button>
+                        </div>
+                    </div>
+
+                    <!-- How-to Panel -->
+                    <div id="howto-panel" class="howto-panel hidden">
+                        <div class="howto-tab" id="howto-tab"><span class="howto-tab-icon">?</span><span class="howto-tab-text">How to Learn</span></div>
+                        <div class="howto-content">
+                            <div class="howto-header"><h3>How to Learn Spells</h3><button id="close-howto" class="header-btn">x</button></div>
+                            <div class="howto-section"><h4>[i] Current Settings</h4><ul id="howto-settings-list" class="howto-list"><li>Loading...</li></ul></div>
+                            <div class="howto-section"><h4>[^] Gaining XP</h4><ul id="howto-xp-list" class="howto-list"><li>Loading...</li></ul></div>
+                            <div class="howto-section"><h4>(!) Tips</h4><ul id="howto-tips-list" class="howto-list"><li>Set learning targets</li></ul></div>
+                        </div>
+                    </div>
+
+                    <!-- Tree Footer -->
+                    <div class="tree-footer">
+                        <div class="footer-left">
+                            <button id="import-btn" class="btn btn-secondary btn-sm"><span class="btn-icon">[v]</span> Import</button>
+                            <button id="llm-toolbar-btn" class="btn btn-llm btn-sm hidden" title="LLM"><span class="btn-icon">[AI]</span> LLM</button>
+                            <span class="spell-count"><span id="total-count">0</span> spells | <span id="unlocked-count">0</span> unlocked</span>
+                        </div>
+                        <div class="footer-center">
+                            <div class="state-legend">
+                                <span class="legend-item locked"><span class="legend-dot"></span>Locked</span>
+                                <span class="legend-item available"><span class="legend-dot"></span>Available</span>
+                                <span class="legend-item learning"><span class="legend-dot"></span>Learning</span>
+                                <span class="legend-item unlocked"><span class="legend-dot"></span>Unlocked</span>
+                            </div>
+                        </div>
+                        <div class="footer-right"><span id="tree-status-text" class="status-text">Ready</span></div>
+                    </div>
+                </div>
+
+                <!-- TAB: Settings (stub - kept minimal for now) -->
+                <div class="tab-content" id="contentSettings">
+                    <div class="settings-block">
+                        <div class="settings-block-header">
+                            <span class="settings-block-icon">[D]</span>
+                            <span class="settings-block-title">Dev Harness Mode</span>
+                        </div>
+                        <div class="settings-block-content">
+                            <p style="color: var(--text-muted); padding: 12px;">Settings tab available - full settings from index.html can be ported as needed.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resize Handle -->
+            <div class="resize-handle" id="resizeHandle"></div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="import-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="modal-header"><h3>Import Spell Tree</h3><button class="modal-close" id="modal-close-btn">x</button></div>
+            <div class="modal-body">
+                <p>Paste the spell tree JSON:</p>
+                <textarea id="import-textarea" placeholder='{"version": "1.0", "schools": {...}}'></textarea>
+                <div id="import-error" class="error-box hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="paste-tree-btn" class="btn btn-secondary">Paste</button>
+                <button id="import-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="import-merge" class="btn btn-secondary">Add/Merge</button>
+                <button id="import-confirm" class="btn btn-primary">Replace All</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="spawn-spell-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content spawn-modal">
+            <div class="modal-header"><h3>Spawn Spell Node</h3><button class="modal-close" id="spawn-modal-close">x</button></div>
+            <div class="modal-body">
+                <input type="text" id="spawn-search" class="spawn-search" placeholder="Search spells...">
+                <div id="spawn-spell-list" class="spawn-spell-list"><div class="spawn-loading">Loading spells...</div></div>
+            </div>
+            <div class="modal-footer"><button id="spawn-cancel" class="btn btn-secondary">Cancel</button></div>
+        </div>
+    </div>
+
+    <div id="blacklist-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content blacklist-modal">
+            <div class="modal-header"><h3>Spell Blacklist</h3><button class="modal-close" id="blacklist-modal-close">x</button></div>
+            <div class="modal-body">
+                <input type="text" id="blacklist-search" class="spawn-search" placeholder="Search spells...">
+                <div id="blacklist-search-results" class="spawn-spell-list blacklist-dropdown hidden"></div>
+                <div class="blacklist-divider"></div>
+                <div class="blacklist-list-header"><span>Blacklisted Spells</span><span id="blacklist-count" class="blacklist-count">0</span></div>
+                <div id="blacklist-entries" class="blacklist-entries"><div class="blacklist-empty">No spells blacklisted</div></div>
+            </div>
+            <div class="modal-footer">
+                <button id="blacklist-clear-all" class="btn btn-secondary">Clear All</button>
+                <button id="blacklist-done" class="btn btn-primary">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="whitelist-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content whitelist-modal">
+            <div class="modal-header"><h3>Plugin Whitelist</h3><button class="modal-close" id="whitelist-modal-close">x</button></div>
+            <div class="modal-body">
+                <div class="whitelist-info"><span class="whitelist-info-text">Select plugins to include.</span></div>
+                <input type="text" id="whitelist-search" class="spawn-search" placeholder="Filter plugins...">
+                <div class="whitelist-divider"></div>
+                <div class="whitelist-section">
+                    <div class="whitelist-section-header"><span>Base Game</span><span id="whitelist-base-count" class="whitelist-count">0</span></div>
+                    <div id="whitelist-base-entries" class="whitelist-entries whitelist-base"></div>
+                </div>
+                <div class="whitelist-divider"></div>
+                <div class="whitelist-section">
+                    <div class="whitelist-section-header"><span>Mod Plugins</span><span id="whitelist-mod-count" class="whitelist-count">0</span></div>
+                    <div id="whitelist-mod-entries" class="whitelist-entries whitelist-mods"><div class="whitelist-empty">Scan first</div></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="whitelist-all" class="btn btn-secondary">All</button>
+                <button id="whitelist-none" class="btn btn-secondary">None</button>
+                <button id="whitelist-base-only" class="btn btn-secondary">Base Only</button>
+                <button id="whitelist-done" class="btn btn-primary">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="python-setup-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content python-setup-modal">
+            <div class="modal-header"><h3>Setting Up Python</h3></div>
+            <div class="modal-body">
+                <div class="setup-stage-label" id="setup-stage-label">Preparing...</div>
+                <div class="setup-progress-bar"><div class="setup-progress-fill" id="setup-progress-fill"></div></div>
+                <div class="setup-detail" id="setup-detail"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="setup-cancel-btn" class="btn btn-secondary">Cancel</button>
+                <button id="setup-done-btn" class="btn btn-primary hidden">Done</button>
+                <button id="setup-retry-btn" class="btn btn-primary hidden">Retry</button>
+                <button id="setup-manual-btn" class="btn btn-secondary hidden">Manual Setup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tooltip -->
+    <div id="tooltip" class="tooltip hidden">
+        <div class="tooltip-name"></div>
+        <div class="tooltip-info"></div>
+        <div class="tooltip-state"></div>
+    </div>
+
+    <!-- C++ Call Log Panel -->
+    <div id="cpp-log">
+        <div class="log-header">
+            <span>C++ Bridge Log</span>
+            <button id="btn-clear-log-inner" style="background:#21262d;border:1px solid #30363d;color:#c9d1d9;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:11px;">Clear</button>
+        </div>
+        <div class="log-body" id="cpp-log-body"></div>
+    </div>
+
+    <!-- Module Loading - SAME order as index.html -->
+    <script src="modules/constants.js"></script>
+    <script src="modules/state.js"></script>
+    <script src="modules/config.js"></script>
+    <script src="modules/edgeScoring.js"></script>
+    <script src="modules/shapeProfiles.js"></script>
+    <script src="modules/layoutEngine.js"></script>
+    <script src="modules/spellCache.js"></script>
+    <script src="modules/colorUtils.js"></script>
+    <script src="modules/uiHelpers.js"></script>
+    <script src="modules/growthDSL.js"></script>
+    <script src="modules/treeParser.js"></script>
+    <script src="modules/wheelRenderer.js"></script>
+    <script src="modules/starfield.js"></script>
+    <script src="modules/globe3D.js"></script>
+    <script src="modules/canvasRenderer.js"></script>
+    <script src="modules/editMode.js"></script>
+    <script src="modules/colorPicker.js"></script>
+    <script src="modules/settingsPanel.js"></script>
+    <script src="modules/treeViewerUI.js"></script>
+    <script src="modules/progressionUI.js"></script>
+    <script src="modules/difficultyProfiles.js"></script>
+    <script src="modules/llmApiSettings.js"></script>
+    <script src="modules/buttonHandlers.js"></script>
+    <script src="modules/cppCallbacks.js"></script>
+    <script src="modules/pythonSetup.js"></script>
+    <script src="modules/llmIntegration.js"></script>
+    <script src="modules/proceduralTreeBuilder.js"></script>
+    <script src="modules/layoutGenerator.js"></script>
+    <script src="modules/growthBehaviors.js"></script>
+    <script src="modules/visualFirstBuilder.js"></script>
+    <script src="modules/llmTreeFeatures.js"></script>
+    <script src="modules/settingsAwareTreeBuilder.js"></script>
+    <script src="modules/generationModeUI.js"></script>
+    <script src="script.js"></script>
+    <script src="modules/autoTest.js"></script>
+    <script src="modules/unificationTest.js"></script>
+    <script src="modules/main.js"></script>
+
+    <!-- Harness toolbar wiring -->
+    <script src="dev-harness-toolbar.js"></script>
+</body>
+</html>
