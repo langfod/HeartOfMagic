@@ -342,6 +342,9 @@ class SpellTreeBuilder:
         # Final validation pass - ensure all nodes are reachable
         self._ensure_all_reachable(nodes, root_id, school_name)
         
+        # Assign sections for Tree Growth mode layout (root/trunk/branch)
+        self._assign_sections(nodes, root_id)
+
         # Return output format
         layout_style = self.cfg.shape if self.cfg.shape != 'organic' else 'radial'
         return {
@@ -376,6 +379,48 @@ class SpellTreeBuilder:
                 if spell.get('skillLevel') == tier:
                     return spell['formId']
         return spells[0]['formId'] if spells else None
+
+    def _assign_sections(self, nodes: Dict[str, 'TreeNode'], root_id: str) -> None:
+        """Assign section labels (root/trunk/branch) based on tree depth.
+
+        Uses config pctRoot/pctTrunk/pctBranches to determine depth cutoffs.
+        Root section: depth 0 (root node itself)
+        Trunk section: shallow-to-mid depth nodes (bulk of the tree)
+        Branch section: deepest nodes (tips of the tree)
+        """
+        pct_root = self.cfg.get_raw('pctRoot', 20) / 100.0
+        pct_trunk = self.cfg.get_raw('pctTrunk', 50) / 100.0
+        # pct_branch is the remainder
+
+        # Find max depth
+        max_depth = max((n.depth for n in nodes.values()), default=0)
+        if max_depth == 0:
+            for n in nodes.values():
+                n.section = 'root'
+            return
+
+        # Sort nodes by depth to compute percentile-based cutoffs
+        sorted_nodes = sorted(nodes.values(), key=lambda n: n.depth)
+        total = len(sorted_nodes)
+
+        root_cutoff = int(total * pct_root)
+        trunk_cutoff = int(total * (pct_root + pct_trunk))
+
+        for i, node in enumerate(sorted_nodes):
+            if node.form_id == root_id:
+                node.section = 'root'
+            elif i < root_cutoff:
+                node.section = 'root'
+            elif i < trunk_cutoff:
+                node.section = 'trunk'
+            else:
+                node.section = 'branch'
+
+        # Count for logging
+        counts = {'root': 0, 'trunk': 0, 'branch': 0}
+        for n in nodes.values():
+            counts[n.section] = counts.get(n.section, 0) + 1
+        print(f"[TreeBuilder] Sections: root={counts['root']}, trunk={counts['trunk']}, branch={counts['branch']}")
     
     def _connect_nodes(
         self,

@@ -16,33 +16,19 @@ var TreeSettings = {
     /** Build the settings panel HTML string. */
     buildHTML: function (settings) {
         var s = settings || {};
-        var thickness = s.trunkThickness !== undefined ? s.trunkThickness : 40;
+        var thickness = s.trunkThickness !== undefined ? s.trunkThickness : 70;
         var opacity = s.ghostOpacity !== undefined ? s.ghostOpacity : 35;
         var nodeSize = s.nodeRadius !== undefined ? s.nodeRadius : 5;
+        var spread = s.branchSpread !== undefined ? s.branchSpread : 2.5;
+        var rootSpread = s.rootSpread !== undefined ? s.rootSpread : 2.5;
         var H = TreePreviewUtils.settingHTML;
-        var btnStyle = 'style="margin: 2px 4px; padding: 4px 10px;"';
 
         return '' +
             '<div class="tree-preview-settings-title">Tree Growth Settings</div>' +
-            '<div style="margin: 6px 0;">' +
-                '<button id="tgTreeBuildBtn" class="tree-action-btn" ' +
-                    btnStyle + ' disabled>Build Tree</button>' +
-                '<button id="tgTreeApplyBtn" class="tree-action-btn" ' +
-                    btnStyle + ' disabled>Apply Tree</button>' +
-                '<button id="tgTreeClearBtn" class="tree-action-btn" ' +
-                    btnStyle + ' disabled>Clear Tree</button>' +
-            '</div>' +
-            '<div style="margin: 2px 0 6px 0;">' +
-                '<button id="tgTreeSetupPythonBtn" class="tree-action-btn" ' +
-                    'style="margin: 2px 4px; padding: 4px 10px; display: none;">Setup Python</button>' +
-            '</div>' +
-            '<div style="margin: 4px 0 8px 0;">' +
-                'Status: <span id="tgTreeStatus" style="color: rgba(184, 168, 120, 0.5);">' +
-                    'Waiting for scan...' +
-                '</span>' +
-            '</div>' +
             '<div class="tree-preview-settings-grid">' +
                 H('Trunk Thickness', 'tgTreeTrunkThickness', 1, 100, 1, thickness, '%') +
+                H('Branch Spread', 'tgTreeBranchSpread', 0, 10, 0.5, spread, 'x') +
+                H('Root Spread', 'tgTreeRootSpread', 0, 10, 0.5, rootSpread, 'x') +
                 H('Ghost Opacity', 'tgTreeOpacity', 0, 100, 5, opacity, '%') +
                 H('Node Size', 'tgTreeNodeSize', 1, 20, 1, nodeSize) +
             '</div>' +
@@ -69,32 +55,10 @@ var TreeSettings = {
     /** Bind click handlers on buttons, change handlers on sliders, and drag on allocation bar. */
     bindEvents: function (callbacks) {
         var cb = callbacks || {};
-        var buildBtn = document.getElementById('tgTreeBuildBtn');
-        var applyBtn = document.getElementById('tgTreeApplyBtn');
-        var clearBtn = document.getElementById('tgTreeClearBtn');
-        var setupBtn = document.getElementById('tgTreeSetupPythonBtn');
-
-        if (buildBtn && cb.onBuild) {
-            buildBtn.addEventListener('click', function () {
-                if (!buildBtn.disabled) cb.onBuild();
-            });
-        }
-        if (applyBtn && cb.onApply) {
-            applyBtn.addEventListener('click', function () {
-                if (!applyBtn.disabled) cb.onApply();
-            });
-        }
-        if (clearBtn && cb.onClear) {
-            clearBtn.addEventListener('click', function () {
-                if (!clearBtn.disabled) cb.onClear();
-            });
-        }
-        if (setupBtn && cb.onSetupPython) {
-            setupBtn.addEventListener('click', function () { cb.onSetupPython(); });
-        }
-
         var onChanged = cb.onSettingChanged || function () {};
         TreePreviewUtils.bindInput('tgTreeTrunkThickness', function (v) { onChanged('trunkThickness', v); });
+        TreePreviewUtils.bindInput('tgTreeBranchSpread', function (v) { onChanged('branchSpread', v); });
+        TreePreviewUtils.bindInput('tgTreeRootSpread', function (v) { onChanged('rootSpread', v); });
         TreePreviewUtils.bindInput('tgTreeOpacity', function (v) { onChanged('ghostOpacity', v); });
         TreePreviewUtils.bindInput('tgTreeNodeSize', function (v) { onChanged('nodeRadius', v); });
 
@@ -106,14 +70,7 @@ var TreeSettings = {
 
     /** Re-apply tracked state to freshly built DOM elements. @private */
     _refreshDOM: function () {
-        this._updateBuildButton();
-        if (this._treeBuilt) {
-            this.setTreeBuilt(true, this._nodeCount);
-        } else if (this._pythonInstalled) {
-            this.setStatusText('Python ready (detected)', '#22c55e');
-        } else if (this._hasSpells) {
-            this.setStatusText('Spells scanned', '#b8a878');
-        }
+        // Shared buttons handled by TreeGrowth; no local DOM to refresh
     },
 
     /** Bind mousedown/mousemove/mouseup on allocation bar dividers. @private */
@@ -192,69 +149,27 @@ var TreeSettings = {
 
     /** Update status text and button states based on Python addon status. */
     updatePythonStatus: function (installed, hasScript, hasPython) {
-        this._pythonInstalled = installed;
-        var setupBtn = document.getElementById('tgTreeSetupPythonBtn');
-
-        if (installed) {
-            this.setStatusText('Python ready (detected)', '#22c55e');
-            if (setupBtn) setupBtn.style.display = 'none';
-        } else if (hasScript && !hasPython) {
-            this.setStatusText('Python not installed', '#f59e0b');
-            if (setupBtn) setupBtn.style.display = '';
-        } else if (!hasScript) {
-            this.setStatusText('SpellTreeBuilder not found', '#ef4444');
-            if (setupBtn) setupBtn.style.display = 'none';
-        }
-        this._updateBuildButton();
+        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updatePythonStatus(installed, hasScript, hasPython);
     },
 
     /** Called when spell scan data changes. */
     updateScanStatus: function (hasSpells) {
-        this._hasSpells = hasSpells;
-        this._updateBuildButton();
+        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updateScanStatus(hasSpells);
     },
 
     /** Update button states after a tree is built or cleared. */
-    setTreeBuilt: function (built, nodeCount) {
-        this._treeBuilt = built;
-        this._nodeCount = nodeCount || 0;
-
-        var applyBtn = document.getElementById('tgTreeApplyBtn');
-        var clearBtn = document.getElementById('tgTreeClearBtn');
-
-        if (built) {
-            if (applyBtn) applyBtn.disabled = false;
-            if (clearBtn) clearBtn.disabled = false;
-            var label = 'Tree built';
-            if (this._nodeCount > 0) label += ' \u2014 ' + this._nodeCount + ' nodes';
-            this.setStatusText(label, '#22c55e');
-        } else {
-            if (applyBtn) applyBtn.disabled = true;
-            if (clearBtn) clearBtn.disabled = true;
-            this._updateBuildButton();
-            if (this._pythonInstalled) {
-                this.setStatusText('Python ready (detected)', '#22c55e');
-            }
-        }
+    setTreeBuilt: function (built, nodeCount, totalPool) {
+        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setTreeBuilt(built, nodeCount, totalPool);
     },
 
     /** Set the status text element's content and color. */
     setStatusText: function (text, color) {
-        var el = document.getElementById('tgTreeStatus');
-        if (!el) return;
-        el.textContent = text;
-        if (color) el.style.color = color;
+        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setStatusText(text, color);
     },
 
     /** Enable or disable the Build Tree button based on current state. @private */
     _updateBuildButton: function () {
-        var buildBtn = document.getElementById('tgTreeBuildBtn');
-        if (!buildBtn) return;
-        if (this._pythonInstalled && this._hasSpells && !this._treeBuilt) {
-            buildBtn.disabled = false;
-        } else {
-            buildBtn.disabled = true;
-        }
+        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updateBuildButton();
     }
 };
 

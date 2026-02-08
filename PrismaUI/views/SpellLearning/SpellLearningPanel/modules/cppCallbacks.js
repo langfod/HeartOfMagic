@@ -143,12 +143,9 @@ window.onPythonAddonStatus = function(statusStr) {
         }
     }
 
-    // Also update growth mode settings if available
-    if (typeof TreeGrowthClassic !== 'undefined' && TreeGrowthClassic.onPythonStatusChanged) {
-        TreeGrowthClassic.onPythonStatusChanged(installed, hasScript, hasPython);
-    }
-    if (typeof TreeSettings !== 'undefined') {
-        TreeSettings.updatePythonStatus(installed, hasScript, hasPython);
+    // Update shared growth mode buttons
+    if (typeof TreeGrowth !== 'undefined') {
+        TreeGrowth.updatePythonStatus(installed, hasScript, hasPython);
     }
 };
 
@@ -312,8 +309,7 @@ window.updateSpellData = function(jsonStr) {
 
     // Notify growth modes that spells are available for building
     if (state.lastSpellData && state.lastSpellData.spells && state.lastSpellData.spells.length > 0) {
-        if (typeof ClassicSettings !== 'undefined') ClassicSettings.updateScanStatus(true);
-        if (typeof TreeSettings !== 'undefined') TreeSettings.updateScanStatus(true);
+        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updateScanStatus(true);
     }
 
     // Update scan stats + status outside try-catch (guaranteed to run)

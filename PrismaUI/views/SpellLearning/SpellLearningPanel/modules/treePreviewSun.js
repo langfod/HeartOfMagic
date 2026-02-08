@@ -32,6 +32,16 @@ var TreePreviewSun = {
     _grids: {},
     _gridOrder: ['naive', 'linear', 'equalArea', 'fibonacci', 'square'],
 
+    // Grid point cache (avoids recomputing KNN every frame)
+    _gridPointCache: null,
+    _gridPointCacheKey: '',
+
+    // Offscreen canvas cache (avoids redrawing thousands of dots every frame)
+    _gridCanvas: null,
+    _gridCanvasKey: '',
+    _gridCanvasW: 0,
+    _gridCanvasH: 0,
+
     registerGrid: function(name, module) {
         this._grids[name] = module;
         console.log('[TreePreviewSun] Registered grid: ' + name);
@@ -254,6 +264,8 @@ var TreePreviewSun = {
         };
 
         // --- Draw grid (delegate or built-in naive) ---
+        // Cap dot count for expensive grids
+        var isExpensiveGrid = (s.gridType === 'fibonacci' || s.gridType === 'equalArea');
         var gridOpts = {
             tierSpacing: tierSpacing,
             ringTier: s.ringTier,
@@ -262,20 +274,51 @@ var TreePreviewSun = {
             tiers: tiers,
             maxExtent: maxExtent,
             pointColorFn: pointColorFn,
-            maxDots: 20000
+            maxDots: isExpensiveGrid ? 5000 : 20000
         };
 
-        var gridModule = this._grids[s.gridType];
-        if (gridModule && typeof gridModule.renderGrid === 'function') {
-            gridModule.renderGrid(ctx, cx, cy, gridOpts);
+        // Use offscreen canvas cache for grid rendering (avoids 10K+ fillRect per frame)
+        var gcKey = s.gridType + '|' + spokes + '|' + tiers + '|' + tierSpacing + '|' +
+            w + '|' + h + '|' + schoolCount + '|' + (s.proportional ? 1 : 0);
+        if (this._gridCanvas && this._gridCanvasKey === gcKey &&
+            this._gridCanvasW === w && this._gridCanvasH === h) {
+            // Cache hit — blit offscreen canvas
+            ctx.drawImage(this._gridCanvas, 0, 0);
         } else {
-            this._renderNaiveGrid(ctx, cx, cy, gridOpts);
+            // Cache miss — render to offscreen canvas
+            if (!this._gridCanvas || this._gridCanvasW !== w || this._gridCanvasH !== h) {
+                this._gridCanvas = document.createElement('canvas');
+                this._gridCanvas.width = w;
+                this._gridCanvas.height = h;
+                this._gridCanvasW = w;
+                this._gridCanvasH = h;
+            }
+            var offCtx = this._gridCanvas.getContext('2d');
+            offCtx.clearRect(0, 0, w, h);
+
+            var gridModule = this._grids[s.gridType];
+            if (gridModule && typeof gridModule.renderGrid === 'function') {
+                gridModule.renderGrid(offCtx, cx, cy, gridOpts);
+            } else {
+                this._renderNaiveGrid(offCtx, cx, cy, gridOpts);
+            }
+            this._gridCanvasKey = gcKey;
+
+            ctx.drawImage(this._gridCanvas, 0, 0);
         }
 
-        // Collect grid point positions for downstream modules
-        this._lastRenderData.gridPoints = this._collectGridPoints(
-            s.gridType, gridOpts, schools, arcStarts, arcSizes
-        );
+        // Collect grid point positions for downstream modules (cached)
+        var gpCacheKey = s.gridType + '|' + spokes + '|' + tiers + '|' + tierSpacing + '|' +
+            schoolCount + '|' + (s.proportional ? 1 : 0) + '|' + (s.invertGrowth ? 1 : 0);
+        if (this._gridPointCache && this._gridPointCacheKey === gpCacheKey) {
+            this._lastRenderData.gridPoints = this._gridPointCache;
+        } else {
+            this._lastRenderData.gridPoints = this._collectGridPoints(
+                s.gridType, gridOpts, schools, arcStarts, arcSizes
+            );
+            this._gridPointCache = this._lastRenderData.gridPoints;
+            this._gridPointCacheKey = gpCacheKey;
+        }
 
         if (schoolCount === 0) return;
 
@@ -371,6 +414,69 @@ var TreePreviewSun = {
      * Collect all grid point positions (matching the active grid module's layout).
      * Each point: { x, y, school }  (coords relative to center)
      */
+    /**
+     * Add K-nearest-neighbor connections to points starting at startIdx.
+     * Used for irregular grids (fibonacci, equal area) where structural
+     * neighbors can't be pre-computed from ring/spoke indices.
+     */
+    _addKNNNeighbors: function(points, startIdx, K) {
+        var count = points.length - startIdx;
+        if (count < 2) return;
+
+        // Bounding box for spatial hash
+        var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (var bi = startIdx; bi < points.length; bi++) {
+            if (points[bi].x < minX) minX = points[bi].x;
+            if (points[bi].x > maxX) maxX = points[bi].x;
+            if (points[bi].y < minY) minY = points[bi].y;
+            if (points[bi].y > maxY) maxY = points[bi].y;
+        }
+
+        // Cell size: ~4 pts per cell on average → 5×5 search gives ~100 candidates
+        var area = Math.max(1, (maxX - minX) * (maxY - minY));
+        var cellSize = Math.max(1, Math.sqrt(area / count) * 2);
+
+        // Build spatial hash buckets
+        var buckets = {};
+        for (var gi = startIdx; gi < points.length; gi++) {
+            var gcx = Math.floor((points[gi].x - minX) / cellSize);
+            var gcy = Math.floor((points[gi].y - minY) / cellSize);
+            var gkey = gcx + '_' + gcy;
+            if (!buckets[gkey]) buckets[gkey] = [];
+            buckets[gkey].push(gi);
+        }
+
+        // For each point, find K nearest from nearby cells (5×5 neighborhood)
+        var searchRing = 2;
+        for (var i = startIdx; i < points.length; i++) {
+            var pi = points[i];
+            var pcx = Math.floor((pi.x - minX) / cellSize);
+            var pcy = Math.floor((pi.y - minY) / cellSize);
+
+            var dists = [];
+            for (var dx = -searchRing; dx <= searchRing; dx++) {
+                for (var dy = -searchRing; dy <= searchRing; dy++) {
+                    var nkey = (pcx + dx) + '_' + (pcy + dy);
+                    var bucket = buckets[nkey];
+                    if (!bucket) continue;
+                    for (var ci = 0; ci < bucket.length; ci++) {
+                        var j = bucket[ci];
+                        if (i === j) continue;
+                        var ddx = pi.x - points[j].x;
+                        var ddy = pi.y - points[j].y;
+                        dists.push({ idx: j, d: ddx * ddx + ddy * ddy });
+                    }
+                }
+            }
+
+            dists.sort(function(a, b) { return a.d - b.d; });
+            var nCount = Math.min(K, dists.length);
+            for (var k = 0; k < nCount; k++) {
+                pi._neighbors.push(dists[k].idx);
+            }
+        }
+    },
+
     _collectGridPoints: function(gridType, opts, schools, arcStarts, arcSizes) {
         var points = [];
         var tierSpacing = opts.tierSpacing;
@@ -399,10 +505,11 @@ var TreePreviewSun = {
         if (gridType === 'equalArea') {
             var maxRadius = maxExtent;
             var linearDensity = Math.ceil(maxExtent / tierSpacing);
-            var totalRings = Math.min(1500, linearDensity * 6);
+            var totalRings = Math.min(500, linearDensity * 4);
             var ring1R = Math.sqrt(1 / totalRings) * maxRadius;
             var eaBs = (PI2 * ring1R) / Math.max(spokes, 4);
             var ga = Math.PI * (3 - Math.sqrt(5));
+            var eaBase = points.length;
             for (var k = 1; k <= totalRings && points.length < maxDots; k++) {
                 var eaR = Math.sqrt(k / totalRings) * maxRadius;
                 var eaC = PI2 * eaR;
@@ -411,21 +518,36 @@ var TreePreviewSun = {
                 var rOff = k * ga;
                 for (var ep = 0; ep < eaPc && points.length < maxDots; ep++) {
                     var eaA = ep * eaAs + rOff;
-                    points.push({ x: Math.cos(eaA) * eaR, y: Math.sin(eaA) * eaR, school: getSchool(eaA) });
+                    points.push({
+                        x: Math.cos(eaA) * eaR, y: Math.sin(eaA) * eaR,
+                        school: getSchool(eaA),
+                        _ptIdx: points.length, _moveDir: eaA, _neighbors: []
+                    });
                 }
             }
+            // KNN neighbors for equal area (irregular structure)
+            this._addKNNNeighbors(points, eaBase, 8);
         } else if (gridType === 'fibonacci') {
             var fibGa = Math.PI * (3 - Math.sqrt(5));
             var fibR = maxExtent;
             var fibTiers = Math.ceil(maxExtent / tierSpacing);
             var fibTotal = Math.min(Math.round(0.5 * spokes * fibTiers * fibTiers), maxDots);
+            var fibBase = points.length;
             for (var fi = 1; fi <= fibTotal; fi++) {
                 var fr = fibR * Math.sqrt(fi / fibTotal);
                 var fa = fi * fibGa;
-                points.push({ x: Math.cos(fa) * fr, y: Math.sin(fa) * fr, school: getSchool(fa) });
+                points.push({
+                    x: Math.cos(fa) * fr, y: Math.sin(fa) * fr,
+                    school: getSchool(fa),
+                    _ptIdx: points.length, _moveDir: fa, _neighbors: []
+                });
             }
+            // KNN neighbors for fibonacci (spiral, no regular grid)
+            this._addKNNNeighbors(points, fibBase, 8);
         } else if (gridType === 'square') {
+            // Square grid with 8-connected neighbor pre-computation
             var sqHc = Math.ceil(maxExtent / tierSpacing);
+            var sqIdxMap = {}; // "gx,gy" → index
             for (var gx = -sqHc; gx <= sqHc && points.length < maxDots; gx++) {
                 for (var gy = -sqHc; gy <= sqHc && points.length < maxDots; gy++) {
                     if (gx === 0 && gy === 0) continue;
@@ -433,35 +555,127 @@ var TreePreviewSun = {
                     var sqDy = gy * tierSpacing;
                     var sqA = Math.atan2(sqDy, sqDx);
                     if (sqA < 0) sqA += PI2;
-                    points.push({ x: sqDx, y: sqDy, school: getSchool(sqA) });
+                    sqIdxMap[gx + ',' + gy] = points.length;
+                    points.push({
+                        x: sqDx, y: sqDy, school: getSchool(sqA),
+                        _ptIdx: points.length, _gx: gx, _gy: gy,
+                        _moveDir: sqA, _neighbors: []
+                    });
+                }
+            }
+            // 8-connected neighbors
+            var sqDirs = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+            for (var sqi = 0; sqi < points.length; sqi++) {
+                var sqPt = points[sqi];
+                if (sqPt._gx === undefined) continue;
+                for (var sd = 0; sd < sqDirs.length; sd++) {
+                    var sqNk = (sqPt._gx + sqDirs[sd][0]) + ',' + (sqPt._gy + sqDirs[sd][1]);
+                    if (sqIdxMap[sqNk] !== undefined) {
+                        sqPt._neighbors.push(sqIdxMap[sqNk]);
+                    }
                 }
             }
         } else if (gridType === 'naive') {
-            // Naive grid: fixed dotsPerRing = spokes * 3, matching _renderNaiveGrid
+            // Naive grid with 8-connected ring/spoke neighbor pre-computation
             console.log('[TreePreviewSun] NAIVE branch: dotsPerRing=' + (spokes * 3));
             var naiveDotsPerRing = spokes * 3;
             var naiveAngleStep = PI2 / naiveDotsPerRing;
             var naiveTotalTiers = Math.ceil(maxExtent / tierSpacing);
             var naiveDotTiers = Math.min(naiveTotalTiers, Math.floor(maxDots / Math.max(1, naiveDotsPerRing)));
+            var naiveBase = points.length; // offset for index calculation
             for (var nr = 1; nr <= naiveDotTiers && points.length < maxDots; nr++) {
                 var naiveR = nr * tierSpacing;
                 for (var ng = 0; ng < naiveDotsPerRing && points.length < maxDots; ng++) {
                     var naiveA = ng * naiveAngleStep;
-                    points.push({ x: Math.cos(naiveA) * naiveR, y: Math.sin(naiveA) * naiveR, school: getSchool(naiveA) });
+                    points.push({
+                        x: Math.cos(naiveA) * naiveR,
+                        y: Math.sin(naiveA) * naiveR,
+                        school: getSchool(naiveA),
+                        _ptIdx: points.length,
+                        _moveDir: naiveA, // radially outward
+                        _neighbors: []
+                    });
+                }
+            }
+            // Build 8-connected neighbors: ring ±1, spoke ±1
+            var dpr = naiveDotsPerRing;
+            for (var npi = naiveBase; npi < points.length; npi++) {
+                var npt = points[npi];
+                var ri = Math.floor((npi - naiveBase) / dpr) + 1; // 1-indexed ring
+                var si = (npi - naiveBase) % dpr;
+                var prevS = (si - 1 + dpr) % dpr;
+                var nextS = (si + 1) % dpr;
+                // Same ring: prev/next spoke
+                npt._neighbors.push(naiveBase + (ri - 1) * dpr + prevS);
+                npt._neighbors.push(naiveBase + (ri - 1) * dpr + nextS);
+                // Inner ring (ring - 1)
+                if (ri > 1) {
+                    npt._neighbors.push(naiveBase + (ri - 2) * dpr + si);
+                    npt._neighbors.push(naiveBase + (ri - 2) * dpr + prevS);
+                    npt._neighbors.push(naiveBase + (ri - 2) * dpr + nextS);
+                }
+                // Outer ring (ring + 1)
+                if (ri < naiveDotTiers) {
+                    npt._neighbors.push(naiveBase + ri * dpr + si);
+                    npt._neighbors.push(naiveBase + ri * dpr + prevS);
+                    npt._neighbors.push(naiveBase + ri * dpr + nextS);
                 }
             }
         } else {
-            // Linear (default)
+            // Linear (default) — variable dots per ring, with neighbor pre-computation
             var baseSpacing = (PI2 * tierSpacing) / spokes;
             var totalTiers = Math.ceil(maxExtent / tierSpacing);
+            var linBase = points.length;
+            var linRingStart = []; // ringIndex → start offset in points
+            var linRingCount = []; // ringIndex → point count in that ring
             for (var lr = 1; lr <= totalTiers && points.length < maxDots; lr++) {
                 var lrR = lr * tierSpacing;
                 var lrC = PI2 * lrR;
                 var lrPc = Math.max(spokes, Math.round(lrC / baseSpacing));
                 var lrAs = PI2 / lrPc;
+                linRingStart.push(points.length - linBase);
+                linRingCount.push(lrPc);
                 for (var lp = 0; lp < lrPc && points.length < maxDots; lp++) {
                     var lrA = lp * lrAs;
-                    points.push({ x: Math.cos(lrA) * lrR, y: Math.sin(lrA) * lrR, school: getSchool(lrA) });
+                    points.push({
+                        x: Math.cos(lrA) * lrR,
+                        y: Math.sin(lrA) * lrR,
+                        school: getSchool(lrA),
+                        _ptIdx: points.length,
+                        _moveDir: lrA,
+                        _ring: lr - 1, _spoke: lp,
+                        _neighbors: []
+                    });
+                }
+            }
+            // Neighbors for linear: same ring ±1 spoke, adjacent rings nearest angle
+            for (var lni = linBase; lni < points.length; lni++) {
+                var lpt = points[lni];
+                var lri = lpt._ring;
+                var lsi = lpt._spoke;
+                var lrc = linRingCount[lri];
+                // Same ring neighbors
+                lpt._neighbors.push(linBase + linRingStart[lri] + ((lsi - 1 + lrc) % lrc));
+                lpt._neighbors.push(linBase + linRingStart[lri] + ((lsi + 1) % lrc));
+                // Inner ring: find closest angular match
+                if (lri > 0) {
+                    var irc = linRingCount[lri - 1];
+                    var irBase = linBase + linRingStart[lri - 1];
+                    var irMap = Math.round(lsi * irc / lrc);
+                    if (irMap >= irc) irMap = irc - 1;
+                    lpt._neighbors.push(irBase + irMap);
+                    if (irMap > 0) lpt._neighbors.push(irBase + irMap - 1);
+                    if (irMap < irc - 1) lpt._neighbors.push(irBase + irMap + 1);
+                }
+                // Outer ring
+                if (lri < linRingCount.length - 1) {
+                    var orc = linRingCount[lri + 1];
+                    var orBase = linBase + linRingStart[lri + 1];
+                    var orMap = Math.round(lsi * orc / lrc);
+                    if (orMap >= orc) orMap = orc - 1;
+                    lpt._neighbors.push(orBase + orMap);
+                    if (orMap > 0) lpt._neighbors.push(orBase + orMap - 1);
+                    if (orMap < orc - 1) lpt._neighbors.push(orBase + orMap + 1);
                 }
             }
         }

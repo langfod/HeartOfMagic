@@ -50,7 +50,7 @@ var SunGridLinear = {
         }
 
         // --- Grid dots per ring (scaled point count, capped for perf) ---
-        var maxDots = opts.maxDots || 10000;
+        var maxDots = opts.maxDots || 20000;
         var dotCount = 0;
         for (var r2 = 1; r2 <= totalTiers; r2++) {
             if (dotCount >= maxDots) break;

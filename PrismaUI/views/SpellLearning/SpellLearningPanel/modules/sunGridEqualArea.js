@@ -40,7 +40,7 @@ var SunGridEqualArea = {
         var goldenAngle = Math.PI * (3 - Math.sqrt(5));
 
         // --- Concentric rings with sqrt distribution ---
-        var maxDots = opts.maxDots || 10000;
+        var maxDots = opts.maxDots || 20000;
         var dotCount = 0;
         var rootRingK = -1;
         var bestRootDist = Infinity;

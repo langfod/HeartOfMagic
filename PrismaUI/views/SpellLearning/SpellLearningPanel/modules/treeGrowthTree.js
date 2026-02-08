@@ -176,6 +176,25 @@ var TreeGrowthTree = {
             posLookup = layout.posMap;
         }
 
+        // Re-center positions around (0,0) for the canvasRenderer.
+        // Layout positions are in preview canvas coordinates (origin
+        // at top-left, tree center at ~w/2,h/2). The wheel/canvas
+        // renderer expects world coords centered at (0,0).
+        var posKeys = Object.keys(posLookup);
+        if (posKeys.length > 0) {
+            var sumX = 0, sumY = 0;
+            for (var pk = 0; pk < posKeys.length; pk++) {
+                sumX += posLookup[posKeys[pk]].x;
+                sumY += posLookup[posKeys[pk]].y;
+            }
+            var cx = sumX / posKeys.length;
+            var cy = sumY / posKeys.length;
+            for (var pk2 = 0; pk2 < posKeys.length; pk2++) {
+                posLookup[posKeys[pk2]].x -= cx;
+                posLookup[posKeys[pk2]].y -= cy;
+            }
+        }
+
         // Bake school sector data from TreePreview so the wheel renderer
         // can use exact angles/colors instead of guessing from node positions.
         var sectorLookup = {};
@@ -207,6 +226,7 @@ var TreeGrowthTree = {
             version: '1.0',
             generator: 'PrismaUI TreeGrowth',
             generatedAt: new Date().toISOString(),
+            trustPrereqs: true, // Skip TreeParser prereq mutations — data is authoritative
             config: {
                 trunkThickness: this.settings.trunkThickness,
                 pctBranches: this.settings.pctBranches,
@@ -228,10 +248,14 @@ var TreeGrowthTree = {
             var outNodes = [];
             for (var i = 0; i < srcNodes.length; i++) {
                 var sn = srcNodes[i];
+                var nodePrereqs = sn.prerequisites || [];
                 var outNode = {
                     formId: sn.formId,
                     children: sn.children || [],
-                    prerequisites: sn.prerequisites || [],
+                    prerequisites: nodePrereqs,
+                    hardPrereqs: nodePrereqs, // All prereqs are hard — prevents fallback splitting
+                    softPrereqs: [],
+                    softNeeded: 0,
                     tier: sn.tier || 1
                 };
                 if (sn.skillLevel) outNode.skillLevel = sn.skillLevel;

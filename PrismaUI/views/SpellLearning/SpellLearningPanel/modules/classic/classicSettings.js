@@ -62,31 +62,9 @@ var ClassicSettings = {
         var radialBias = s.radialBias !== undefined ? s.radialBias : 50;
         var centerMask = s.centerMask !== undefined ? s.centerMask : 3;
         var H = TreePreviewUtils.settingHTML;
-        var btnStyle = 'style="margin: 2px 4px; padding: 4px 10px;"';
 
         return '' +
             '<div class="tree-preview-settings-title">Classic Growth Settings</div>' +
-
-            // --- Action buttons row ---
-            '<div style="margin: 6px 0;">' +
-                '<button id="tgClassicBuildBtn" class="tree-action-btn" ' +
-                    btnStyle + ' disabled>Build Tree</button>' +
-                '<button id="tgClassicApplyBtn" class="tree-action-btn" ' +
-                    btnStyle + ' disabled>Apply Tree</button>' +
-                '<button id="tgClassicClearBtn" class="tree-action-btn" ' +
-                    btnStyle + ' disabled>Clear Tree</button>' +
-            '</div>' +
-            '<div style="margin: 2px 0 6px 0;">' +
-                '<button id="tgClassicSetupPythonBtn" class="tree-action-btn" ' +
-                    'style="margin: 2px 4px; padding: 4px 10px; display: none;">Setup Python</button>' +
-            '</div>' +
-
-            // --- Status text ---
-            '<div style="margin: 4px 0 8px 0;">' +
-                'Status: <span id="tgClassicStatus" style="color: rgba(184, 168, 120, 0.5);">' +
-                    'Waiting for scan...' +
-                '</span>' +
-            '</div>' +
 
             // --- Slider grid ---
             '<div class="tree-preview-settings-grid">' +
@@ -166,41 +144,6 @@ var ClassicSettings = {
      */
     bindEvents: function (callbacks) {
         var cb = callbacks || {};
-
-        var buildBtn = document.getElementById('tgClassicBuildBtn');
-        var applyBtn = document.getElementById('tgClassicApplyBtn');
-        var clearBtn = document.getElementById('tgClassicClearBtn');
-        var setupBtn = document.getElementById('tgClassicSetupPythonBtn');
-
-        if (buildBtn && cb.onBuild) {
-            buildBtn.addEventListener('click', function () {
-                if (!buildBtn.disabled) {
-                    cb.onBuild();
-                }
-            });
-        }
-
-        if (applyBtn && cb.onApply) {
-            applyBtn.addEventListener('click', function () {
-                if (!applyBtn.disabled) {
-                    cb.onApply();
-                }
-            });
-        }
-
-        if (clearBtn && cb.onClear) {
-            clearBtn.addEventListener('click', function () {
-                if (!clearBtn.disabled) {
-                    cb.onClear();
-                }
-            });
-        }
-
-        if (setupBtn && cb.onSetupPython) {
-            setupBtn.addEventListener('click', function () {
-                cb.onSetupPython();
-            });
-        }
 
         // Slider bindings
         var onChanged = cb.onSettingChanged || function () {};
@@ -345,15 +288,7 @@ var ClassicSettings = {
 
     /** Re-apply tracked state to freshly built DOM elements. @private */
     _refreshDOM: function () {
-        this._updateBuildButton();
         this._refreshTierChart();
-        if (this._treeBuilt) {
-            this.setTreeBuilt(true, this._nodeCount, this._totalPool);
-        } else if (this._pythonInstalled) {
-            this.setStatusText('Python ready (detected)', '#22c55e');
-        } else if (this._hasSpells) {
-            this.setStatusText('Spells scanned', '#b8a878');
-        }
     },
 
     // =========================================================================
@@ -368,29 +303,7 @@ var ClassicSettings = {
      * @param {boolean} hasPython - True if Python binary is detected
      */
     updatePythonStatus: function (installed, hasScript, hasPython) {
-        this._pythonInstalled = installed;
-
-        var setupBtn = document.getElementById('tgClassicSetupPythonBtn');
-
-        if (installed) {
-            this.setStatusText('Python ready (detected)', '#22c55e');
-            if (setupBtn) {
-                setupBtn.style.display = 'none';
-            }
-        } else if (hasScript && !hasPython) {
-            this.setStatusText('Python not installed', '#f59e0b');
-            if (setupBtn) {
-                setupBtn.style.display = '';
-            }
-        } else if (!hasScript) {
-            this.setStatusText('SpellTreeBuilder not found', '#ef4444');
-            if (setupBtn) {
-                setupBtn.style.display = 'none';
-            }
-        }
-
-        // Update Build button: requires both Python and spells
-        this._updateBuildButton();
+        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updatePythonStatus(installed, hasScript, hasPython);
     },
 
     // =========================================================================
@@ -403,8 +316,7 @@ var ClassicSettings = {
      * @param {boolean} hasSpells - True if spell data is available
      */
     updateScanStatus: function (hasSpells) {
-        this._hasSpells = hasSpells;
-        this._updateBuildButton();
+        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updateScanStatus(hasSpells);
     },
 
     // =========================================================================
@@ -418,34 +330,7 @@ var ClassicSettings = {
      * @param {number} [nodeCount] - Number of nodes in the built tree
      */
     setTreeBuilt: function (built, nodeCount, totalPool) {
-        this._treeBuilt = built;
-        this._nodeCount = nodeCount || 0;
-        this._totalPool = totalPool || 0;
-
-        var applyBtn = document.getElementById('tgClassicApplyBtn');
-        var clearBtn = document.getElementById('tgClassicClearBtn');
-        var buildBtn = document.getElementById('tgClassicBuildBtn');
-
-        if (built) {
-            if (applyBtn) applyBtn.disabled = false;
-            if (clearBtn) clearBtn.disabled = false;
-
-            var label = 'Tree built';
-            if (this._nodeCount > 0) {
-                label += ' \u2014 ' + this._nodeCount + '/' + (this._totalPool || this._nodeCount) + ' nodes placed';
-            }
-            this.setStatusText(label, '#22c55e');
-        } else {
-            // Cleared
-            if (applyBtn) applyBtn.disabled = true;
-            if (clearBtn) clearBtn.disabled = true;
-            this._updateBuildButton();
-
-            // Restore status based on Python state
-            if (this._pythonInstalled) {
-                this.setStatusText('Python ready (detected)', '#22c55e');
-            }
-        }
+        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setTreeBuilt(built, nodeCount, totalPool);
     },
 
     // =========================================================================
@@ -459,12 +344,7 @@ var ClassicSettings = {
      * @param {string} color - CSS color value
      */
     setStatusText: function (text, color) {
-        var el = document.getElementById('tgClassicStatus');
-        if (!el) return;
-        el.textContent = text;
-        if (color) {
-            el.style.color = color;
-        }
+        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setStatusText(text, color);
     },
 
     // =========================================================================
@@ -477,14 +357,7 @@ var ClassicSettings = {
      * @private
      */
     _updateBuildButton: function () {
-        var buildBtn = document.getElementById('tgClassicBuildBtn');
-        if (!buildBtn) return;
-
-        if (this._pythonInstalled && this._hasSpells && !this._treeBuilt) {
-            buildBtn.disabled = false;
-        } else {
-            buildBtn.disabled = true;
-        }
+        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updateBuildButton();
     }
 };
 

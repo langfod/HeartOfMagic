@@ -56,11 +56,14 @@ var TreeTrunk = {
         var centerAngle = Math.atan2(sumSin / roots.length, sumCos / roots.length);
 
         // Growth direction: outward or inward from ring
+        // Use dot product instead of angle comparison (immune to ±PI wrapping)
         var root0 = roots[0];
         var posAngle = Math.atan2(root0.y, root0.x);
-        var diff = Math.abs(root0.dir - posAngle);
-        if (diff > Math.PI) diff = Math.PI * 2 - diff;
-        var growsOutward = diff < Math.PI / 2;
+        var dirVx = Math.cos(root0.dir);
+        var dirVy = Math.sin(root0.dir);
+        var outVx = Math.cos(posAngle);
+        var outVy = Math.sin(posAngle);
+        var growsOutward = (dirVx * outVx + dirVy * outVy) > 0;
 
         var ringRadius = grid.ringRadius || 150;
         var tierSpacing = grid.tierSpacing || 30;
@@ -80,8 +83,9 @@ var TreeTrunk = {
         var gdy = Math.sin(centerAngle);
         if (!growsOutward) { gdx = -gdx; gdy = -gdy; }
 
-        // Extend corridor to cover the full grid (no hard cap — grid points are the real limiter)
-        var maxExtent = Math.max((maxTiers + 5) * tierSpacing, ringRadius * 5);
+        // Corridor length — kept moderate so tree isn't excessively elongated.
+        // getGridPointsInCorridor extends dynamically if more room is needed.
+        var maxExtent = Math.max((maxTiers + 2) * tierSpacing, ringRadius * 5);
 
         // Extend both ring points in the SAME direction → parallel edges
         return {
@@ -158,15 +162,12 @@ var TreeTrunk = {
      * @returns {Array} [{x, y, color}] sorted by distance from trunk base
      */
     getGridPointsInCorridor: function(corridor, gridPoints, maxPoints) {
-        if (!gridPoints || gridPoints.length === 0) return [];
-
         // Corridor geometry: growth direction and perpendicular
         var gdx = corridor.growDirX || 0;
         var gdy = corridor.growDirY || 0;
 
         // If no explicit growth direction (flat mode), compute from corridor shape
         if (gdx === 0 && gdy === 0) {
-            // Growth direction = from midpoint of base edge (p1-p4) to midpoint of far edge (p2-p3)
             var bx = (corridor.x1 + corridor.x4) / 2;
             var by = (corridor.y1 + corridor.y4) / 2;
             var fx = (corridor.x2 + corridor.x3) / 2;
@@ -194,27 +195,42 @@ var TreeTrunk = {
         var maxDist = Math.sqrt((ex - midX) * (ex - midX) + (ey - midY) * (ey - midY));
 
         // Minimum distance from base — skip the root ring (reserved for root nodes)
-        var minDist = (corridor.tierSpacing || 20) * 0.5;
+        var tierSp = corridor.tierSpacing || 20;
+        var minDist = tierSp * 0.5;
 
-        // Filter grid points: must be within corridor rectangle, past the root ring
+        // Generate a regular grid inside the corridor at natural tierSpacing.
+        // The corridor grows LONGER to fit more nodes rather than getting denser.
+        var corridorWidth = halfWidth * 2;
+        var rowSpacing = tierSp;
+        var cols = Math.max(1, Math.round(corridorWidth / tierSp));
+        if (cols < 2 && halfWidth > tierSp * 0.3) cols = 2;
+
+        // Extend corridor length if needed to fit all requested points
+        var neededRows = Math.ceil(maxPoints / cols);
+        var neededLength = (neededRows + 2) * rowSpacing;
+        var effectiveMaxDist = Math.max(maxDist, minDist + neededLength);
+
         var inside = [];
-        var schoolName = corridor.school;
-        for (var i = 0; i < gridPoints.length; i++) {
-            var gp = gridPoints[i];
+        var along = minDist + rowSpacing * 0.5;
+        while (along < effectiveMaxDist) {
+            for (var c = 0; c < cols; c++) {
+                var across;
+                if (cols === 1) {
+                    across = 0;
+                } else {
+                    across = -halfWidth + corridorWidth * (c + 0.5) / cols;
+                }
 
-            // Only consider points belonging to this school
-            if (gp.school !== schoolName) continue;
+                var px = midX + gdx * along + pdx * across;
+                var py = midY + gdy * along + pdy * across;
 
-            // Project point onto corridor axes (relative to base midpoint)
-            var rx = gp.x - midX;
-            var ry = gp.y - midY;
-            var along = rx * gdx + ry * gdy;     // distance along growth direction
-            var across = rx * pdx + ry * pdy;    // distance across width
-
-            // Must be past root ring, in growth direction, and within corridor width
-            if (along > minDist && along < maxDist && Math.abs(across) <= halfWidth) {
-                inside.push({ x: gp.x, y: gp.y, color: corridor.color, dist: along });
+                inside.push({
+                    x: px, y: py,
+                    color: corridor.color,
+                    dist: along
+                });
             }
+            along += rowSpacing;
         }
 
         // Sort by distance from base (layer-by-layer filling)

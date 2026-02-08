@@ -28,7 +28,7 @@ var SunGridFibonacci = {
         var tierSpacing = opts.tierSpacing;
 
         var goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~2.39996 rad (~137.508 deg)
-        var maxDots = opts.maxDots || 10000;
+        var maxDots = opts.maxDots || 20000;
         var maxRadius = maxExtent;
 
         // Area-aware point count: Fibonacci distributes uniformly by area

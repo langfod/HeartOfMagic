@@ -23,7 +23,7 @@ var SunGridSquare = {
         var ringRadius = opts.ringRadius;
         var maxExtent = opts.maxExtent;
         var tierSpacing = opts.tierSpacing;
-        var maxDots = opts.maxDots || 10000;
+        var maxDots = opts.maxDots || 20000;
         var halfCount = Math.ceil(maxExtent / tierSpacing);
 
         // --- Vertical grid lines (batched) ---

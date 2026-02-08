@@ -452,6 +452,8 @@ var TreePreviewFlat = {
     _collectFlatGridPoints: function(gridSpacing, dotPerAxis, isHoriz, schools, segStarts, segmentSizes, halfLen) {
         var points = [];
         var schoolCount = schools.length;
+        var idxMap = {}; // "da,dc" → index for neighbor lookup
+        var side = dotPerAxis * 2 + 1;
 
         for (var da = -dotPerAxis; da <= dotPerAxis; da++) {
             var alongPos = da * gridSpacing;
@@ -471,7 +473,28 @@ var TreePreviewFlat = {
                 var crossPos = dc * gridSpacing;
                 var px = isHoriz ? alongPos : crossPos;
                 var py = isHoriz ? crossPos : alongPos;
-                points.push({ x: px, y: py, school: school });
+                // Growth direction: perpendicular to baseline (away from root line)
+                var mdir = isHoriz ? (dc >= 0 ? Math.PI / 2 : -Math.PI / 2)
+                                   : (dc >= 0 ? 0 : Math.PI);
+                idxMap[da + ',' + dc] = points.length;
+                points.push({
+                    x: px, y: py, school: school,
+                    _ptIdx: points.length, _moveDir: mdir,
+                    _da: da, _dc: dc, _neighbors: []
+                });
+            }
+        }
+
+        // 8-connected neighbors for cartesian flat grid
+        var dirs8 = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+        for (var fi = 0; fi < points.length; fi++) {
+            var fp = points[fi];
+            if (fp._da === undefined) continue;
+            for (var d = 0; d < dirs8.length; d++) {
+                var nk = (fp._da + dirs8[d][0]) + ',' + (fp._dc + dirs8[d][1]);
+                if (idxMap[nk] !== undefined) {
+                    fp._neighbors.push(idxMap[nk]);
+                }
             }
         }
 

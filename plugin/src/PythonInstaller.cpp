@@ -77,7 +77,7 @@ void PythonInstaller::InstallWorker()
                 CleanupPartialInstall();
                 return;
             }
-            ReportComplete(false, "Failed to download Python. Check your internet connection.");
+            ReportComplete(false, "Failed to download Python after multiple attempts. Check internet connection and firewall/antivirus settings.");
             return;
         }
 
@@ -125,7 +125,7 @@ void PythonInstaller::InstallWorker()
                 CleanupPartialInstall();
                 return;
             }
-            ReportComplete(false, "Failed to download pip installer.");
+            ReportComplete(false, "Failed to download pip installer after multiple attempts. Check internet connection.");
             return;
         }
 
@@ -317,6 +317,29 @@ void PythonInstaller::ReportComplete(bool success, const std::string& error)
 // FILE DOWNLOAD (WinHTTP)
 // =============================================================================
 
+// Map common WinHTTP errors to readable messages
+static const char* WinHttpErrorString(DWORD err)
+{
+    switch (err) {
+    case 12001: return "Out of handles";
+    case 12002: return "Timeout";
+    case 12004: return "Internal error";
+    case 12005: return "Invalid URL";
+    case 12007: return "DNS lookup failed (name not resolved)";
+    case 12009: return "Invalid option";
+    case 12029: return "Cannot connect to server";
+    case 12030: return "Connection aborted";
+    case 12031: return "Connection reset";
+    case 12038: return "Certificate error";
+    case 12044: return "Client certificate required";
+    case 12045: return "Invalid CA certificate";
+    case 12057: return "Secure channel error";
+    case 12152: return "Invalid server response";
+    case 12175: return "Security/TLS error";
+    default:    return "Unknown error";
+    }
+}
+
 bool PythonInstaller::DownloadFile(const std::string& url, const std::filesystem::path& destPath,
                                     const std::string& stageName, int progressStart, int progressEnd)
 {
@@ -341,58 +364,120 @@ bool PythonInstaller::DownloadFile(const std::string& url, const std::filesystem
     std::wstring wHost(host.begin(), host.end());
     std::wstring wPath(path.begin(), path.end());
 
-    HINTERNET hSession = WinHttpOpen(
-        L"SpellLearning-PythonInstaller/1.0",
+    // Retry loop: DNS and connection can be flaky inside MO2/USVFS game processes.
+    // Try AUTOMATIC_PROXY first (Windows 8.1+, handles proxy/DNS auto-detection),
+    // then fall back to DEFAULT_PROXY and NO_PROXY on retries.
+    constexpr int MAX_RETRIES = 3;
+    constexpr DWORD accessTypes[] = {
+        4,  // WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY (Windows 8.1+)
         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-        WINHTTP_NO_PROXY_NAME,
-        WINHTTP_NO_PROXY_BYPASS,
-        0
-    );
+        WINHTTP_ACCESS_TYPE_NO_PROXY,
+    };
 
-    if (!hSession) {
-        logger::error("PythonInstaller: WinHttpOpen failed: {}", GetLastError());
-        return false;
+    HINTERNET hSession = nullptr;
+    HINTERNET hConnect = nullptr;
+    HINTERNET hRequest = nullptr;
+    BOOL bResults = FALSE;
+
+    for (int attempt = 0; attempt < MAX_RETRIES; ++attempt) {
+        if (m_cancelRequested.load()) return false;
+
+        DWORD accessType = accessTypes[attempt % 3];
+        const char* accessName = (accessType == 4) ? "AUTOMATIC" :
+                                 (accessType == WINHTTP_ACCESS_TYPE_DEFAULT_PROXY) ? "DEFAULT" : "NONE";
+
+        if (attempt > 0) {
+            logger::info("PythonInstaller: Retry {}/{} (proxy mode: {}), waiting {}s...",
+                attempt + 1, MAX_RETRIES, accessName, attempt * 2);
+            ReportProgress(stageName, progressStart,
+                "Connection failed, retrying (" + std::to_string(attempt + 1) + "/" + std::to_string(MAX_RETRIES) + ")...");
+            std::this_thread::sleep_for(std::chrono::seconds(attempt * 2));
+        } else {
+            logger::info("PythonInstaller: Attempt 1/{} (proxy mode: {})", MAX_RETRIES, accessName);
+        }
+
+        hSession = WinHttpOpen(
+            L"SpellLearning-PythonInstaller/1.0",
+            accessType,
+            WINHTTP_NO_PROXY_NAME,
+            WINHTTP_NO_PROXY_BYPASS,
+            0
+        );
+
+        if (!hSession) {
+            DWORD err = GetLastError();
+            logger::warn("PythonInstaller: WinHttpOpen failed: {} ({})", err, WinHttpErrorString(err));
+            // AUTOMATIC_PROXY (4) may fail on older Windows - try next access type
+            continue;
+        }
+
+        // Set timeouts: 15s DNS resolve, 15s connect, 30s send, 60s receive
+        WinHttpSetTimeouts(hSession, 15000, 15000, 30000, 60000);
+
+        INTERNET_PORT port = useSSL ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
+        hConnect = WinHttpConnect(hSession, wHost.c_str(), port, 0);
+        if (!hConnect) {
+            DWORD err = GetLastError();
+            logger::warn("PythonInstaller: WinHttpConnect failed: {} ({})", err, WinHttpErrorString(err));
+            WinHttpCloseHandle(hSession);
+            hSession = nullptr;
+            continue;
+        }
+
+        DWORD flags = useSSL ? WINHTTP_FLAG_SECURE : 0;
+        hRequest = WinHttpOpenRequest(
+            hConnect, L"GET", wPath.c_str(),
+            NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
+            flags
+        );
+
+        if (!hRequest) {
+            DWORD err = GetLastError();
+            logger::warn("PythonInstaller: WinHttpOpenRequest failed: {} ({})", err, WinHttpErrorString(err));
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            hConnect = nullptr;
+            hSession = nullptr;
+            continue;
+        }
+
+        // Send request
+        bResults = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                                      WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
+        if (!bResults) {
+            DWORD err = GetLastError();
+            logger::warn("PythonInstaller: WinHttpSendRequest failed: {} ({}) [attempt {}/{}]",
+                err, WinHttpErrorString(err), attempt + 1, MAX_RETRIES);
+            WinHttpCloseHandle(hRequest);
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            hRequest = nullptr;
+            hConnect = nullptr;
+            hSession = nullptr;
+            continue;
+        }
+
+        bResults = WinHttpReceiveResponse(hRequest, NULL);
+        if (!bResults) {
+            DWORD err = GetLastError();
+            logger::warn("PythonInstaller: WinHttpReceiveResponse failed: {} ({}) [attempt {}/{}]",
+                err, WinHttpErrorString(err), attempt + 1, MAX_RETRIES);
+            WinHttpCloseHandle(hRequest);
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            hRequest = nullptr;
+            hConnect = nullptr;
+            hSession = nullptr;
+            continue;
+        }
+
+        // Success - break out of retry loop
+        logger::info("PythonInstaller: Connected successfully on attempt {}/{}", attempt + 1, MAX_RETRIES);
+        break;
     }
 
-    INTERNET_PORT port = useSSL ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
-    HINTERNET hConnect = WinHttpConnect(hSession, wHost.c_str(), port, 0);
-    if (!hConnect) {
-        logger::error("PythonInstaller: WinHttpConnect failed: {}", GetLastError());
-        WinHttpCloseHandle(hSession);
-        return false;
-    }
-
-    DWORD flags = useSSL ? WINHTTP_FLAG_SECURE : 0;
-    HINTERNET hRequest = WinHttpOpenRequest(
-        hConnect, L"GET", wPath.c_str(),
-        NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-        flags
-    );
-
-    if (!hRequest) {
-        logger::error("PythonInstaller: WinHttpOpenRequest failed: {}", GetLastError());
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return false;
-    }
-
-    // Send request
-    BOOL bResults = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
-                                        WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
-    if (!bResults) {
-        logger::error("PythonInstaller: WinHttpSendRequest failed: {}", GetLastError());
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return false;
-    }
-
-    bResults = WinHttpReceiveResponse(hRequest, NULL);
-    if (!bResults) {
-        logger::error("PythonInstaller: WinHttpReceiveResponse failed: {}", GetLastError());
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
+    if (!hSession || !hConnect || !hRequest) {
+        logger::error("PythonInstaller: All {} download attempts failed for {}", MAX_RETRIES, url);
         return false;
     }
 

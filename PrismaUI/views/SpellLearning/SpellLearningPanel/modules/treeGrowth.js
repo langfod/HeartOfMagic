@@ -21,6 +21,13 @@ var TreeGrowth = {
     _initialized: false,
     _visible: false,
 
+    // Shared button state
+    _pythonInstalled: false,
+    _hasSpells: false,
+    _treeBuilt: false,
+    _nodeCount: 0,
+    _totalPool: 0,
+
     // Canvas
     canvas: null,
     ctx: null,
@@ -80,6 +87,9 @@ var TreeGrowth = {
             });
         }
 
+        // Wire shared buttons
+        this._bindSharedButtons();
+
         // Set up canvas
         this._setupCanvas();
 
@@ -99,6 +109,14 @@ var TreeGrowth = {
                 '<button class="tree-growth-tab active" data-mode="classic">CLASSIC</button>' +
                 '<button class="tree-growth-tab" data-mode="tree">TREE</button>' +
                 '<button class="tree-growth-tab disabled" data-mode="life" disabled>LIFE</button>' +
+            '</div>' +
+            // Shared action buttons (persist across tab switches)
+            '<div id="tgSharedActions" style="margin: 6px 8px; display:flex; align-items:center; gap:4px; flex-wrap:wrap;">' +
+                '<button id="tgBuildBtn" class="tree-action-btn" style="padding:4px 10px;" disabled>Build Tree</button>' +
+                '<button id="tgApplyBtn" class="tree-action-btn" style="padding:4px 10px;" disabled>Apply Tree</button>' +
+                '<button id="tgClearBtn" class="tree-action-btn" style="padding:4px 10px;" disabled>Clear Tree</button>' +
+                '<button id="tgSetupPythonBtn" class="tree-action-btn" style="padding:4px 10px; display:none;">Setup Python</button>' +
+                '<span style="margin-left:8px; font-size:11px;">Status: <span id="tgStatus" style="color:rgba(184,168,120,0.5);">Waiting for scan...</span></span>' +
             '</div>' +
             '<div class="tree-preview-split" style="height:800px;">' +
                 '<div class="tree-preview-left" id="treeGrowthSettings">' +
@@ -369,6 +387,108 @@ var TreeGrowth = {
         ctx.fillStyle = 'rgba(184, 168, 120, 0.4)';
         ctx.textAlign = 'right';
         ctx.fillText(Math.round(this.zoom * 100) + '%', w - 8, h - 8);
+    },
+
+    // =========================================================================
+    // SHARED BUTTON BINDING
+    // =========================================================================
+
+    _bindSharedButtons: function() {
+        var self = this;
+        var buildBtn = document.getElementById('tgBuildBtn');
+        var applyBtn = document.getElementById('tgApplyBtn');
+        var clearBtn = document.getElementById('tgClearBtn');
+        var setupBtn = document.getElementById('tgSetupPythonBtn');
+
+        if (buildBtn) buildBtn.addEventListener('click', function() {
+            var mod = self.modes[self.activeMode];
+            if (mod && mod.buildTree) mod.buildTree();
+        });
+        if (applyBtn) applyBtn.addEventListener('click', function() {
+            var mod = self.modes[self.activeMode];
+            if (mod && mod.applyTree) mod.applyTree();
+        });
+        if (clearBtn) clearBtn.addEventListener('click', function() {
+            var mod = self.modes[self.activeMode];
+            if (mod && mod.clearTree) mod.clearTree();
+        });
+        if (setupBtn) setupBtn.addEventListener('click', function() {
+            window.callCpp('SetupPython', '');
+        });
+    },
+
+    // =========================================================================
+    // SHARED STATE METHODS
+    // =========================================================================
+
+    setTreeBuilt: function(built, nodeCount, totalPool) {
+        this._treeBuilt = built;
+        this._nodeCount = nodeCount || 0;
+        this._totalPool = totalPool || 0;
+
+        var applyBtn = document.getElementById('tgApplyBtn');
+        var clearBtn = document.getElementById('tgClearBtn');
+
+        if (built) {
+            if (applyBtn) applyBtn.disabled = false;
+            if (clearBtn) clearBtn.disabled = false;
+
+            var label = 'Tree built';
+            if (this._nodeCount > 0) {
+                label += ' \u2014 ' + this._nodeCount + '/' + (this._totalPool || this._nodeCount) + ' nodes placed';
+            }
+            this.setStatusText(label, '#22c55e');
+        } else {
+            if (applyBtn) applyBtn.disabled = true;
+            if (clearBtn) clearBtn.disabled = true;
+            this.updateBuildButton();
+
+            if (this._pythonInstalled) {
+                this.setStatusText('Python ready (detected)', '#22c55e');
+            }
+        }
+    },
+
+    setStatusText: function(text, color) {
+        var el = document.getElementById('tgStatus');
+        if (!el) return;
+        el.textContent = text;
+        if (color) el.style.color = color;
+    },
+
+    updateBuildButton: function() {
+        var buildBtn = document.getElementById('tgBuildBtn');
+        if (!buildBtn) return;
+
+        if (this._pythonInstalled && this._hasSpells && !this._treeBuilt) {
+            buildBtn.disabled = false;
+        } else {
+            buildBtn.disabled = true;
+        }
+    },
+
+    updatePythonStatus: function(installed, hasScript, hasPython) {
+        this._pythonInstalled = installed;
+
+        var setupBtn = document.getElementById('tgSetupPythonBtn');
+
+        if (installed) {
+            this.setStatusText('Python ready (detected)', '#22c55e');
+            if (setupBtn) setupBtn.style.display = 'none';
+        } else if (hasScript && !hasPython) {
+            this.setStatusText('Python not installed', '#f59e0b');
+            if (setupBtn) setupBtn.style.display = '';
+        } else if (!hasScript) {
+            this.setStatusText('SpellTreeBuilder not found', '#ef4444');
+            if (setupBtn) setupBtn.style.display = 'none';
+        }
+
+        this.updateBuildButton();
+    },
+
+    updateScanStatus: function(hasSpells) {
+        this._hasSpells = hasSpells;
+        this.updateBuildButton();
     }
 };
 

@@ -32,6 +32,9 @@ class TreeNode:
     
     # Special flags
     is_root: bool = False
+
+    # Section for Tree Growth mode: 'root', 'trunk', or 'branch'
+    section: Optional[str] = None
     
     # Original spell data reference
     spell_data: Optional[Dict[str, Any]] = None
@@ -66,6 +69,16 @@ class TreeNode:
             'tier': self.depth + 1,  # 1-indexed tiers for output
         }
 
+        # Always include name and skillLevel for UI rendering
+        if self.name:
+            result['name'] = self.name
+        if self.tier and self.tier != 'Unknown':
+            result['skillLevel'] = self.tier
+
+        # Include section for Tree Growth mode layout (root/trunk/branch)
+        if hasattr(self, 'section') and self.section:
+            result['section'] = self.section
+
         # Include theme if set (for element isolation scoring)
         if self.theme:
             result['theme'] = self.theme
@@ -76,7 +89,7 @@ class TreeNode:
                 'x': self.position[0],
                 'y': self.position[1],
             }
-        
+
         return result
     
     def __repr__(self) -> str:

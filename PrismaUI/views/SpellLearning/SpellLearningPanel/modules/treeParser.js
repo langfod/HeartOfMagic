@@ -52,6 +52,7 @@ var TreeParser = {
         var allFormIds = [];
         var self = this;
         this._maxChildrenPerNode = (data.settings && data.settings.maxChildrenPerNode) || 5;
+        var trustPrereqs = data.trustPrereqs || false; // Skip prereq mutations if source is authoritative
 
         for (var schoolName in data.schools) {
             var schoolData = data.schools[schoolName];
@@ -65,15 +66,21 @@ var TreeParser = {
             }
             logTreeParser(schoolName + ' using layout style: ' + layoutStyle);
             
-            this.schools[schoolName] = { 
-                root: schoolData.root, 
-                nodeIds: [], 
-                maxDepth: 0, 
+            this.schools[schoolName] = {
+                root: schoolData.root,
+                nodeIds: [],
+                maxDepth: 0,
                 maxWidth: 0,
                 layoutStyle: layoutStyle,
                 // Pass through sliceInfo for wheelRenderer to use exact sector angles
                 sliceInfo: schoolData.sliceInfo,
-                config: schoolData.config_used
+                config: schoolData.config_used,
+                // Pass through pre-baked sector angles from TreeGrowth
+                spokeAngle: schoolData.spokeAngle,
+                startAngle: schoolData.startAngle,
+                endAngle: schoolData.endAngle,
+                angleSpan: schoolData.arcSize !== undefined ? (schoolData.arcSize * 180 / Math.PI) : undefined,
+                color: schoolData.color
             };
 
             // DIAGNOSTIC: Check first node's children in input
@@ -90,9 +97,12 @@ var TreeParser = {
 
                 allFormIds.push(id);
                 
-                // Preserve pre-computed positions from visual-first builder
-                var hasPrecomputed = nd._fromVisualFirst || (nd.x !== undefined && nd.y !== undefined && nd.x !== 0 && nd.y !== 0);
-                
+                // Preserve pre-computed positions from visual-first builder or Tree Growth
+                var hasPrecomputed = nd._fromVisualFirst || nd._fromLayoutEngine ||
+                    (nd.x !== undefined && nd.y !== undefined && !(nd.x === 0 && nd.y === 0));
+                // trustPrereqs data has authoritative positions — flag for renderer
+                var fromEngine = nd._fromLayoutEngine || (trustPrereqs && hasPrecomputed);
+
                 self.nodes.set(id, {
                     id: id,
                     formId: id,
@@ -115,6 +125,7 @@ var TreeParser = {
                     radius: nd.radius || 0,
                     // Preserve visual-first flags
                     _fromVisualFirst: nd._fromVisualFirst || false,
+                    _fromLayoutEngine: fromEngine,
                     isRoot: nd.isRoot || false,  // CRITICAL: Preserve root flag for origin lines
                     // Preserve hard/soft prerequisite data
                     hardPrereqs: nd.hardPrereqs || [],
@@ -125,50 +136,66 @@ var TreeParser = {
             });
         }
 
-        // Multi-root cleanup: root nodes are independent starting points
-        // Remove other root formIds from root children, and clear root prerequisites
-        this.nodes.forEach(function(node) {
-            if (node.isRoot) {
-                node.prerequisites = [];
-                node.children = node.children.filter(function(cid) {
-                    var child = self.nodes.get(cid);
-                    return !child || !child.isRoot;
-                });
-            }
-        });
-
-        // Build edges from children
-        this.nodes.forEach(function(node) {
-            node.children.forEach(function(childId) {
-                var child = self.nodes.get(childId);
-                if (child) {
-                    self.edges.push({ from: node.id, to: childId });
-                    // Never add prerequisites to root nodes - they are independent starting points
-                    if (!child.isRoot && child.prerequisites.indexOf(node.id) === -1) {
-                        child.prerequisites.push(node.id);
+        if (trustPrereqs) {
+            // Authoritative data: build edges only, no prereq mutations
+            this.nodes.forEach(function(node) {
+                if (node.isRoot) {
+                    node.prerequisites = [];
+                    node.hardPrereqs = [];
+                }
+                node.children.forEach(function(childId) {
+                    var child = self.nodes.get(childId);
+                    if (child) {
+                        self.edges.push({ from: node.id, to: childId });
                     }
+                });
+            });
+        } else {
+            // Multi-root cleanup: root nodes are independent starting points
+            // Remove other root formIds from root children, and clear root prerequisites
+            this.nodes.forEach(function(node) {
+                if (node.isRoot) {
+                    node.prerequisites = [];
+                    node.children = node.children.filter(function(cid) {
+                        var child = self.nodes.get(cid);
+                        return !child || !child.isRoot;
+                    });
                 }
             });
-        });
 
-        // Also build edges from prerequisites (handles LLM inconsistencies)
-        this.nodes.forEach(function(node) {
-            node.prerequisites.forEach(function(prereqId) {
-                var parent = self.nodes.get(prereqId);
-                if (parent) {
-                    var edgeExists = self.edges.some(function(e) {
-                        return e.from === prereqId && e.to === node.id;
-                    });
-                    if (!edgeExists) {
-                        logTreeParser('Adding missing edge: ' + prereqId + ' -> ' + node.id);
-                        self.edges.push({ from: prereqId, to: node.id });
-                        if (parent.children.indexOf(node.id) === -1) {
-                            parent.children.push(node.id);
+            // Build edges from children
+            this.nodes.forEach(function(node) {
+                node.children.forEach(function(childId) {
+                    var child = self.nodes.get(childId);
+                    if (child) {
+                        self.edges.push({ from: node.id, to: childId });
+                        // Never add prerequisites to root nodes - they are independent starting points
+                        if (!child.isRoot && child.prerequisites.indexOf(node.id) === -1) {
+                            child.prerequisites.push(node.id);
                         }
                     }
-                }
+                });
             });
-        });
+
+            // Also build edges from prerequisites (handles LLM inconsistencies)
+            this.nodes.forEach(function(node) {
+                node.prerequisites.forEach(function(prereqId) {
+                    var parent = self.nodes.get(prereqId);
+                    if (parent) {
+                        var edgeExists = self.edges.some(function(e) {
+                            return e.from === prereqId && e.to === node.id;
+                        });
+                        if (!edgeExists) {
+                            logTreeParser('Adding missing edge: ' + prereqId + ' -> ' + node.id);
+                            self.edges.push({ from: prereqId, to: node.id });
+                            if (parent.children.indexOf(node.id) === -1) {
+                                parent.children.push(node.id);
+                            }
+                        }
+                    }
+                });
+            });
+        }
 
         // Detect unobtainable spells per school (no auto-fix - user must regenerate)
         for (var schoolName in this.schools) {
@@ -257,16 +284,19 @@ var TreeParser = {
             }
 
             // Find and fix truly orphaned nodes (not element roots)
-            var orphanedNodes = [];
-            sData.nodeIds.forEach(function(nodeId) {
-                if (!visited.has(nodeId)) {
-                    orphanedNodes.push(nodeId);
+            // Skip for trustPrereqs data — source is authoritative
+            if (!trustPrereqs) {
+                var orphanedNodes = [];
+                sData.nodeIds.forEach(function(nodeId) {
+                    if (!visited.has(nodeId)) {
+                        orphanedNodes.push(nodeId);
+                    }
+                });
+
+                if (orphanedNodes.length > 0) {
+                    logTreeParser('Found ' + orphanedNodes.length + ' orphaned nodes in ' + sName + ' - attempting to fix', true);
+                    this._fixOrphanedNodes(orphanedNodes, sName, sData, root, visited);
                 }
-            });
-            
-            if (orphanedNodes.length > 0) {
-                logTreeParser('Found ' + orphanedNodes.length + ' orphaned nodes in ' + sName + ' - attempting to fix', true);
-                this._fixOrphanedNodes(orphanedNodes, sName, sData, root, visited);
             }
 
             // Root nodes are AVAILABLE (learnable starting points), not auto-unlocked
