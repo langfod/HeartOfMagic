@@ -984,8 +984,7 @@ function finishLLMGeneration() {
             
             // Switch to tree tab to show results
             setTimeout(function() {
-                var treeTab = document.getElementById('tabSpellTree');
-                if (treeTab) treeTab.click();
+                switchTab('spellTree');
             }, 500);
         });
     } else {

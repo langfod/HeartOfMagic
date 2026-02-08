@@ -125,28 +125,106 @@
                     <span class="version-tag">v2.0.0-dev</span>
                 </div>
                 <div class="header-right">
-                    <button class="header-btn" id="fullscreenBtn" title="Toggle Fullscreen">Full Screen</button>
+                    <button class="header-btn header-btn-wide" id="tabSpellScan" data-tab="spellScan" title="Spell Scanner">Scan</button>
+                    <button class="header-btn header-btn-wide" id="tabSettings" data-tab="settings" title="Settings">Settings</button>
+                    <button class="header-btn" id="fullscreenBtn" title="Toggle Fullscreen">[ ]</button>
                     <button class="header-btn" id="closeBtn" title="Close (Esc/Tab)">X</button>
                 </div>
-            </div>
-
-            <!-- Tab Navigation -->
-            <div class="tab-nav">
-                <button class="tab-btn active" id="tabSpellScan" data-tab="spellScan">Spell Scan</button>
-                <button class="tab-btn" id="tabSpellTree" data-tab="spellTree">Spell Tree</button>
-                <button class="tab-btn" id="tabSettings" data-tab="settings">&cog;</button>
             </div>
 
             <!-- Main Content -->
             <div class="panel-content" id="panelContent">
 
-                <!-- TAB: Spell Scan -->
-                <div class="tab-content active" id="contentSpellScan">
-                    <!-- REVAMP: Spell Scan page emptied for rebuild -->
+                <!-- PANEL: Spell Scan (toggled from header) -->
+                <div class="tab-content" id="contentSpellScan">
+                    <!-- Sticky Action Bar -->
+                    <div class="scan-actions-sticky">
+                        <button id="scanBtn" class="btn btn-primary">
+                            <span class="btn-icon">[*]</span> Scan Spells
+                        </button>
+                        <button id="saveBtn" class="btn btn-secondary" disabled>
+                            <span class="btn-icon">[S]</span> Export Scan
+                        </button>
+                    </div>
+
+                    <!-- Status Feedback Bar -->
+                    <div class="scan-status-bar" id="scanStatusBar">
+                        <span id="scanStatusText">Ready to scan</span>
+                    </div>
+
+                    <!-- Section 1: Scan Results + Filters (split layout) -->
+                    <div class="scan-section scan-split" id="scanResultsSection">
+                        <!-- Left: Scan Stats -->
+                        <div class="scan-split-left">
+                            <div class="scan-stats-header">Scan Results</div>
+                            <div class="scan-stats-grid" id="scanStatsGrid">
+                                <div class="scan-stat">
+                                    <span class="scan-stat-value" id="statTotalSpells">--</span>
+                                    <span class="scan-stat-label">Total Spells</span>
+                                </div>
+                                <div class="scan-stat">
+                                    <span class="scan-stat-value" id="statTotalMods">--</span>
+                                    <span class="scan-stat-label">Mods</span>
+                                </div>
+                                <div class="scan-stat scan-stat-primed">
+                                    <span class="scan-stat-value" id="statPrimedSpells">--</span>
+                                    <span class="scan-stat-label">Primed</span>
+                                </div>
+                            </div>
+                            <div class="scan-school-breakdown" id="scanSchoolBreakdown">
+                                <!-- Populated after scan -->
+                            </div>
+                        </div>
+
+                        <!-- Right: Filters -->
+                        <div class="scan-split-right">
+                            <div class="scan-stats-header">Filters</div>
+                            <div class="scan-filter-controls">
+                                <button id="blacklistBtn" class="btn btn-secondary btn-filter" disabled>
+                                    <span class="btn-icon">[-]</span> Blacklist
+                                </button>
+                                <button id="whitelistBtn" class="btn btn-secondary btn-filter" disabled>
+                                    <span class="btn-icon">[+]</span> Whitelist
+                                </button>
+                                <div class="scan-filter-toggle">
+                                    <label class="toggle-switch toggle-sm">
+                                        <input type="checkbox" id="scanModeTomes">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="scan-filter-label">Tomes only</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section 2: Tree Building -->
+                    <div class="scan-section" id="treeBuildSection">
+                    </div>
+
+                    <!-- Section 2b: Tree Growth -->
+                    <div class="scan-section" id="treeGrowthSection">
+                    </div>
+
+                    <!-- Section 3: Output / Details -->
+                    <div class="scan-section" id="scanDetailsSection">
+                    </div>
+
+                    <!-- Hidden output area used by Export Scan and C++ callbacks -->
+                    <textarea id="outputArea" style="display:none;"></textarea>
+
+                    <!-- Build/Clear - Sticky at bottom (mirrors settings page pattern) -->
+                    <div class="scan-actions-sticky scan-actions-bottom">
+                        <button id="proceduralBtn" class="btn btn-success" disabled>
+                            <span class="btn-icon">[T]</span> Build Tree
+                        </button>
+                        <button id="clearTreeBtn" class="btn btn-danger">
+                            <span class="btn-icon">[X]</span> Clear Tree
+                        </button>
+                    </div>
                 </div>
 
-                <!-- TAB: Spell Tree (full from index.html) -->
-                <div class="tab-content" id="contentSpellTree">
+                <!-- PANEL: Spell Tree (default view) -->
+                <div class="tab-content active" id="contentSpellTree">
                     <div id="tree-container" class="tree-container">
                         <svg id="tree-svg" class="tree-svg">
                             <defs>
@@ -341,8 +419,8 @@
                         <div id="empty-state" class="empty-state">
                             <div class="empty-icon">*</div>
                             <div class="empty-text">No spell tree loaded</div>
-                            <div class="empty-hint">Use "Load Test Data" in toolbar to load sample spells,<br>then "Build Tree" to generate.</div>
-                            <button id="load-saved-btn" class="btn btn-secondary">Load Saved Tree</button>
+                            <div class="empty-hint">Scan your spells and build a tree to get started.</div>
+                            <button id="go-to-scanner-btn" class="btn btn-primary">Go to Scanner</button>
                         </div>
                     </div>
 
@@ -443,20 +521,16 @@
     </div>
 
     <!-- Modals -->
-    <div id="import-modal" class="modal hidden">
+    <div id="import-modal" class="modal modal-fullpanel hidden">
         <div class="modal-backdrop"></div>
-        <div class="modal-content">
-            <div class="modal-header"><h3>Import Spell Tree</h3><button class="modal-close" id="modal-close-btn">x</button></div>
-            <div class="modal-body">
-                <p>Paste the spell tree JSON:</p>
-                <textarea id="import-textarea" placeholder='{"version": "1.0", "schools": {...}}'></textarea>
+        <div class="modal-content modal-content-full">
+            <div class="modal-header"><h3>Spell Tree JSON</h3><button class="modal-close" id="modal-close-btn">x</button></div>
+            <div class="modal-body modal-body-full">
+                <textarea id="import-textarea" class="json-editor" spellcheck="false" placeholder='{"version": "1.0", "schools": {...}}'></textarea>
                 <div id="import-error" class="error-box hidden"></div>
             </div>
             <div class="modal-footer">
-                <button id="paste-tree-btn" class="btn btn-secondary">Paste</button>
-                <button id="import-cancel" class="btn btn-secondary">Cancel</button>
-                <button id="import-merge" class="btn btn-secondary">Add/Merge</button>
-                <button id="import-confirm" class="btn btn-primary">Replace All</button>
+                <button id="import-confirm" class="btn btn-success">Save</button>
             </div>
         </div>
     </div>
@@ -576,6 +650,23 @@
     <script src="modules/difficultyProfiles.js"></script>
     <script src="modules/llmApiSettings.js"></script>
     <script src="modules/buttonHandlers.js"></script>
+    <script src="modules/treePreviewUtils.js"></script>
+    <script src="modules/sunGridLinear.js"></script>
+    <script src="modules/sunGridEqualArea.js"></script>
+    <script src="modules/sunGridFibonacci.js"></script>
+    <script src="modules/sunGridSquare.js"></script>
+    <script src="modules/treePreviewSun.js"></script>
+    <script src="modules/treePreviewFlat.js"></script>
+    <script src="modules/treePreview.js"></script>
+    <script src="modules/classic/classicRenderer.js"></script>
+    <script src="modules/classic/classicLayout.js"></script>
+    <script src="modules/classic/classicSettings.js"></script>
+    <script src="modules/classic/classicMain.js"></script>
+    <script src="modules/tree/treeRenderer.js"></script>
+    <script src="modules/tree/treeTrunk.js"></script>
+    <script src="modules/tree/treeSettings.js"></script>
+    <script src="modules/treeGrowthTree.js"></script>
+    <script src="modules/treeGrowth.js"></script>
     <script src="modules/cppCallbacks.js"></script>
     <script src="modules/pythonSetup.js"></script>
     <script src="modules/llmIntegration.js"></script>

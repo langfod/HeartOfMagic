@@ -14,6 +14,17 @@ function updateStatus(message) {
     if (statusText) {
         statusText.textContent = message;
     }
+    // Also update scan page feedback bar
+    updateScanStatus(message);
+}
+
+function updateScanStatus(message, type) {
+    var bar = document.getElementById('scanStatusBar');
+    var text = document.getElementById('scanStatusText');
+    if (!bar || !text) return;
+    text.textContent = message;
+    bar.className = 'scan-status-bar';
+    if (type) bar.classList.add(type);
 }
 
 function setStatusIcon(icon) {
@@ -184,6 +195,125 @@ function onCloseClick() {
         window.callCpp('HidePanel', '');
     } else {
         updateStatus('Press F9 to close');
+    }
+}
+
+// =============================================================================
+// LOCAL FORM ID — strips load-order prefix for stable cross-session matching
+// =============================================================================
+
+/**
+ * Extract the local (plugin-relative) formId from a full runtime formId.
+ * Regular plugins: 0xXXyyyyyy → yyyyyy (strip top byte)
+ * ESL/light plugins: 0xFExxxyyyy → yyyy (strip FE + light index, keep low 12 bits)
+ * Returns lowercase hex string without 0x prefix.
+ */
+function getLocalFormId(formIdStr) {
+    if (!formIdStr) return '';
+    // Remove 0x prefix if present
+    var hex = formIdStr.replace(/^0x/i, '').toLowerCase();
+    // Pad to 8 chars
+    while (hex.length < 8) hex = '0' + hex;
+    // ESL: top byte is FE → local ID is the last 3 hex chars (12 bits)
+    if (hex.substring(0, 2) === 'fe') {
+        return hex.substring(5); // last 3 hex chars
+    }
+    // Regular: strip top byte → last 6 hex chars (24 bits)
+    return hex.substring(2);
+}
+
+/**
+ * Build a stable blacklist key from plugin + localFormId.
+ * This key survives load order changes.
+ */
+function blacklistKey(plugin, formId) {
+    return (plugin || '').toLowerCase() + ':' + getLocalFormId(formId);
+}
+
+// =============================================================================
+// PRIMED SPELL COUNT (after blacklist/whitelist/tome filters)
+// =============================================================================
+
+function updatePrimedCount() {
+    var data = state.lastSpellData;
+    if (!data || !data.spells || data.spells.length === 0) return;
+
+    // Build blacklist lookup — use stable plugin:localFormId keys, fall back to raw formId
+    var blacklistKeys = {};
+    var blacklistFormIds = {};
+    if (settings.spellBlacklist) {
+        settings.spellBlacklist.forEach(function(entry) {
+            if (entry.plugin && entry.localFormId) {
+                // New format: stable key
+                blacklistKeys[entry.plugin.toLowerCase() + ':' + entry.localFormId] = true;
+            } else if (entry.formId) {
+                // Legacy format: raw formId fallback
+                blacklistFormIds[entry.formId] = true;
+            }
+        });
+    }
+
+    // Build whitelist lookup (case-insensitive) - only filter if whitelist has enabled entries
+    var whitelistActive = false;
+    var whitelistPlugins = {};
+    if (settings.pluginWhitelist && settings.pluginWhitelist.length > 0) {
+        settings.pluginWhitelist.forEach(function(entry) {
+            if (entry.enabled) {
+                whitelistActive = true;
+                whitelistPlugins[entry.plugin.toLowerCase()] = true;
+            }
+        });
+    }
+
+    // Check tome filter
+    var tomeToggle = document.getElementById('scanModeTomes');
+    var tomesOn = tomeToggle && tomeToggle.checked;
+    var tomedIds = state.tomedSpellIds || null;
+
+    var primed = data.spells.filter(function(spell) {
+        // Exclude blacklisted — check stable key first, then legacy formId
+        var stableKey = spell.plugin ? spell.plugin.toLowerCase() + ':' + getLocalFormId(spell.formId) : '';
+        if (stableKey && blacklistKeys[stableKey]) return false;
+        if (blacklistFormIds[spell.formId]) return false;
+        // Exclude non-whitelisted plugins (case-insensitive)
+        if (whitelistActive && spell.plugin && !whitelistPlugins[spell.plugin.toLowerCase()]) return false;
+        // Exclude spells without tomes (when tome filter is on and we have tome data)
+        if (tomesOn && tomedIds && !tomedIds[spell.formId]) return false;
+        return true;
+    });
+
+    var el = document.getElementById('statPrimedSpells');
+    if (el) el.textContent = primed.length;
+
+    // Update school breakdown to reflect filtered (primed) counts
+    var schoolCounts = {};
+    primed.forEach(function(s) {
+        var sch = s.school || 'Unknown';
+        schoolCounts[sch] = (schoolCounts[sch] || 0) + 1;
+    });
+
+    var breakdownEl = document.getElementById('scanSchoolBreakdown');
+    if (breakdownEl) {
+        var schoolColors = {
+            'Destruction': 'var(--destruction)',
+            'Restoration': 'var(--restoration)',
+            'Alteration': 'var(--alteration)',
+            'Conjuration': 'var(--conjuration)',
+            'Illusion': 'var(--illusion)'
+        };
+        var html = '';
+        var sortedSchools = Object.keys(schoolCounts).sort(function(a, b) {
+            return schoolCounts[b] - schoolCounts[a];
+        });
+        sortedSchools.forEach(function(school) {
+            var color = schoolColors[school] || 'var(--text-muted)';
+            html += '<div class="scan-school-row">' +
+                '<span class="scan-school-dot" style="background:' + color + '"></span>' +
+                '<span class="scan-school-name">' + school + '</span>' +
+                '<span class="scan-school-count">' + schoolCounts[school] + '</span>' +
+                '</div>';
+        });
+        breakdownEl.innerHTML = html;
     }
 }
 

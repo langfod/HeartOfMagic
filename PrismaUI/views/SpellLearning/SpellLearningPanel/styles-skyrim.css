@@ -170,7 +170,7 @@ body {
 }
 
 .panel-title {
-    font-size: 1.1em;
+    font-size: 2.2em;
     font-weight: 400;
     color: var(--text-bright);
     letter-spacing: 3px;
@@ -210,6 +210,20 @@ body {
 .header-btn:hover {
     color: var(--text-bright);
     background: var(--btn-bg-hover);
+}
+
+/* Wider header buttons for text labels (Scan, Settings) */
+.header-btn-wide {
+    width: auto;
+    padding: 0 10px;
+    font-size: 0.75em;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.header-btn[data-tab].active {
+    color: var(--panel-bg-solid);
+    background: var(--text-bright);
 }
 
 /* =============================================================================
@@ -300,7 +314,8 @@ body {
     display: flex;
 }
 
-#contentSettings.tab-content.active {
+#contentSettings.tab-content.active,
+#contentSpellScan.tab-content.active {
     overflow-y: auto;
     overflow-x: hidden;
 }
@@ -1676,6 +1691,17 @@ body {
     padding: 5px 10px;
 }
 
+.btn-success {
+    background: rgba(136, 168, 120, 0.2);
+    border-color: rgba(136, 168, 120, 0.3);
+    color: var(--accent-green);
+}
+
+.btn-success:hover {
+    background: rgba(136, 168, 120, 0.3);
+    border-color: rgba(136, 168, 120, 0.5);
+}
+
 .btn-danger {
     background: rgba(168, 120, 120, 0.2);
     border-color: rgba(168, 120, 120, 0.3);
@@ -1695,11 +1721,21 @@ body {
 /* Empty State */
 .empty-state {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     text-align: center;
-    z-index: 10;
+    z-index: 200;
+    background: #000000;
+}
+
+.empty-state .btn {
+    flex: none;
 }
 
 .empty-state.hidden {
@@ -1730,6 +1766,7 @@ body {
 
 .empty-state .btn {
     margin: 0 4px;
+    flex: none;
 }
 
 /* Tree Import Section */
@@ -2402,7 +2439,7 @@ body {
     padding: 6px 14px;
     background: rgba(0, 0, 0, 0.9);
     border-top: 1px solid var(--divider);
-    z-index: 100;
+    z-index: 300;
 }
 
 .footer-left {
@@ -2597,6 +2634,48 @@ body {
     gap: 6px;
     padding: 12px 16px;
     border-top: 1px solid var(--divider);
+}
+
+/* Resizable JSON editor modal */
+.modal-fullpanel .modal-content-full {
+    width: 600px;
+    height: 500px;
+    min-width: 350px;
+    min-height: 300px;
+    max-width: 95vw;
+    max-height: 90vh;
+    resize: both;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-body-full {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.json-editor {
+    flex: 1;
+    width: 100%;
+    resize: none;
+    font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+    font-size: 0.8em;
+    line-height: 1.5;
+    background: rgba(0, 0, 0, 0.6);
+    color: var(--text-primary);
+    border: 1px solid var(--divider);
+    padding: 12px;
+    tab-size: 2;
+    white-space: pre;
+    overflow: auto;
+}
+
+.json-editor:focus {
+    outline: none;
+    border-color: rgba(184, 168, 120, 0.3);
 }
 
 /* Spawn Spell Modal (Edit Mode) */
@@ -3759,6 +3838,217 @@ body {
 }
 
 /* =============================================================================
+   SPELL SCAN PAGE
+   ============================================================================= */
+
+/* Sticky Scan Actions - always visible at top of spell scan tab */
+.scan-actions-sticky {
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--panel-bg-solid);
+    border-bottom: 1px solid var(--divider);
+    z-index: 100;
+}
+
+.scan-actions-sticky::after {
+    content: '';
+    position: absolute;
+    bottom: -20px;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: linear-gradient(to bottom, rgba(10, 10, 10, 0.8), transparent);
+    pointer-events: none;
+}
+
+.scan-actions-sticky .btn {
+    padding: 10px 16px;
+    font-size: 0.85em;
+}
+
+.scan-actions-sticky .btn-primary {
+    flex: 1.5;
+}
+
+.scan-actions-sticky .btn-secondary {
+    flex: 1;
+}
+
+/* Bottom sticky variant - sticks to bottom of scroll area */
+.scan-actions-bottom {
+    position: sticky;
+    top: auto;
+    bottom: 0;
+    border-bottom: none;
+    border-top: 1px solid var(--divider);
+    margin-top: auto;
+    background: linear-gradient(to top, var(--panel-bg-solid) 70%, transparent);
+}
+
+.scan-actions-bottom::after {
+    bottom: auto;
+    top: -20px;
+    background: linear-gradient(to top, rgba(10, 10, 10, 0.95), transparent);
+}
+
+/* Scan status feedback bar */
+.scan-status-bar {
+    padding: 6px 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid var(--divider);
+    font-size: 0.8em;
+    color: var(--text-muted);
+    letter-spacing: 0.3px;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    transition: color 0.3s ease, background 0.3s ease;
+}
+
+.scan-status-bar.success {
+    color: var(--accent-gold);
+    background: rgba(184, 168, 120, 0.08);
+}
+
+.scan-status-bar.error {
+    color: #cc6666;
+    background: rgba(200, 80, 80, 0.08);
+}
+
+.scan-status-bar.working {
+    color: var(--text-secondary);
+}
+
+/* Scan page sections */
+.scan-section {
+    padding: 16px;
+    min-height: 40px;
+    flex-shrink: 0;
+}
+
+.scan-section + .scan-section {
+    border-top: 1px solid var(--divider);
+    margin-top: 8px;
+    padding-top: 16px;
+}
+
+/* Split layout - left stats, right filters */
+.scan-split {
+    display: flex;
+    gap: 0;
+}
+
+.scan-split-left {
+    flex: 1.2;
+    padding-right: 16px;
+    border-right: 1px solid var(--divider);
+}
+
+.scan-split-right {
+    flex: 0.8;
+    padding-left: 16px;
+}
+
+.scan-stats-header {
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+
+/* Stats grid */
+.scan-stats-grid {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.scan-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.scan-stat-value {
+    font-size: 1.6em;
+    font-weight: 400;
+    color: var(--accent-gold);
+    letter-spacing: 1px;
+}
+
+.scan-stat-label {
+    font-size: 0.7em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.scan-stat-primed .scan-stat-value {
+    color: var(--accent-green);
+}
+
+/* School breakdown */
+.scan-school-breakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.scan-school-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8em;
+}
+
+.scan-school-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.scan-school-name {
+    color: var(--text-secondary);
+    flex: 1;
+}
+
+.scan-school-count {
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+/* Filter controls */
+.scan-filter-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.btn-filter {
+    width: 100%;
+    text-align: left;
+}
+
+.scan-filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+}
+
+.scan-filter-label {
+    font-size: 0.8em;
+    color: var(--text-secondary);
+}
+
+/* =============================================================================
    GROWTH STYLE GENERATOR
    ============================================================================= */
 
@@ -4653,4 +4943,330 @@ body {
     text-align: center;
     min-height: 20px;
     line-height: 1.5;
+}
+
+/* =============================================================================
+   TREE PREVIEW SECTION
+   ============================================================================= */
+
+.tree-preview-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.tree-preview-title {
+    font-size: 0.95em;
+    font-weight: 600;
+    color: var(--accent-gold);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tree-preview-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+.tree-preview-tab {
+    padding: 6px 16px;
+    background: transparent;
+    border: 1px solid var(--divider);
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-size: 0.85em;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.tree-preview-tab:hover:not(.disabled) {
+    color: var(--text-primary);
+    border-color: var(--text-muted);
+}
+
+.tree-preview-tab.active {
+    color: var(--accent-gold);
+    border-bottom-color: var(--accent-gold);
+    background: rgba(184, 168, 120, 0.08);
+}
+
+.tree-preview-tab.disabled,
+.tree-growth-tab.disabled {
+    opacity: 0.3;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+.tree-growth-tab {
+    padding: 6px 16px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    letter-spacing: 1px;
+}
+
+.tree-growth-tab:hover:not(.disabled) {
+    color: var(--text-primary);
+    border-color: var(--text-muted);
+}
+
+.tree-growth-tab.active {
+    color: var(--accent-gold);
+    border-bottom-color: var(--accent-gold);
+}
+
+.tree-preview-split {
+    display: flex;
+    gap: 0;
+    height: 400px;
+    border: 1px solid var(--divider);
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.tree-preview-left {
+    flex: 2;
+    padding: 16px;
+    border-right: 1px solid var(--divider);
+    overflow-y: auto;
+    height: 100%;
+}
+
+.tree-preview-right {
+    flex: 1;
+    position: relative;
+    height: 100%;
+    background: #0a0a0f;
+    overflow: hidden;
+}
+
+.tree-preview-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.tree-preview-empty {
+    color: var(--text-muted);
+    font-size: 0.85em;
+    padding: 12px;
+}
+
+/* Settings controls */
+.tree-preview-settings-title {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--divider);
+}
+
+.tree-preview-setting {
+    margin-bottom: 8px;
+}
+
+/* Responsive grid: numeric inputs flow side-by-side */
+.tree-preview-settings-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-bottom: 8px;
+}
+
+.tree-preview-settings-grid .tree-preview-setting {
+    flex: 1 1 120px;
+    min-width: 120px;
+    margin-bottom: 0;
+}
+
+.tree-preview-label {
+    display: block;
+    font-size: 0.8em;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+/* Drag-to-slide number inputs */
+.tree-preview-drag-input {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--divider);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.drag-input-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1em;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s, color 0.1s;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.drag-input-btn:hover {
+    background: rgba(184, 168, 120, 0.15);
+    color: var(--accent-gold);
+}
+
+.drag-input-btn:active {
+    background: rgba(184, 168, 120, 0.25);
+}
+
+.drag-input-field {
+    width: 52px;
+    height: 28px;
+    padding: 0 4px;
+    background: transparent;
+    border: none;
+    border-left: 1px solid var(--divider);
+    border-right: 1px solid var(--divider);
+    color: var(--accent-gold);
+    font-size: 0.85em;
+    font-family: monospace;
+    text-align: center;
+    outline: none;
+    cursor: ew-resize;
+    -moz-appearance: textfield;
+}
+
+.drag-input-field::-webkit-inner-spin-button,
+.drag-input-field::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.drag-input-field:focus {
+    cursor: text;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.drag-input-suffix {
+    padding: 0 6px 0 2px;
+    font-size: 0.8em;
+    color: var(--text-muted);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Classic Growth — Tier Zone Bar Chart */
+.classic-tier-chart {
+    display: flex;
+    gap: 4px;
+    padding: 6px 8px;
+    height: 120px;
+    border: 1px solid rgba(184, 168, 120, 0.2);
+    border-radius: 4px;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.classic-tier-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+}
+.classic-tier-track {
+    flex: 1;
+    width: 100%;
+    position: relative;
+    background: rgba(184, 168, 120, 0.08);
+    border-radius: 2px;
+}
+.classic-tier-fill {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    border-radius: 2px;
+}
+.classic-tier-handle {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    cursor: ns-resize;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 1px;
+}
+.classic-tier-handle:hover {
+    background: rgba(255, 255, 255, 0.9);
+}
+.classic-tier-handle-top {
+    top: -1px;
+}
+.classic-tier-handle-bottom {
+    bottom: -1px;
+}
+.classic-tier-label {
+    font-size: 9px;
+    color: rgba(184, 168, 120, 0.7);
+    margin-top: 2px;
+    white-space: nowrap;
+}
+.classic-tier-pct {
+    position: absolute;
+    width: 100%;
+    text-align: center;
+    font-size: 8px;
+    color: rgba(255, 255, 255, 0.7);
+    pointer-events: none;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.tree-preview-toggle-row {
+    display: flex;
+    gap: 4px;
+}
+.tree-preview-toggle-wrap {
+    flex-wrap: wrap;
+}
+.tree-preview-toggle-wrap .tree-preview-toggle-btn {
+    flex: 0 0 calc(50% - 2px);
+}
+
+.tree-preview-toggle-btn {
+    flex: 1;
+    padding: 4px 8px;
+    font-size: 0.8em;
+    background: transparent;
+    border: 1px solid var(--divider);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.tree-preview-toggle-btn:hover {
+    border-color: var(--text-muted);
+}
+
+.tree-preview-toggle-btn.active {
+    color: var(--accent-gold);
+    border-color: var(--accent-gold);
+    background: rgba(184, 168, 120, 0.1);
 }

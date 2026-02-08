@@ -384,64 +384,79 @@ class SpellTreeBuilder:
         grouped: Dict[str, List[Dict[str, Any]]],
         themes: List[str]
     ):
-        """Connect nodes into a tree structure using modular systems."""
+        """
+        Connect nodes into a tree structure using tier-interleaved theme processing.
+
+        Instead of processing all of theme A then all of theme B (which causes the
+        largest theme to dominate shallow positions), we interleave: process one spell
+        per theme per tier round-robin. This ensures each theme gets fair access to
+        root's branches and shallow positions.
+        """
         connected: Set[str] = {root.form_id}
         available: Dict[int, List[TreeNode]] = defaultdict(list)
         available[0].append(root)
-        
-        # Sort themes by size
-        sorted_themes = sorted(grouped.keys(), key=lambda t: len(grouped.get(t, [])), reverse=True)
-        
+
+        # Sort themes by size (largest first for priority within each tier)
+        sorted_themes = [t for t in sorted(grouped.keys(),
+                         key=lambda t: len(grouped.get(t, [])), reverse=True)
+                         if t != '_unassigned' and grouped.get(t)]
+
+        # Build per-theme spell queues sorted by tier
+        theme_queues: Dict[str, List[Dict[str, Any]]] = {}
         for theme in sorted_themes:
-            if theme == '_unassigned':
-                continue
-            
-            theme_spells = grouped.get(theme, [])
-            if not theme_spells:
-                continue
-            
-            tier_sorted = self._sort_by_tier(theme_spells)
-            theme_parent: Optional[TreeNode] = None
-            
-            for spell in tier_sorted:
-                form_id = spell['formId']
-                if form_id in connected:
-                    theme_parent = nodes[form_id]
+            theme_queues[theme] = self._sort_by_tier(grouped[theme])
+
+        # Track per-theme preferred parent (for theme coherence within branches)
+        theme_parents: Dict[str, Optional[TreeNode]] = {t: None for t in sorted_themes}
+
+        # Round-robin: process one spell per theme, cycling through tiers
+        # This ensures each theme gets a child of root before any theme fills it
+        max_rounds = max(len(q) for q in theme_queues.values()) if theme_queues else 0
+        theme_indices: Dict[str, int] = {t: 0 for t in sorted_themes}
+
+        for round_num in range(max_rounds):
+            for theme in sorted_themes:
+                idx = theme_indices[theme]
+                queue = theme_queues[theme]
+                if idx >= len(queue):
                     continue
-                
+
+                spell = queue[idx]
+                form_id = spell['formId']
+                theme_indices[theme] = idx + 1
+
+                if form_id in connected:
+                    # Already connected (e.g., root) — update theme parent
+                    theme_parents[theme] = nodes[form_id]
+                    continue
+
                 node = nodes[form_id]
                 tier_depth = self._tier_to_depth(node.tier)
-                
+
                 # Check for themed group custom rules
                 custom_branching = None
                 if self.group_manager:
                     custom_branching = self.group_manager.get_branching_config_for_spell(form_id)
-                
-                # Find parent using shape profile or default logic
-                parent = self._find_parent(node, theme_parent, available, tier_depth, themes)
-                
+
+                # Find parent: prefer theme's own parent for coherence
+                parent = self._find_parent(node, theme_parents[theme], available, tier_depth, themes)
+
                 if parent:
-                    # Determine if this should be a branch or straight
                     is_branch = self._should_branch(parent, node, custom_branching)
-                    
-                    # Link nodes
                     link_nodes(parent, node)
                     connected.add(form_id)
-                    
-                    # Record connection for branching energy
+
                     if self.branching:
                         self.branching.record_connection(parent.form_id, form_id, is_branch)
-                    
-                    # Update available parents
+
                     if len(node.children) < self.cfg.max_children_per_node:
                         available[node.depth].append(node)
-                    
-                    theme_parent = node
-                    
-                    # Maybe add convergence (with reachability check)
+
+                    theme_parents[theme] = node
+
                     if tier_depth >= self.cfg.convergence_at_tier:
                         self._maybe_add_convergence(node, available, connected, nodes, root.form_id)
-        
+
         # Process unassigned spells
         self._process_unassigned(grouped.get('_unassigned', []), nodes, connected, available, themes)
     
@@ -499,7 +514,7 @@ class SpellTreeBuilder:
                     all_candidates.append(p)
 
         if not all_candidates:
-            # Fallback: find ANY parent with capacity
+            # Fallback: find ANY parent with capacity at lower depth
             for depth in sorted(available.keys()):
                 if depth >= target_depth:
                     continue
@@ -507,6 +522,18 @@ class SpellTreeBuilder:
                 if candidates:
                     all_candidates = candidates
                     break
+
+        if not all_candidates:
+            # Last resort: find the least-loaded node at any depth below target
+            least_loaded = None
+            for depth in sorted(available.keys()):
+                if depth >= target_depth:
+                    continue
+                for p in available[depth]:
+                    if least_loaded is None or len(p.children) < len(least_loaded.children):
+                        least_loaded = p
+            if least_loaded:
+                all_candidates = [least_loaded]
 
         if not all_candidates:
             return None
@@ -633,8 +660,9 @@ class SpellTreeBuilder:
                             and not self._is_descendant(p.form_id, node.form_id, nodes)]
                 if different:
                     extra = random.choice(different)
+                    # Only add as prerequisite, NOT as child — convergence prereqs
+                    # don't define the tree structure (children), just unlock gates
                     node.add_prerequisite(extra.form_id)
-                    extra.add_child(node.form_id)
                     added += 1
                     break
         
@@ -679,33 +707,34 @@ class SpellTreeBuilder:
         Post-processing pass to ensure Expert/Master spells have proper convergence.
         Expert spells should have 2+ prerequisites.
         Master spells should have 3+ prerequisites (they're the "final bosses").
+        Convergence links are prerequisite-only (don't add to children to avoid fan-out bloat).
         """
         reachable = self._get_reachable_from_root(nodes, root_id)
-        
+
         expert_fixed = 0
         master_fixed = 0
-        
+
         for fid, node in nodes.items():
             if fid == root_id:
                 continue
-            
+
             tier_depth = self._tier_to_depth(node.tier)
             current_prereqs = len(node.prerequisites)
-            
+
             # Determine minimum prerequisites based on tier
             if tier_depth >= 4:  # Master
                 min_prereqs = 3
-            elif tier_depth >= 3:  # Expert  
+            elif tier_depth >= 3:  # Expert
                 min_prereqs = 2
             else:
                 continue  # Lower tiers don't need enforcement
-            
+
             if current_prereqs >= min_prereqs:
                 continue
-            
+
             # Need to add more prerequisites
             prereqs_needed = min_prereqs - current_prereqs
-            
+
             # Find candidates: reachable nodes at lower depth, different from existing prereqs
             candidates = []
             for cand_id, cand in nodes.items():
@@ -721,30 +750,32 @@ class SpellTreeBuilder:
                     continue
                 # Prefer different themes
                 candidates.append((cand, cand.theme != node.theme))
-            
+
             # Sort: different themes first, then by depth (prefer closer)
             candidates.sort(key=lambda x: (-x[1], -x[0].depth))
-            
+
             added = 0
             for cand, _ in candidates:
                 if added >= prereqs_needed:
                     break
-                # Add convergence link
+                # Add convergence prerequisite only — NOT to children list
+                # This creates a "must unlock X before Y" constraint without
+                # inflating the parent's fan-out (children count).
                 node.add_prerequisite(cand.form_id)
-                cand.add_child(fid)
                 added += 1
-            
+
             if added > 0:
                 if tier_depth >= 4:
                     master_fixed += 1
                 else:
                     expert_fixed += 1
-        
+
         if expert_fixed > 0 or master_fixed > 0:
             print(f"[TreeBuilder] {school_name}: Convergence enforced - {expert_fixed} Expert, {master_fixed} Master spells")
     
     def _connect_orphans(self, root: TreeNode, nodes: Dict[str, TreeNode]):
-        """Connect any disconnected nodes."""
+        """Connect any disconnected nodes, respecting max_children."""
+        max_children = self.cfg.max_children_per_node
         connected = set()
         queue = [root.form_id]
         while queue:
@@ -754,132 +785,179 @@ class SpellTreeBuilder:
             connected.add(fid)
             if fid in nodes:
                 queue.extend(nodes[fid].children)
-        
+
         orphans = [nodes[fid] for fid in nodes if fid not in connected]
         if orphans:
             print(f"[TreeBuilder] Connecting {len(orphans)} orphans")
-        
+
         for orphan_spell in self._sort_by_tier([o.spell_data for o in orphans if o.spell_data]):
             orphan = nodes[orphan_spell['formId']]
             tier_depth = self._tier_to_depth(orphan.tier)
-            
+
+            # Score all connected candidates with capacity
             best = None
+            best_score = -9999
             for node in nodes.values():
-                if node.form_id in connected and len(node.children) < self.cfg.max_children_per_node:
-                    # ENFORCE tier progression: parent must be at LOWER depth
-                    if node.depth < tier_depth:
-                        if best is None or len(node.children) < len(best.children):
-                            best = node
-            
-            # If no proper parent found, find ANY connected node at lower depth
-            if not best:
-                for d in range(tier_depth - 1, -1, -1):
-                    for node in nodes.values():
-                        if node.form_id in connected and node.depth == d:
-                            if len(node.children) < self.cfg.max_children_per_node:
-                                best = node
-                                break
-                    if best:
-                        break
-            
-            # Last resort: only connect to root if this is a Novice/Apprentice spell
-            if not best:
-                if tier_depth <= 1:  # Only Novice (0) or Apprentice (1) can connect to root
-                    best = root
+                if node.form_id not in connected:
+                    continue
+                if len(node.children) >= max_children:
+                    continue
+                score = 0
+                # Prefer parent at lower depth (tier progression)
+                if node.depth < tier_depth:
+                    score += 50
+                    if node.depth == tier_depth - 1:
+                        score += 30  # Adjacent tier bonus
+                elif node.depth == tier_depth:
+                    score += 10  # Same tier OK
                 else:
-                    # For high-tier orphans, pick any lower-tier connected node
-                    print(f"[TreeBuilder] WARNING: High-tier orphan {orphan.name} ({orphan.tier}) - finding any parent")
-                    for node in nodes.values():
-                        if node.form_id in connected and node.depth < tier_depth:
-                            best = node
-                            break
-                    if not best:
-                        best = root  # Absolute last resort
-                        print(f"[TreeBuilder] ERROR: {orphan.name} ({orphan.tier}) forced to root!")
-            
-            link_nodes(best, orphan)
-            connected.add(orphan.form_id)
+                    score -= 50  # Higher depth = bad
+                # Theme matching
+                if node.theme and orphan.theme and node.theme == orphan.theme:
+                    score += 40
+                # Prefer nodes with fewer children (spread load)
+                score -= len(node.children) * 15
+                if score > best_score:
+                    best_score = score
+                    best = node
+
+            if best:
+                link_nodes(best, orphan)
+                connected.add(orphan.form_id)
+            else:
+                # All nodes at capacity — increase capacity of least-loaded node
+                least_loaded = None
+                for node in nodes.values():
+                    if node.form_id in connected and node.depth < tier_depth:
+                        if least_loaded is None or len(node.children) < len(least_loaded.children):
+                            least_loaded = node
+                if least_loaded:
+                    link_nodes(least_loaded, orphan)
+                    connected.add(orphan.form_id)
+                    print(f"[TreeBuilder] Orphan {orphan.name}: over-capacity on {least_loaded.name} ({len(least_loaded.children)} children)")
     
     def _ensure_all_reachable(self, nodes: Dict[str, TreeNode], root_id: str, school_name: str):
         """
         Final validation pass to ensure all nodes are reachable from root.
-        Fixes any remaining unreachable nodes by replacing their blocking prereqs.
+        Fixes unreachable nodes by replacing blocking prereqs with reachable parents.
+        Respects max_children to maintain tree quality.
         """
-        max_passes = 10
-        
+        max_passes = 20
+        max_children = self.cfg.max_children_per_node
+
         for pass_num in range(max_passes):
             # Simulate unlocks to find unreachable nodes
             unlockable = self._simulate_unlocks(nodes, root_id)
             unreachable = [fid for fid in nodes if fid not in unlockable]
-            
+
             if not unreachable:
                 return  # All nodes reachable!
-            
+
             print(f"[TreeBuilder] {school_name}: Pass {pass_num + 1} - {len(unreachable)} unreachable nodes")
-            
+
             fixed_any = False
             for fid in unreachable:
                 node = nodes[fid]
                 prereqs = node.prerequisites
-                
+
                 # Find blocking prereqs (ones that are not unlockable)
                 blocking = [p for p in prereqs if p not in unlockable]
-                
+
                 if blocking:
-                    # Find a reachable parent to replace blocking prereqs
-                    best_parent = None
-                    for unlockable_id in unlockable:
-                        if unlockable_id == fid:
-                            continue
-                        candidate = nodes[unlockable_id]
-                        if len(candidate.children) < self.cfg.max_children_per_node:
-                            # Prefer nodes at lower depth
-                            if best_parent is None or candidate.depth < nodes[best_parent].depth:
-                                best_parent = unlockable_id
-                    
-                    if best_parent:
-                        # Remove from old blocking parents' children
-                        for blocking_id in blocking:
-                            if blocking_id in nodes:
-                                blocking_node = nodes[blocking_id]
-                                if fid in blocking_node.children:
-                                    blocking_node.children.remove(fid)
-                        
-                        # Replace blocking prereqs with the reachable parent
-                        node.prerequisites = [p for p in prereqs if p not in blocking]
-                        if best_parent not in node.prerequisites:
-                            node.prerequisites.append(best_parent)
-                        
-                        # Add to new parent's children
-                        parent_node = nodes[best_parent]
-                        if fid not in parent_node.children:
-                            parent_node.children.append(fid)
-                        
-                        # Update depth
-                        node.depth = parent_node.depth + 1
+                    # Simply remove blocking prereqs — keep the good ones
+                    good_prereqs = [p for p in prereqs if p not in blocking]
+
+                    # Remove from old blocking parents' children
+                    for blocking_id in blocking:
+                        if blocking_id in nodes:
+                            blocking_node = nodes[blocking_id]
+                            if fid in blocking_node.children:
+                                blocking_node.children.remove(fid)
+
+                    if good_prereqs:
+                        # Node still has valid prereqs, just drop the blockers
+                        node.prerequisites = good_prereqs
                         fixed_any = True
-            
+                    else:
+                        # Need a new parent — find one with capacity
+                        best_parent = None
+                        best_score = -9999
+                        tier_depth = self._tier_to_depth(node.tier)
+
+                        for uid in unlockable:
+                            if uid == fid:
+                                continue
+                            cand = nodes[uid]
+                            if len(cand.children) >= max_children:
+                                continue
+                            # Prefer same theme, close depth, fewer children
+                            score = 0
+                            if cand.depth < tier_depth:
+                                score += 50
+                            if cand.depth == tier_depth - 1:
+                                score += 30
+                            if cand.theme and node.theme and cand.theme == node.theme:
+                                score += 40
+                            score -= len(cand.children) * 10
+                            if score > best_score:
+                                best_score = score
+                                best_parent = uid
+
+                        if best_parent:
+                            node.prerequisites = [best_parent]
+                            parent_node = nodes[best_parent]
+                            if fid not in parent_node.children:
+                                parent_node.children.append(fid)
+                            node.depth = parent_node.depth + 1
+                            fixed_any = True
+
             if not fixed_any:
-                # Aggressive fix: connect remaining to root
-                print(f"[TreeBuilder] {school_name}: Aggressive fix for {len(unreachable)} remaining nodes")
-                root_node = nodes[root_id]
-                for fid in unreachable:
+                # Spread remaining across available parents (NOT root dump)
+                print(f"[TreeBuilder] {school_name}: Spreading {len(unreachable)} nodes across available parents")
+                # Sort unreachable by tier so low-tier get placed first
+                unreachable_sorted = sorted(unreachable, key=lambda fid: self._tier_to_depth(nodes[fid].tier))
+
+                for fid in unreachable_sorted:
                     if fid == root_id:
                         continue
                     node = nodes[fid]
-                    # Clear old prereqs from their children lists
-                    for old_prereq in node.prerequisites:
-                        if old_prereq in nodes:
-                            old_node = nodes[old_prereq]
-                            if fid in old_node.children:
-                                old_node.children.remove(fid)
-                    # Connect directly to root
-                    node.prerequisites = [root_id]
-                    if fid not in root_node.children:
-                        root_node.children.append(fid)
-                    node.depth = 1
-                break
-        
+                    tier_depth = self._tier_to_depth(node.tier)
+
+                    # Clear old broken links
+                    for old_prereq in list(node.prerequisites):
+                        if old_prereq in nodes and fid in nodes[old_prereq].children:
+                            nodes[old_prereq].children.remove(fid)
+                    node.prerequisites = []
+
+                    # Find ANY unlockable node with capacity, prefer theme/tier match
+                    best = None
+                    best_score = -9999
+                    current_unlockable = self._simulate_unlocks(nodes, root_id)
+
+                    for uid in current_unlockable:
+                        cand = nodes[uid]
+                        if len(cand.children) >= max_children:
+                            continue
+                        score = 0
+                        if cand.depth < tier_depth:
+                            score += 50
+                        elif cand.depth == tier_depth:
+                            score += 20
+                        if cand.theme and node.theme and cand.theme == node.theme:
+                            score += 40
+                        score -= len(cand.children) * 10
+                        if score > best_score:
+                            best_score = score
+                            best = uid
+
+                    if best:
+                        node.prerequisites = [best]
+                        if fid not in nodes[best].children:
+                            nodes[best].children.append(fid)
+                        node.depth = nodes[best].depth + 1
+                        # This node is now unlockable, update for next iterations
+                break  # Re-run from top to pick up newly unlockable nodes
+
         # Final check
         final_unlockable = self._simulate_unlocks(nodes, root_id)
         final_unreachable = len(nodes) - len(final_unlockable)

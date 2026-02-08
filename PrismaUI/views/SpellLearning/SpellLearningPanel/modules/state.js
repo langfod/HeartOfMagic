@@ -315,7 +315,7 @@ var state = {
     isDragging: false,
     isResizing: false,
     isSettingsOpen: false,
-    currentTab: 'spellScan',
+    currentTab: 'spellTree',
     lastSpellData: null,
     promptModified: false,
     originalPrompt: DEFAULT_TREE_RULES,
@@ -323,14 +323,14 @@ var state = {
     fields: {
         editorId: true,
         magickaCost: true,
-        minimumSkill: false,
-        castingType: false,
-        delivery: false,
+        minimumSkill: true,
+        castingType: true,
+        delivery: true,
         chargeTime: false,
-        plugin: false,
-        effects: false,
+        plugin: true,
+        effects: true,
         effectNames: false,
-        keywords: false
+        keywords: true
     },
     // Tree viewer state
     treeData: null,

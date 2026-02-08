@@ -1117,10 +1117,9 @@ function startProceduralGenerate() {
             if (window.callCpp) window.callCpp('SaveSpellTree', JSON.stringify(treeData));
             
             setTimeout(function() {
-                var treeTab = document.getElementById('tabSpellTree');
-                if (treeTab) treeTab.click();
+                switchTab('spellTree');
             }, 300);
-            
+
         } catch (e) {
             console.error('[Procedural] Error:', e);
             updateStatus('JS Procedural failed: ' + e.message);
@@ -1135,7 +1134,7 @@ function resetProceduralButton() {
     var btn = document.getElementById('proceduralBtn');
     if (btn) {
         btn.disabled = false;
-        btn.innerHTML = '<span class="btn-icon">[J]</span> Procedural';
+        btn.innerHTML = '<span class="btn-icon">[T]</span> Build Tree';
     }
 }
 
@@ -1350,10 +1349,52 @@ function onProceduralPlusClick() {
  */
 window.onProceduralPythonComplete = function(resultStr) {
     console.log('[Procedural] Python result received');
-    
+
     try {
         var result = typeof resultStr === 'string' ? JSON.parse(resultStr) : resultStr;
-        
+
+        // Route to Classic Growth mode if it triggered this build
+        if (state._classicGrowthBuildPending) {
+            state._classicGrowthBuildPending = false;
+            if (result.success && result.treeData) {
+                var cgTreeData = typeof result.treeData === 'string' ? JSON.parse(result.treeData) : result.treeData;
+                if (typeof TreeGrowthClassic !== 'undefined' && TreeGrowthClassic.loadTreeData) {
+                    TreeGrowthClassic.loadTreeData(cgTreeData);
+                    if (typeof TreeGrowth !== 'undefined') TreeGrowth._markDirty();
+                }
+            } else {
+                console.error('[ClassicGrowth] Python build failed:', result.error);
+                if (typeof ClassicSettings !== 'undefined') {
+                    ClassicSettings.setStatusText('Build failed: ' + (result.error || 'unknown'), '#ef4444');
+                }
+                var cgBtn = document.getElementById('tgClassicBuildBtn');
+                if (cgBtn) cgBtn.disabled = false;
+            }
+            resetProceduralPlusButton();
+            return;
+        }
+
+        // Route to Tree Growth mode if it triggered this build
+        if (state._treeGrowthBuildPending) {
+            state._treeGrowthBuildPending = false;
+            if (result.success && result.treeData) {
+                var tgTreeData = typeof result.treeData === 'string' ? JSON.parse(result.treeData) : result.treeData;
+                if (typeof TreeGrowthTree !== 'undefined' && TreeGrowthTree.loadTreeData) {
+                    TreeGrowthTree.loadTreeData(tgTreeData);
+                    if (typeof TreeGrowth !== 'undefined') TreeGrowth._markDirty();
+                }
+            } else {
+                console.error('[TreeGrowthTree] Python build failed:', result.error);
+                if (typeof TreeSettings !== 'undefined') {
+                    TreeSettings.setStatusText('Build failed: ' + (result.error || 'unknown'), '#ef4444');
+                }
+                var tgBtn = document.getElementById('tgTreeBuildBtn');
+                if (tgBtn) tgBtn.disabled = false;
+            }
+            resetProceduralPlusButton();
+            return;
+        }
+
         // Check if visual-first mode was waiting for LLM configs + fuzzy data
         if (state.visualFirstConfigPending && result.success) {
             state.visualFirstConfigPending = false;
@@ -1426,10 +1467,9 @@ window.onProceduralPythonComplete = function(resultStr) {
             if (window.callCpp) window.callCpp('SaveSpellTree', JSON.stringify(treeData));
             
             setTimeout(function() {
-                var treeTab = document.getElementById('tabSpellTree');
-                if (treeTab) treeTab.click();
+                switchTab('spellTree');
             }, 300);
-            
+
         } else {
             // Check if visual-first was pending - fall back to defaults
             if (state.visualFirstConfigPending) {
@@ -2032,8 +2072,7 @@ function doVisualFirstGenerate(schoolConfigs, fuzzyData) {
                 if (window.callCpp) window.callCpp('SaveSpellTree', JSON.stringify(treeData));
 
                 setTimeout(function() {
-                    var treeTab = document.getElementById('tabSpellTree');
-                    if (treeTab) treeTab.click();
+                    switchTab('spellTree');
                 }, 300);
             } else {
                 console.error('[ComplexBuild] buildAllTreesSettingsAware not available! Check if settingsAwareTreeBuilder.js is loaded.');

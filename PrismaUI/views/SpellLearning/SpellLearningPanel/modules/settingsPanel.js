@@ -1234,8 +1234,9 @@ function saveUnifiedConfig() {
         globeTextSize: settings.globeTextSize,
         particleTrailEnabled: settings.particleTrailEnabled,
 
-        // Spell blacklist
+        // Spell blacklist & plugin whitelist
         spellBlacklist: settings.spellBlacklist || [],
+        pluginWhitelist: settings.pluginWhitelist || [],
 
         // Dynamic tree building settings
         treeGeneration: settings.treeGeneration
@@ -1988,6 +1989,14 @@ window.onUnifiedConfigLoaded = function(dataStr) {
             console.log('[SpellLearning] Loaded spell blacklist:', settings.spellBlacklist.length, 'entries');
         } else {
             settings.spellBlacklist = [];
+        }
+
+        // Plugin whitelist
+        if (data.pluginWhitelist && Array.isArray(data.pluginWhitelist)) {
+            settings.pluginWhitelist = data.pluginWhitelist;
+            console.log('[SpellLearning] Loaded plugin whitelist:', settings.pluginWhitelist.length, 'entries');
+        } else {
+            settings.pluginWhitelist = [];
         }
 
         // === Dynamic Tree Building Settings ===
@@ -4057,6 +4066,7 @@ function hideBlacklistModal() {
     var modal = document.getElementById('blacklist-modal');
     if (modal) modal.classList.add('hidden');
     autoSaveSettings();
+    if (typeof updatePrimedCount === 'function') updatePrimedCount();
 }
 
 /**
@@ -4161,7 +4171,15 @@ function renderBlacklistSearchResults(searchTerm) {
 function addToBlacklist(spell) {
     if (!settings.spellBlacklist) settings.spellBlacklist = [];
 
+    // Use stable plugin:localFormId key for matching (survives load order changes)
+    var localId = typeof getLocalFormId === 'function' ? getLocalFormId(spell.formId) : '';
+    var plugin = spell.plugin || '';
+
     var exists = settings.spellBlacklist.some(function(entry) {
+        // Match by stable key if available, fall back to raw formId
+        if (entry.plugin && entry.localFormId && plugin && localId) {
+            return entry.plugin.toLowerCase() === plugin.toLowerCase() && entry.localFormId === localId;
+        }
         return entry.formId === spell.formId;
     });
 
@@ -4169,9 +4187,11 @@ function addToBlacklist(spell) {
         settings.spellBlacklist.push({
             formId: spell.formId,
             name: spell.name || spell.formId,
-            school: spell.school || 'Unknown'
+            school: spell.school || 'Unknown',
+            plugin: plugin,
+            localFormId: localId
         });
-        console.log('[SpellLearning] Blacklisted spell:', spell.name, '(' + spell.formId + ')');
+        console.log('[SpellLearning] Blacklisted spell:', spell.name, '(' + plugin + ':' + localId + ')');
     }
 
     var searchInput = document.getElementById('blacklist-search');
@@ -4183,14 +4203,19 @@ function addToBlacklist(spell) {
     autoSaveSettings();
 }
 
-function removeFromBlacklist(formId) {
+function removeFromBlacklist(plugin, localFormId, formId) {
     if (!settings.spellBlacklist) return;
 
     settings.spellBlacklist = settings.spellBlacklist.filter(function(entry) {
+        // Match by stable key if available
+        if (plugin && localFormId && entry.plugin && entry.localFormId) {
+            return !(entry.plugin.toLowerCase() === plugin.toLowerCase() && entry.localFormId === localFormId);
+        }
+        // Fall back to raw formId
         return entry.formId !== formId;
     });
 
-    console.log('[SpellLearning] Removed from blacklist:', formId);
+    console.log('[SpellLearning] Removed from blacklist:', plugin + ':' + localFormId);
     renderBlacklistEntries();
     autoSaveSettings();
 }
@@ -4220,16 +4245,18 @@ function renderBlacklistEntries() {
     blacklist.forEach(function(entry) {
         var div = document.createElement('div');
         div.className = 'blacklist-entry';
+        var subtitle = (entry.school || '');
+        if (entry.plugin) subtitle += (subtitle ? ' - ' : '') + entry.plugin;
         div.innerHTML =
             '<div class="blacklist-entry-info">' +
                 '<div class="blacklist-entry-name">' + (entry.name || entry.formId) + '</div>' +
-                '<div class="blacklist-entry-school">' + (entry.school || '') + ' - ' + entry.formId + '</div>' +
+                '<div class="blacklist-entry-school">' + subtitle + '</div>' +
             '</div>' +
-            '<button class="blacklist-remove-btn" data-formid="' + entry.formId + '" title="Remove from blacklist">&times;</button>';
+            '<button class="blacklist-remove-btn" title="Remove from blacklist">&times;</button>';
 
         var removeBtn = div.querySelector('.blacklist-remove-btn');
         removeBtn.addEventListener('click', function() {
-            removeFromBlacklist(entry.formId);
+            removeFromBlacklist(entry.plugin, entry.localFormId, entry.formId);
         });
 
         container.appendChild(div);
@@ -4368,6 +4395,7 @@ function hideWhitelistModal() {
     var modal = document.getElementById('whitelist-modal');
     if (modal) modal.classList.add('hidden');
     autoSaveSettings();
+    if (typeof updatePrimedCount === 'function') updatePrimedCount();
 }
 
 /**

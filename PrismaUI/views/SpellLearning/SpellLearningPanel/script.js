@@ -592,7 +592,25 @@ function initializePanel() {
     safeAddListener('fullAutoBtn', 'click', onFullAutoClick);
     safeAddListener('proceduralBtn', 'click', onProceduralClick);
     safeAddListener('proceduralPlusBtn', 'click', onProceduralPlusClick);
+    safeAddListener('clearTreeBtn', 'click', clearTree);
     safeAddListener('saveBtn', 'click', onSaveClick);
+
+    // Tome toggle - client-side filter, triggers tome scan for IDs
+    var tomeToggle = document.getElementById('scanModeTomes');
+    if (tomeToggle) {
+        tomeToggle.addEventListener('change', function() {
+            if (this.checked) {
+                // Tomes ON: request tome scan to get tomed spell IDs
+                if (window.callCpp && state.lastSpellData) {
+                    window.callCpp('ScanSpells', JSON.stringify({ scanMode: 'tomes', fields: { plugin: true } }));
+                }
+            } else {
+                // Tomes OFF: clear tome filter, update primed with all spells
+                state.tomedSpellIds = null;
+                if (typeof updatePrimedCount === 'function') updatePrimedCount();
+            }
+        });
+    }
     safeAddListener('saveBySchoolBtn', 'click', onSaveBySchoolClick);
     safeAddListener('copyBtn', 'click', onCopyClick);
     safeAddListener('pasteBtn', 'click', onPasteClick);
@@ -757,11 +775,20 @@ function initializeKeyboardShortcuts() {
 // =============================================================================
 
 function initializeTabs() {
-    var tabBtns = document.querySelectorAll('.tab-btn');
-    tabBtns.forEach(function(btn) {
+    if (state._tabsInitialized) return;
+    state._tabsInitialized = true;
+
+    // Header buttons toggle panels (Scan, Settings) over the default Spell Tree view
+    var headerTabBtns = document.querySelectorAll('.header-btn[data-tab]');
+    headerTabBtns.forEach(function(btn) {
         btn.addEventListener('click', function() {
             var tabId = this.getAttribute('data-tab');
-            switchTab(tabId);
+            // Toggle: clicking active panel button returns to tree
+            if (state.currentTab === tabId) {
+                switchTab('spellTree');
+            } else {
+                switchTab(tabId);
+            }
         });
     });
 }
@@ -771,17 +798,18 @@ function switchTab(tabId) {
     if (state.currentTab === 'settings' && tabId !== 'settings') {
         autoSaveSettings();
     }
-    
+
     state.currentTab = tabId;
-    
-    document.querySelectorAll('.tab-btn').forEach(function(btn) {
+
+    // Update header button active states
+    document.querySelectorAll('.header-btn[data-tab]').forEach(function(btn) {
         btn.classList.toggle('active', btn.getAttribute('data-tab') === tabId);
     });
-    
+
     document.querySelectorAll('.tab-content').forEach(function(content) {
         content.classList.remove('active');
     });
-    
+
     if (tabId === 'spellScan') {
         document.getElementById('contentSpellScan').classList.add('active');
     } else if (tabId === 'spellTree') {

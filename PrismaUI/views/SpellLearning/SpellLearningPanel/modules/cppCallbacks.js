@@ -142,11 +142,35 @@ window.onPythonAddonStatus = function(statusStr) {
             }
         }
     }
+
+    // Also update growth mode settings if available
+    if (typeof TreeGrowthClassic !== 'undefined' && TreeGrowthClassic.onPythonStatusChanged) {
+        TreeGrowthClassic.onPythonStatusChanged(installed, hasScript, hasPython);
+    }
+    if (typeof TreeSettings !== 'undefined') {
+        TreeSettings.updatePythonStatus(installed, hasScript, hasPython);
+    }
 };
 
 window.updateSpellData = function(jsonStr) {
     console.log('[SpellLearning] Received spell data, length:', jsonStr.length);
-    
+
+    // Check if this is a tome-only scan response (used for filtering, not main data)
+    try {
+        var parsed = JSON.parse(jsonStr);
+        if (parsed.scanMode === 'spell_tomes') {
+            console.log('[SpellLearning] Tome scan received: ' + (parsed.spells ? parsed.spells.length : 0) + ' tomed spells');
+            state.tomedSpellIds = {};
+            if (parsed.spells) {
+                parsed.spells.forEach(function(s) {
+                    if (s.formId) state.tomedSpellIds[s.formId] = true;
+                });
+            }
+            if (typeof updatePrimedCount === 'function') updatePrimedCount();
+            return;
+        }
+    } catch (e) { /* continue to normal processing */ }
+
     var scanSuccess = false;
     try {
         var data = JSON.parse(jsonStr);
@@ -158,13 +182,29 @@ window.updateSpellData = function(jsonStr) {
         
         if (state.fullAutoMode) {
             updateStatus('Step 2/3: Generating trees for ' + data.spellCount + ' spells...');
+            updateScanStatus('Step 2/3: Generating trees for ' + data.spellCount + ' spells...', 'working');
         } else {
+            var schoolSet = {};
+            if (data.spells) data.spells.forEach(function(s) { if (s.school) schoolSet[s.school] = true; });
+            var schoolCount = Object.keys(schoolSet).length;
             updateStatus('Scanned ' + data.spellCount + ' spells');
+            updateScanStatus(data.spellCount + ' spells scanned across ' + schoolCount + ' schools', 'success');
         }
         setStatusIcon('X');
         updateCharCount();
         scanSuccess = true;
-        
+
+        // Populate scan stats panel early — before downstream code that might throw
+        if (data.spells && data.spells.length > 0) {
+            var totalEl = document.getElementById('statTotalSpells');
+            if (totalEl) totalEl.textContent = data.spells.length;
+
+            var modSet = {};
+            data.spells.forEach(function(s) { if (s.plugin) modSet[s.plugin] = true; });
+            var modsEl = document.getElementById('statTotalMods');
+            if (modsEl) modsEl.textContent = Object.keys(modSet).length;
+        }
+
         // Show per-school control panels
         if (data.spells && typeof showSchoolControlPanels === 'function') {
             var schoolData = {};
@@ -196,6 +236,44 @@ window.updateSpellData = function(jsonStr) {
             simpleBuildBtn.disabled = false;
         }
 
+        // Enable scan-dependent buttons after successful scan
+        if (data.spells && data.spells.length > 0) {
+            var postScanBtns = ['blacklistBtn', 'whitelistBtn', 'saveBtn'];
+            postScanBtns.forEach(function(id) {
+                var btn = document.getElementById(id);
+                if (btn) btn.disabled = false;
+            });
+            // Migrate legacy blacklist entries: add plugin + localFormId from scan data
+            if (settings.spellBlacklist && data.spells && typeof getLocalFormId === 'function') {
+                var spellLookup = {};
+                data.spells.forEach(function(s) { if (s.formId) spellLookup[s.formId] = s; });
+                var migrated = 0;
+                settings.spellBlacklist.forEach(function(entry) {
+                    if (!entry.localFormId && entry.formId && spellLookup[entry.formId]) {
+                        var spell = spellLookup[entry.formId];
+                        entry.plugin = spell.plugin || '';
+                        entry.localFormId = getLocalFormId(entry.formId);
+                        migrated++;
+                    }
+                });
+                if (migrated > 0) {
+                    console.log('[SpellLearning] Migrated ' + migrated + ' legacy blacklist entries to stable format');
+                    if (typeof autoSaveSettings === 'function') autoSaveSettings();
+                }
+            }
+
+            // Update primed count (filtered by blacklist/whitelist)
+            if (typeof updatePrimedCount === 'function') updatePrimedCount();
+        }
+
+        // If tomes toggle is ON, auto-trigger a tome scan to get tomed IDs for filtering
+        if (data.spells && data.spells.length > 0) {
+            var scanModeTomesEl = document.getElementById('scanModeTomes');
+            if (scanModeTomesEl && scanModeTomesEl.checked && window.callCpp) {
+                window.callCpp('ScanSpells', JSON.stringify({ scanMode: 'tomes', fields: { plugin: true } }));
+            }
+        }
+
         // Show Classify Keywords button if LLM keyword classification is enabled
         var classifyBtn = document.getElementById('classifyKeywordsBtn');
         if (classifyBtn && data.spells && data.spells.length > 0) {
@@ -204,7 +282,7 @@ window.updateSpellData = function(jsonStr) {
                              settings.treeGeneration.llm.keywordClassification;
             classifyBtn.style.display = llmEnabled ? '' : 'none';
         }
-        
+
     } catch (e) {
         console.error('[SpellLearning] Failed to parse spell data:', e);
         var outputAreaFallback = document.getElementById('outputArea');
@@ -213,11 +291,66 @@ window.updateSpellData = function(jsonStr) {
         setStatusIcon('!');
         state.fullAutoMode = false;
     }
-    
+
+    // Show tree preview section (outside try-catch so errors don't kill scan flow)
+    if (typeof TreePreview !== 'undefined' && state.lastSpellData) {
+        try {
+            TreePreview.show(state.lastSpellData);
+        } catch (tpErr) {
+            console.error('[TreePreview] Failed to show:', tpErr);
+        }
+    }
+
+    // Show tree growth section (pulls data from TreePreview)
+    if (typeof TreeGrowth !== 'undefined' && state.lastSpellData) {
+        try {
+            TreeGrowth.show();
+        } catch (tgErr) {
+            console.error('[TreeGrowth] Failed to show:', tgErr);
+        }
+    }
+
+    // Notify growth modes that spells are available for building
+    if (state.lastSpellData && state.lastSpellData.spells && state.lastSpellData.spells.length > 0) {
+        if (typeof ClassicSettings !== 'undefined') ClassicSettings.updateScanStatus(true);
+        if (typeof TreeSettings !== 'undefined') TreeSettings.updateScanStatus(true);
+    }
+
+    // Update scan stats + status outside try-catch (guaranteed to run)
+    if (state.lastSpellData && state.lastSpellData.spells && state.lastSpellData.spells.length > 0) {
+        var spells = state.lastSpellData.spells;
+        try {
+            var totalEl = document.getElementById('statTotalSpells');
+            if (totalEl) totalEl.textContent = spells.length;
+
+            var modSet2 = {};
+            spells.forEach(function(s) { if (s.plugin) modSet2[s.plugin] = true; });
+            var modsEl2 = document.getElementById('statTotalMods');
+            if (modsEl2) modsEl2.textContent = Object.keys(modSet2).length;
+
+            if (typeof updatePrimedCount === 'function') updatePrimedCount();
+        } catch (statErr) {
+            console.error('[SpellLearning] Stats update error:', statErr);
+        }
+
+        // Update status bar if it wasn't set by the try block
+        var statusText = document.getElementById('statusText');
+        if (statusText && statusText.textContent === 'Ready to scan') {
+            var schoolSet2 = {};
+            spells.forEach(function(s) { if (s.school) schoolSet2[s.school] = true; });
+            if (typeof updateStatus === 'function') {
+                updateStatus('Scanned ' + spells.length + ' spells');
+            }
+            if (typeof updateScanStatus === 'function') {
+                updateScanStatus(spells.length + ' spells scanned across ' + Object.keys(schoolSet2).length + ' schools', 'success');
+            }
+        }
+    }
+
     var scanBtn = document.getElementById('scanBtn');
     if (scanBtn) {
         scanBtn.disabled = false;
-        scanBtn.innerHTML = '<span class="btn-icon">ðŸ”</span>Scan All Spells';
+        scanBtn.innerHTML = '<span class="btn-icon">[*]</span>Scan Spells';
     }
     
     // Continue to auto-generation if in full auto mode
@@ -268,6 +401,11 @@ window.updateStatus = function(message) {
     }
     var el = document.getElementById('statusText');
     if (el) el.textContent = msg;
+    // Forward to scan feedback bar with auto-detected type
+    var type = '';
+    if (msg.indexOf('Saved') !== -1 || msg.indexOf('saved') !== -1) type = 'success';
+    else if (msg.indexOf('Error') !== -1 || msg.indexOf('Failed') !== -1 || msg.indexOf('failed') !== -1) type = 'error';
+    if (typeof updateScanStatus === 'function') updateScanStatus(msg, type);
 };
 
 window.updatePrompt = function(promptContent) {
@@ -394,6 +532,36 @@ window.updateTreeData = function(json) {
         }
     } catch (e) {
         console.error('[SpellLearning] Failed to parse tree data:', e);
+    }
+};
+
+/**
+ * Called by C++ when Classic Growth tree build completes
+ * Receives NLP-built tree data for preview layout
+ */
+window.onClassicGrowthTreeData = function(json) {
+    var data = typeof json === 'string' ? JSON.parse(json) : json;
+    console.log('[SpellLearning] Classic Growth tree data received');
+    if (typeof TreeGrowthClassic !== 'undefined' && TreeGrowthClassic.loadTreeData) {
+        TreeGrowthClassic.loadTreeData(data);
+        if (typeof TreeGrowth !== 'undefined') {
+            TreeGrowth._markDirty();
+        }
+    }
+};
+
+/**
+ * Called by C++ when Tree Growth tree build completes
+ * Receives NLP-built tree data with trunk/branch/root structure
+ */
+window.onTreeGrowthTreeData = function(json) {
+    var data = typeof json === 'string' ? JSON.parse(json) : json;
+    console.log('[SpellLearning] Tree Growth tree data received');
+    if (typeof TreeGrowthTree !== 'undefined' && TreeGrowthTree.loadTreeData) {
+        TreeGrowthTree.loadTreeData(data);
+        if (typeof TreeGrowth !== 'undefined') {
+            TreeGrowth._markDirty();
+        }
     }
 };
 

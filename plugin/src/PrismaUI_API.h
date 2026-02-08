@@ -3,9 +3,6 @@
 */
 #pragma once
 
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-
 #include <functional>
 #include <queue>
 #include <stdint.h>
@@ -49,7 +46,7 @@ namespace PRISMA_UI_API
 		virtual bool HasFocus(PrismaView view) noexcept = 0;
 
 		// Set focus on view.
-		virtual bool Focus(PrismaView view, bool pauseGame = false) noexcept = 0;
+		virtual bool Focus(PrismaView view, bool pauseGame = false, bool disableFocusMenu = false) noexcept = 0;
 
 		// Remove focus from view.
 		virtual void Unfocus(PrismaView view) noexcept = 0;
@@ -80,6 +77,21 @@ namespace PRISMA_UI_API
 
 		// Get view order.
 		virtual int GetOrder(PrismaView view) noexcept = 0;
+
+		// Create inspector view for debugging.
+		virtual void CreateInspectorView(PrismaView view) noexcept = 0;
+
+		// Show or hide the inspector overlay.
+		virtual void SetInspectorVisibility(PrismaView view, bool visible) noexcept = 0;
+
+		// Returns true if inspector is visible.
+		virtual bool IsInspectorVisible(PrismaView view) noexcept = 0;
+
+		// Set inspector window position and size.
+		virtual void SetInspectorBounds(PrismaView view, float topLeftX, float topLeftY, unsigned int width, unsigned int height) noexcept = 0;
+
+		// Returns true if any view has active focus.
+		virtual bool HasAnyActiveFocus() noexcept = 0;
 	};
 
 	typedef void* (*_RequestPluginAPI)(const InterfaceVersion interfaceVersion);
@@ -93,6 +105,10 @@ namespace PRISMA_UI_API
 	[[nodiscard]] inline void* RequestPluginAPI(const InterfaceVersion a_interfaceVersion = InterfaceVersion::V1)
 	{
 		auto pluginHandle = GetModuleHandleA("PrismaUI.dll");
+		if (!pluginHandle) {
+			return nullptr;
+		}
+
 		_RequestPluginAPI requestAPIFunction = (_RequestPluginAPI)GetProcAddress(pluginHandle, "RequestPluginAPI");
 
 		if (requestAPIFunction) {

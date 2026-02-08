@@ -1625,8 +1625,32 @@ void UIManager::OnSaveUnifiedConfig(const char* argument)
         return;
     }
 
+    // Debounce: skip if we saved very recently (prevents double-save on panel close)
+    auto* instance = GetSingleton();
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - instance->m_lastConfigSaveTime).count();
+    if (elapsed < kConfigSaveDebounceMs) {
+        logger::info("UIManager: SaveUnifiedConfig debounced ({}ms since last save)", elapsed);
+        return;
+    }
+    instance->m_lastConfigSaveTime = now;
+
     logger::info("UIManager: SaveUnifiedConfig");
     
+    // Capture the argument as a string so we can defer the heavy work
+    std::string configData(argument);
+    
+    // Defer the actual save + settings reapplication to the next game frame
+    // This prevents disk I/O from competing with the game engine during the 
+    // critical resume frame when the panel closes and the game un-pauses
+    SKSE::GetTaskInterface()->AddTask([configData = std::move(configData)]() {
+        auto* inst = GetSingleton();
+        inst->DoSaveUnifiedConfig(configData);
+    });
+}
+
+void UIManager::DoSaveUnifiedConfig(const std::string& configData)
+{
     auto path = GetUnifiedConfigPath();
     
     // Ensure directory exists
@@ -1634,7 +1658,7 @@ void UIManager::OnSaveUnifiedConfig(const char* argument)
     
     try {
         // Parse incoming config
-        json newConfig = json::parse(argument);
+        json newConfig = json::parse(configData);
         
         // Load existing config to preserve any fields not in the update
         json existingConfig;

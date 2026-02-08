@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.21)
 # ============================================================================
 project(
     SpellLearning
-    VERSION 1.0.0
+    VERSION 1.2.6
     DESCRIPTION "AI-Generated Spell Learning Tree System"
     LANGUAGES CXX
 )
@@ -88,6 +88,9 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     SPDLOG_COMPILED_LIB=1
     PLUGIN_NAME="${PROJECT_NAME}"
     PLUGIN_VERSION="${PROJECT_VERSION}"
+    PLUGIN_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+    PLUGIN_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+    PLUGIN_VERSION_PATCH=${PROJECT_VERSION_PATCH}
     PLUGIN_AUTHOR="${PLUGIN_AUTHOR}"
 )
 
@@ -101,6 +104,13 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # Output name must match project name exactly
 set_target_properties(${PROJECT_NAME} PROPERTIES
     OUTPUT_NAME "${PROJECT_NAME}"
+)
+
+# Generate fomod/info.xml from template with current version
+configure_file(
+    "${CMAKE_SOURCE_DIR}/../fomod/info.xml.in"
+    "${CMAKE_SOURCE_DIR}/../fomod/info.xml"
+    @ONLY
 )
 
 # Post-build: Copy DLL to MO2 RELEASE folder

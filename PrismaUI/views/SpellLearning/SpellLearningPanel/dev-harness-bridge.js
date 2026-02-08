@@ -74,8 +74,23 @@ window.callCpp = function(method, data) {
             break;
 
         case 'SaveSpellTree':
-            console.log('[Bridge] SaveSpellTree - stored in memory');
             window._lastSavedTree = data;
+            // In dev mode, offer the JSON as a download so it can be
+            // placed at SKSE/Plugins/SpellLearning/spell_tree.json
+            try {
+                var blob = new Blob([data], { type: 'application/json' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'spell_tree.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                console.log('[Bridge] SaveSpellTree - downloaded spell_tree.json');
+            } catch(e) {
+                console.log('[Bridge] SaveSpellTree - stored in memory (download failed)');
+            }
             if (typeof updateTreeStatus === 'function') {
                 setTimeout(function() {
                     logCppCall('in', 'updateTreeStatus', 'Tree saved (dev mode)');
@@ -170,6 +185,285 @@ window.callCpp = function(method, data) {
             }
             break;
 
+        case 'ProceduralPythonGenerate':
+            // Try real Python server first (localhost:5556), fall back to JS builder
+            (function() {
+                var request;
+                try { request = JSON.parse(data); } catch(e) { request = { spells: [], config: {} }; }
+
+                var spells = request.spells || [];
+                var config = request.config || {};
+
+                console.log('[Bridge] ProceduralPythonGenerate: ' + spells.length + ' spells');
+
+                // Try Python dev server
+                fetch('http://localhost:5556/build', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: data
+                }).then(function(resp) {
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    return resp.json();
+                }).then(function(result) {
+                    console.log('[Bridge] Python server returned result');
+                    logCppCall('in', 'onProceduralPythonComplete', 'Python server: ' + (result.success ? 'OK' : 'FAIL'));
+                    if (typeof window.onProceduralPythonComplete === 'function') {
+                        window.onProceduralPythonComplete(JSON.stringify(result));
+                    }
+                }).catch(function(err) {
+                    console.log('[Bridge] Python server not available (' + err.message + '), using JS fallback');
+                    // JS fallback: use buildProceduralTrees
+                    var treeData;
+                    if (typeof buildProceduralTrees === 'function' && spells.length > 0) {
+                        treeData = buildProceduralTrees(spells);
+                    } else {
+                        treeData = { version: '1.0', generator: 'DevHarness Fallback', schools: {} };
+                    }
+                    var result = {
+                        success: true,
+                        treeData: treeData,
+                        elapsed: '0.1'
+                    };
+                    logCppCall('in', 'onProceduralPythonComplete', 'JS fallback: ' + Object.keys(treeData.schools || {}).length + ' schools');
+                    if (typeof window.onProceduralPythonComplete === 'function') {
+                        window.onProceduralPythonComplete(JSON.stringify(result));
+                    }
+                });
+            })();
+            break;
+
+        case 'ClassicGrowthBuild':
+            // Mock: use JS ProceduralTreeBuilder if available, otherwise build minimal mock
+            setTimeout(function() {
+                var request;
+                try { request = JSON.parse(data); } catch(e) { request = { spells: [], config: {} }; }
+
+                var mockTree;
+                if (typeof buildProceduralTrees === 'function' && request.spells && request.spells.length > 0) {
+                    // Use real JS procedural builder
+                    console.log('[Bridge] ClassicGrowthBuild using ProceduralTreeBuilder');
+                    mockTree = buildProceduralTrees(request.spells);
+                } else {
+                    // Minimal mock: group spells by school, chain by tier
+                    console.log('[Bridge] ClassicGrowthBuild using minimal mock');
+                    var schoolSpells = {};
+                    (request.spells || []).forEach(function(s) {
+                        var school = s.school || 'Unknown';
+                        if (!schoolSpells[school]) schoolSpells[school] = [];
+                        schoolSpells[school].push(s);
+                    });
+
+                    mockTree = { version: '1.0', generator: 'DevHarness Mock', schools: {} };
+                    var tierOrder = ['Novice', 'Apprentice', 'Adept', 'Expert', 'Master'];
+                    for (var school in schoolSpells) {
+                        var spells = schoolSpells[school];
+                        // Sort by tier
+                        spells.sort(function(a, b) {
+                            return tierOrder.indexOf(a.skillLevel || 'Novice') - tierOrder.indexOf(b.skillLevel || 'Novice');
+                        });
+                        var rootId = spells[0].formId;
+                        var nodes = [];
+                        var parentStack = [rootId];
+                        var childCount = {};
+                        childCount[rootId] = 0;
+
+                        for (var i = 0; i < spells.length; i++) {
+                            var sp = spells[i];
+                            var node = {
+                                formId: sp.formId,
+                                name: sp.name,
+                                children: [],
+                                prerequisites: [],
+                                tier: i === 0 ? 1 : Math.floor(i / 3) + 1,
+                                skillLevel: sp.skillLevel || 'Novice'
+                            };
+
+                            if (i > 0) {
+                                // Find a parent with < 3 children
+                                var parentId = parentStack[0];
+                                for (var pi = 0; pi < parentStack.length; pi++) {
+                                    if ((childCount[parentStack[pi]] || 0) < 3) {
+                                        parentId = parentStack[pi];
+                                        break;
+                                    }
+                                }
+                                node.prerequisites.push(parentId);
+                                // Add as child to parent
+                                for (var ni = 0; ni < nodes.length; ni++) {
+                                    if (nodes[ni].formId === parentId) {
+                                        nodes[ni].children.push(sp.formId);
+                                        break;
+                                    }
+                                }
+                                childCount[parentId] = (childCount[parentId] || 0) + 1;
+                            }
+
+                            nodes.push(node);
+                            parentStack.push(sp.formId);
+                            childCount[sp.formId] = 0;
+                        }
+
+                        mockTree.schools[school] = { root: rootId, layoutStyle: 'radial', nodes: nodes };
+                    }
+                }
+
+                logCppCall('in', 'onClassicGrowthTreeData', Object.keys(mockTree.schools || {}).length + ' schools');
+                if (typeof window.onClassicGrowthTreeData === 'function') {
+                    window.onClassicGrowthTreeData(JSON.stringify(mockTree));
+                }
+            }, 500);
+            break;
+
+        case 'TreeGrowthBuild':
+            // Mock: build tree data with trunk/branch/root allocation
+            setTimeout(function() {
+                var request;
+                try { request = JSON.parse(data); } catch(e) { request = { spells: [], config: {} }; }
+
+                var cfg = request.config || {};
+                var pctTrunk = cfg.pctTrunk || 50;
+                var pctBranches = cfg.pctBranches || 30;
+                var pctRoot = cfg.pctRoot || 20;
+                var maxChildren = cfg.max_children_per_node || 4;
+
+                console.log('[Bridge] TreeGrowthBuild using minimal mock (trunk=' + pctTrunk +
+                    '%, branch=' + pctBranches + '%, root=' + pctRoot + '%)');
+
+                // Group spells by school
+                var schoolSpells = {};
+                (request.spells || []).forEach(function(s) {
+                    var school = s.school || 'Unknown';
+                    if (!schoolSpells[school]) schoolSpells[school] = [];
+                    schoolSpells[school].push(s);
+                });
+
+                var tierOrder = ['Novice', 'Apprentice', 'Adept', 'Expert', 'Master'];
+                var mockTree = { version: '1.0', generator: 'DevHarness TreeGrowth Mock', schools: {} };
+
+                for (var school in schoolSpells) {
+                    var spells = schoolSpells[school];
+                    // Sort by tier
+                    spells.sort(function(a, b) {
+                        return tierOrder.indexOf(a.skillLevel || 'Novice') - tierOrder.indexOf(b.skillLevel || 'Novice');
+                    });
+
+                    var total = spells.length;
+                    var nRoot = Math.max(1, Math.round(total * pctRoot / 100));
+                    var nTrunk = Math.max(1, Math.round(total * pctTrunk / 100));
+                    var nBranch = Math.max(0, total - nRoot - nTrunk);
+
+                    // Allocate: roots from start (lowest tier), trunk next, branches last
+                    var rootSpells = spells.slice(0, nRoot);
+                    var trunkSpells = spells.slice(nRoot, nRoot + nTrunk);
+                    var branchSpells = spells.slice(nRoot + nTrunk);
+
+                    var rootId = rootSpells[0].formId;
+                    var nodes = [];
+
+                    // Build root section — chain from root
+                    for (var ri = 0; ri < rootSpells.length; ri++) {
+                        var rs = rootSpells[ri];
+                        nodes.push({
+                            formId: rs.formId,
+                            name: rs.name,
+                            children: [],
+                            prerequisites: ri === 0 ? [] : [rootSpells[ri - 1].formId],
+                            tier: ri + 1,
+                            skillLevel: rs.skillLevel || 'Novice',
+                            section: 'root'
+                        });
+                        if (ri > 0) {
+                            // Wire parent's children
+                            for (var pn = 0; pn < nodes.length; pn++) {
+                                if (nodes[pn].formId === rootSpells[ri - 1].formId) {
+                                    nodes[pn].children.push(rs.formId);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Build trunk section — parallel chains for deep growth
+                    // 2-3 stems, each grows as a linear chain from lastRoot.
+                    // e.g. 75 nodes / 3 stems = 25 levels deep, 3 nodes wide.
+                    var numStems = Math.min(3, Math.max(2, Math.floor(trunkSpells.length / 10)));
+                    var stems = [];
+                    for (var si = 0; si < numStems; si++) stems.push([]);
+                    // Distribute spells round-robin across stems
+                    for (var ti = 0; ti < trunkSpells.length; ti++) {
+                        stems[ti % numStems].push(trunkSpells[ti]);
+                    }
+                    var lastRootId = rootSpells[rootSpells.length - 1].formId;
+                    for (var si2 = 0; si2 < stems.length; si2++) {
+                        var stemParent = lastRootId;
+                        for (var sni = 0; sni < stems[si2].length; sni++) {
+                            var ts = stems[si2][sni];
+                            nodes.push({
+                                formId: ts.formId,
+                                name: ts.name,
+                                children: [],
+                                prerequisites: [stemParent],
+                                tier: nRoot + sni + 1,
+                                skillLevel: ts.skillLevel || 'Novice',
+                                section: 'trunk'
+                            });
+                            // Wire parent
+                            for (var pn2 = 0; pn2 < nodes.length; pn2++) {
+                                if (nodes[pn2].formId === stemParent) {
+                                    nodes[pn2].children.push(ts.formId);
+                                    break;
+                                }
+                            }
+                            stemParent = ts.formId;
+                        }
+                    }
+
+                    // Build branch section — attach to trunk nodes
+                    var branchParents = trunkSpells.length > 0
+                        ? trunkSpells.map(function(s) { return s.formId; })
+                        : [rootSpells[rootSpells.length - 1].formId];
+                    var branchChildCount = {};
+                    branchParents.forEach(function(id) { branchChildCount[id] = 0; });
+
+                    for (var bi = 0; bi < branchSpells.length; bi++) {
+                        var bs = branchSpells[bi];
+                        var bParent = branchParents[0];
+                        for (var bp = 0; bp < branchParents.length; bp++) {
+                            if ((branchChildCount[branchParents[bp]] || 0) < maxChildren) {
+                                bParent = branchParents[bp];
+                                break;
+                            }
+                        }
+                        nodes.push({
+                            formId: bs.formId,
+                            name: bs.name,
+                            children: [],
+                            prerequisites: [bParent],
+                            tier: nRoot + nTrunk + bi + 1,
+                            skillLevel: bs.skillLevel || 'Novice',
+                            section: 'branch'
+                        });
+                        for (var pn3 = 0; pn3 < nodes.length; pn3++) {
+                            if (nodes[pn3].formId === bParent) {
+                                nodes[pn3].children.push(bs.formId);
+                                break;
+                            }
+                        }
+                        branchChildCount[bParent] = (branchChildCount[bParent] || 0) + 1;
+                        branchParents.push(bs.formId);
+                        branchChildCount[bs.formId] = 0;
+                    }
+
+                    mockTree.schools[school] = { root: rootId, layoutStyle: 'tree', nodes: nodes };
+                }
+
+                logCppCall('in', 'onTreeGrowthTreeData', Object.keys(mockTree.schools || {}).length + ' schools');
+                if (typeof window.onTreeGrowthTreeData === 'function') {
+                    window.onTreeGrowthTreeData(JSON.stringify(mockTree));
+                }
+            }, 500);
+            break;
+
         default:
             console.log('[Bridge] Unhandled method:', method);
     }
@@ -180,16 +474,41 @@ window.callCpp = function(method, data) {
 // ============================================================================
 
 function mockScanSpells(configStr) {
+    // Check if this is a tomes-only scan (for filtering)
+    var isTomeScan = false;
+    try {
+        var cfg = JSON.parse(configStr);
+        isTomeScan = cfg.scanMode === 'tomes';
+    } catch (e) {}
+
+    if (isTomeScan && window._mockSpellData) {
+        // Return ~70% of spells as "tomed" with scanMode marker
+        var tomed = window._mockSpellData.filter(function(s, i) { return i % 3 !== 0; });
+        var tomeResult = {
+            scanMode: 'spell_tomes',
+            spellCount: tomed.length,
+            spells: tomed.map(function(s) {
+                return Object.assign({}, s, { tomeFormId: 'tome_' + s.formId, tomeName: s.name + ' Tome' });
+            })
+        };
+        logCppCall('in', 'updateSpellData', tomed.length + ' tomed spells');
+        if (typeof window.updateSpellData === 'function') {
+            window.updateSpellData(JSON.stringify(tomeResult));
+        }
+        return;
+    }
+
     if (window._mockSpellData) {
+        var allResult = { scanMode: 'all_spells', spellCount: window._mockSpellData.length, spells: window._mockSpellData };
         logCppCall('in', 'updateSpellData', window._mockSpellData.length + ' spells');
         if (typeof window.updateSpellData === 'function') {
-            window.updateSpellData(JSON.stringify(window._mockSpellData));
+            window.updateSpellData(JSON.stringify(allResult));
         }
         updateHarnessStatus();
         return;
     }
 
-    // Load from test-data files
+    // Load from pre-scanned school data files (synced from MO2/overwrite)
     var schools = ['Alteration', 'Conjuration', 'Destruction', 'Illusion', 'Restoration'];
     var allSpells = [];
     var loaded = 0;
@@ -201,14 +520,20 @@ function mockScanSpells(configStr) {
                 var spells = data.spells || (Array.isArray(data) ? data : []);
                 spells.forEach(function(s) {
                     s.school = s.school || school;
+                    // Extract plugin name from persistentId (e.g. "Skyrim.esm|0x10F7EE")
+                    if (!s.plugin && s.persistentId) {
+                        var parts = s.persistentId.split('|');
+                        if (parts.length >= 1) s.plugin = parts[0];
+                    }
                     allSpells.push(s);
                 });
                 loaded++;
                 if (loaded === schools.length) {
                     window._mockSpellData = allSpells;
+                    var result = { scanMode: 'all_spells', spellCount: allSpells.length, spells: allSpells };
                     logCppCall('in', 'updateSpellData', allSpells.length + ' spells');
                     if (typeof window.updateSpellData === 'function') {
-                        window.updateSpellData(JSON.stringify(allSpells));
+                        window.updateSpellData(JSON.stringify(result));
                     }
                     updateHarnessStatus();
                 }
@@ -218,8 +543,9 @@ function mockScanSpells(configStr) {
                 loaded++;
                 if (loaded === schools.length && allSpells.length > 0) {
                     window._mockSpellData = allSpells;
+                    var result = { scanMode: 'all_spells', spellCount: allSpells.length, spells: allSpells };
                     if (typeof window.updateSpellData === 'function') {
-                        window.updateSpellData(JSON.stringify(allSpells));
+                        window.updateSpellData(JSON.stringify(result));
                     }
                     updateHarnessStatus();
                 }
@@ -335,10 +661,45 @@ window.addEventListener('load', function() {
             logCppCall('in', 'onPanelShowing', '');
             window.onPanelShowing();
         }
-        // Also trigger python addon status
-        if (typeof window.onPythonAddonStatus === 'function') {
-            window.onPythonAddonStatus(JSON.stringify({ installed: true, hasScript: true, hasPython: true, pythonSource: 'mock' }));
-        }
+
+        // Probe Python dev server — report real status to UI
+        window._pythonServerAvailable = false;
+        fetch('http://localhost:5556/build', { method: 'OPTIONS' })
+            .then(function(r) {
+                window._pythonServerAvailable = true;
+                console.log('[DevHarness] Python dev server ONLINE (port 5556)');
+                if (typeof window.onPythonAddonStatus === 'function') {
+                    window.onPythonAddonStatus(JSON.stringify({
+                        installed: true, hasScript: true, hasPython: true,
+                        pythonSource: 'dev_server (localhost:5556)'
+                    }));
+                }
+                // Show in toolbar
+                var statusEl = document.getElementById('harness-status');
+                if (statusEl) {
+                    var tag = document.createElement('span');
+                    tag.style.cssText = 'color:#3fb950;font-weight:600;';
+                    tag.textContent = 'Python: LIVE';
+                    statusEl.appendChild(tag);
+                }
+            })
+            .catch(function() {
+                console.log('[DevHarness] Python dev server offline — JS fallback active');
+                console.log('[DevHarness] To enable: python dev_server.py  (in SpellTreeBuilder/)');
+                if (typeof window.onPythonAddonStatus === 'function') {
+                    window.onPythonAddonStatus(JSON.stringify({
+                        installed: true, hasScript: true, hasPython: true,
+                        pythonSource: 'mock (python server offline)'
+                    }));
+                }
+                var statusEl = document.getElementById('harness-status');
+                if (statusEl) {
+                    var tag = document.createElement('span');
+                    tag.style.cssText = 'color:#d29922;';
+                    tag.textContent = 'Python: offline (JS fallback)';
+                    statusEl.appendChild(tag);
+                }
+            });
     }, 500);
 });
 

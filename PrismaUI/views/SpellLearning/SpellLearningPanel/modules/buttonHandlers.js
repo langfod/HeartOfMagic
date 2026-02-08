@@ -57,30 +57,34 @@ function onFullAutoClick() {
 
 function startScan(autoGenerate) {
     state.fullAutoMode = autoGenerate;
-    
-    // Check scan mode
-    var scanModeTomesEl = document.getElementById('scanModeTomes');
-    var useTomeMode = scanModeTomesEl ? scanModeTomesEl.checked : false;
-    var statusMsg = useTomeMode ? 'Scanning spell tomes...' : 'Scanning all spells...';
+
+    // Always scan ALL spells - tome toggle is a client-side filter for primed count
+    var statusMsg = 'Scanning all spells...';
     if (autoGenerate) {
         statusMsg = 'Step 1/3: ' + statusMsg;
     }
-    
+
     updateStatus(statusMsg);
     setStatusIcon('...');
-    
+    if (typeof updateScanStatus === 'function') updateScanStatus(statusMsg, 'working');
+
     var scanBtn = document.getElementById('scanBtn');
     if (scanBtn) {
         scanBtn.disabled = true;
         scanBtn.textContent = 'Scanning...';
     }
-    
+
+    // Always include plugin field — needed for whitelist filtering even if user preset doesn't show it
+    var scanFields = {};
+    for (var key in state.fields) { scanFields[key] = state.fields[key]; }
+    scanFields.plugin = true;
+
     var scanConfig = {
-        fields: state.fields,
+        fields: scanFields,
         treeRulesPrompt: getTreeRulesPrompt(),
-        scanMode: useTomeMode ? 'tomes' : 'all'
+        scanMode: 'all'
     };
-    
+
     if (window.callCpp) {
         window.callCpp('ScanSpells', JSON.stringify(scanConfig));
     } else {
@@ -88,7 +92,7 @@ function startScan(autoGenerate) {
         setTimeout(function() {
             var mockData = {
                 scanTimestamp: new Date().toISOString(),
-                scanMode: useTomeMode ? 'spell_tomes' : 'all_spells',
+                scanMode: 'all_spells',
                 spellCount: 3,
                 treeRulesPrompt: getTreeRulesPrompt(),
                 spells: [
@@ -107,12 +111,14 @@ function onSaveClick() {
     var content = outputAreaEl ? outputAreaEl.value : '';
     
     if (!content || content.trim().length === 0) {
-        updateStatus('Nothing to save - scan spells first');
+        updateStatus('Nothing to export - scan spells first');
         setStatusIcon('!');
+        if (typeof updateScanStatus === 'function') updateScanStatus('Nothing to export - scan spells first', 'error');
         return;
     }
-    
+
     if (window.callCpp) {
+        if (typeof updateScanStatus === 'function') updateScanStatus('Exporting scan data...', 'working');
         window.callCpp('SaveOutput', content);
             } else {
         updateStatus('Cannot save - C++ bridge not ready');

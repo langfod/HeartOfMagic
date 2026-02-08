@@ -211,11 +211,11 @@
     var panel = document.getElementById('spellPanel');
     if (panel) {
         panel.style.display = '';
-        // In dev harness, start fullscreen-ish
+        // In dev harness, fill viewport below toolbar (36px) and above status bar (28px)
         panel.style.width = '100%';
         panel.style.height = 'calc(100vh - 64px)';
         panel.style.left = '0';
-        panel.style.top = '0';
+        panel.style.top = '36px';
         panel.style.transform = 'none';
         panel.style.borderRadius = '0';
     }
