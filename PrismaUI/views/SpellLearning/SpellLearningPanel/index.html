@@ -99,10 +99,6 @@
                 <div class="scan-section" id="treeBuildSection">
                 </div>
 
-                <!-- Section 2a: Core Settings -->
-                <div class="scan-section" id="treeCoreSection">
-                </div>
-
                 <!-- Section 2b: Tree Growth -->
                 <div class="scan-section" id="treeGrowthSection">
                 </div>
@@ -114,21 +110,248 @@
                 <!-- Hidden output area used by Export Scan and C++ callbacks -->
                 <textarea id="outputArea" style="display:none;"></textarea>
 
+                <!-- ============================================================ -->
+                <!-- Section 4: EXTRA SETTINGS (PRM + Alternate Pathways) -->
+                <!-- ============================================================ -->
+                <div class="scan-section" id="prereqMasterSection" style="display:none;">
+                    <div class="settings-block prm-block">
+                        <div class="settings-block-header prm-header" id="prmToggleHeader">
+                            <span class="settings-block-icon">[+]</span>
+                            <span class="settings-block-title">Extra Settings</span>
+                            <span class="prm-collapse-icon">[-]</span>
+                        </div>
+                        <div class="settings-block-content prm-content" id="prmContent">
+
+                            <!-- Master Enable Toggle -->
+                            <div class="setting-row prm-enable-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Enable Lock Prerequisites</span>
+                                    <span class="setting-desc">Auto-generates lock prereqs when building tree</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="prmEnabled" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+
+                            <!-- Split: Settings left, Preview right -->
+                            <div class="prm-split">
+                                <!-- LEFT: Tabs + Settings -->
+                                <div class="prm-split-left">
+
+                                    <!-- Tab Bar -->
+                                    <div class="prm-tabs">
+                                        <button class="prm-tab active" data-prm-tab="locks">Pre Req Master</button>
+                                        <button class="prm-tab" data-prm-tab="core">Core</button>
+                                        <button class="prm-tab disabled" data-prm-tab="altpaths" disabled>Alternate Pathways</button>
+                                    </div>
+
+                                    <!-- TAB: Pre Req Master (Locks) -->
+                                    <div class="prm-tab-content" id="prmTabLocks">
+
+                                        <!-- A. Global Lock % -->
+                                        <div class="setting-row slider-row">
+                                            <div class="setting-info">
+                                                <span class="setting-label">Global Lock %</span>
+                                                <span class="setting-desc">% of total spells to add lock prereqs to</span>
+                                            </div>
+                                            <div class="slider-container">
+                                                <input type="range" id="prmGlobalLockSlider" min="0" max="100" value="30" step="5" class="setting-slider">
+                                                <span id="prmGlobalLockValue" class="slider-value">30%</span>
+                                            </div>
+                                        </div>
+
+                                        <!-- B. Per-Tier % Controls -->
+                                        <div class="settings-subsection">
+                                            <span class="subsection-title">Lock % by Tier</span>
+                                        </div>
+                                        <div class="tier-xp-grid">
+                                            <div class="tier-xp-item">
+                                                <label for="prmTierNovice">Novice</label>
+                                                <input type="number" id="prmTierNovice" class="tier-xp-input" value="0" min="0" max="100">
+                                                <span class="tier-xp-unit">%</span>
+                                            </div>
+                                            <div class="tier-xp-item">
+                                                <label for="prmTierApprentice">Apprentice</label>
+                                                <input type="number" id="prmTierApprentice" class="tier-xp-input" value="10" min="0" max="100">
+                                                <span class="tier-xp-unit">%</span>
+                                            </div>
+                                            <div class="tier-xp-item">
+                                                <label for="prmTierAdept">Adept</label>
+                                                <input type="number" id="prmTierAdept" class="tier-xp-input" value="25" min="0" max="100">
+                                                <span class="tier-xp-unit">%</span>
+                                            </div>
+                                            <div class="tier-xp-item">
+                                                <label for="prmTierExpert">Expert</label>
+                                                <input type="number" id="prmTierExpert" class="tier-xp-input" value="40" min="0" max="100">
+                                                <span class="tier-xp-unit">%</span>
+                                            </div>
+                                            <div class="tier-xp-item">
+                                                <label for="prmTierMaster">Master</label>
+                                                <input type="number" id="prmTierMaster" class="tier-xp-input" value="50" min="0" max="100">
+                                                <span class="tier-xp-unit">%</span>
+                                            </div>
+                                        </div>
+
+                                        <!-- C. School Distribution -->
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <span class="setting-label">School Distribution</span>
+                                            </div>
+                                            <select id="prmSchoolDistribution" class="setting-select">
+                                                <option value="proportional">Proportional</option>
+                                                <option value="even">Even</option>
+                                                <option value="random">Random</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- D. Selection Pool -->
+                                        <div class="settings-subsection">
+                                            <span class="subsection-title">Selection Pool</span>
+                                        </div>
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <span class="setting-label">Pool Source</span>
+                                            </div>
+                                            <select id="prmPoolSource" class="setting-select">
+                                                <option value="same_school">Same School</option>
+                                                <option value="any_school">Any School</option>
+                                                <option value="nearby" selected>Nearby</option>
+                                            </select>
+                                        </div>
+                                        <div class="setting-pair" id="prmNearbyControls">
+                                            <div class="setting-row slider-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Distance</span>
+                                                </div>
+                                                <div class="slider-container">
+                                                    <input type="range" id="prmDistanceSlider" min="1" max="20" value="5" step="1" class="setting-slider">
+                                                    <span id="prmDistanceValue" class="slider-value">5</span>
+                                                </div>
+                                            </div>
+                                            <div class="setting-row slider-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Proximity Bias</span>
+                                                </div>
+                                                <div class="slider-container">
+                                                    <input type="range" id="prmProximityBiasSlider" min="0" max="100" value="50" step="5" class="setting-slider">
+                                                    <span id="prmProximityBiasValue" class="slider-value">50%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- E. Tier Constraints -->
+                                        <div class="prm-tier-constraints">
+                                            <label class="prm-constraint-toggle">
+                                                <input type="checkbox" id="prmSameTier" checked>
+                                                <span class="toggle-slider-mini"></span>
+                                                <span>Same</span>
+                                            </label>
+                                            <label class="prm-constraint-toggle">
+                                                <input type="checkbox" id="prmPrevTier" checked>
+                                                <span class="toggle-slider-mini"></span>
+                                                <span>Prev</span>
+                                            </label>
+                                            <label class="prm-constraint-toggle">
+                                                <input type="checkbox" id="prmHigherTier">
+                                                <span class="toggle-slider-mini"></span>
+                                                <span>Higher</span>
+                                            </label>
+                                        </div>
+
+                                        <!-- F. Action Buttons -->
+                                        <div class="prm-actions">
+                                            <button id="prmApplyBtn" class="btn btn-primary" disabled>
+                                                <span class="btn-icon">[L]</span> Apply Locks
+                                            </button>
+                                            <button id="prmClearBtn" class="btn btn-secondary" disabled>
+                                                <span class="btn-icon">[X]</span> Clear
+                                            </button>
+                                            <span id="prmStatus" class="prm-status">Build a tree first</span>
+                                        </div>
+
+                                    </div><!-- /prmTabLocks -->
+
+                                    <!-- TAB: Core Settings (Globe) -->
+                                    <div class="prm-tab-content" id="prmTabCore" style="display:none;">
+                                        <div class="settings-subsection">
+                                            <span class="subsection-title">Globe Position</span>
+                                        </div>
+                                        <div class="setting-row slider-row">
+                                            <div class="setting-info">
+                                                <span class="setting-label">H Offset</span>
+                                            </div>
+                                            <div class="slider-container">
+                                                <input type="range" id="prmGlobeHOffset" min="-500" max="500" value="0" step="5" class="setting-slider">
+                                                <span id="prmGlobeHValue" class="slider-value">0</span>
+                                            </div>
+                                        </div>
+                                        <div class="setting-row slider-row">
+                                            <div class="setting-info">
+                                                <span class="setting-label">V Offset</span>
+                                            </div>
+                                            <div class="slider-container">
+                                                <input type="range" id="prmGlobeVOffset" min="-500" max="500" value="0" step="5" class="setting-slider">
+                                                <span id="prmGlobeVValue" class="slider-value">0</span>
+                                            </div>
+                                        </div>
+                                        <div class="setting-row slider-row">
+                                            <div class="setting-info">
+                                                <span class="setting-label">Radius</span>
+                                            </div>
+                                            <div class="slider-container">
+                                                <input type="range" id="prmGlobeRadius" min="10" max="200" value="45" step="5" class="setting-slider">
+                                                <span id="prmGlobeRadiusValue" class="slider-value">45</span>
+                                            </div>
+                                        </div>
+                                    </div><!-- /prmTabCore -->
+
+                                    <!-- TAB: Alternate Pathways (placeholder) -->
+                                    <div class="prm-tab-content" id="prmTabAltPaths" style="display:none;">
+                                        <div class="prm-coming-soon">
+                                            <span class="coming-soon-badge">COMING SOON</span>
+                                            <p>Alternate Pathways will configure additional soft routes through the skill tree.</p>
+                                        </div>
+                                    </div><!-- /prmTabAltPaths -->
+
+                                </div><!-- /prm-split-left -->
+
+                                <!-- RIGHT: Shared Preview Canvas -->
+                                <div class="prm-split-right" id="prmPreviewWrap">
+                                    <!-- Canvas created dynamically by prereqMaster.js -->
+                                </div>
+
+                            </div><!-- /prm-split -->
+
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Shared Build/Apply/Clear - Sticky at bottom -->
                 <div class="scan-actions-sticky scan-actions-bottom">
-                    <button id="tgBuildBtn" class="btn" disabled>
-                        <span class="btn-icon">[B]</span> Build Tree
-                    </button>
-                    <button id="tgApplyBtn" class="btn" disabled>
-                        <span class="btn-icon">[A]</span> Apply Tree
-                    </button>
-                    <button id="tgClearBtn" class="btn btn-danger" disabled>
-                        <span class="btn-icon">[X]</span> Clear Tree
-                    </button>
-                    <button id="tgSetupPythonBtn" class="btn" style="display:none;">
-                        Setup Python
-                    </button>
-                    <span style="margin-left:8px; font-size:11px;">Status: <span id="tgStatus" style="color:rgba(184,168,120,0.5);">Waiting for scan...</span></span>
+                    <!-- Scanner Presets row (hidden when no presets) -->
+                    <div id="scannerPresetsRow" class="scanner-presets-row">
+                        <span class="scanner-presets-label">PRESETS</span>
+                        <button id="saveScannerPresetBtn" class="btn btn-sm scanner-preset-save-btn">[+] Save</button>
+                        <div class="scanner-presets-divider"></div>
+                        <div id="scannerPresetChips" class="scanner-preset-chips"></div>
+                    </div>
+                    <!-- Action buttons -->
+                    <div class="scan-actions-buttons">
+                        <button id="tgBuildBtn" class="btn btn-success" disabled>
+                            <span class="btn-icon">[B]</span> Build Tree
+                        </button>
+                        <button id="tgApplyBtn" class="btn btn-primary" disabled>
+                            <span class="btn-icon">[A]</span> Apply Tree
+                        </button>
+                        <button id="tgClearBtn" class="btn btn-danger" disabled>
+                            <span class="btn-icon">[X]</span> Clear Tree
+                        </button>
+                        <button id="tgSetupPythonBtn" class="btn" style="display:none;">
+                            Setup Python
+                        </button>
+                        <span style="margin-left:8px; font-size:11px;">Status: <span id="tgStatus" style="color:rgba(184,168,120,0.5);">Waiting for scan...</span></span>
+                    </div>
                 </div>
             </div>
 
@@ -478,6 +701,11 @@
                         <div class="detail-section">
                             <span class="detail-label">Unlocks</span>
                             <ul id="spell-unlocks" class="detail-list clickable"></ul>
+                        </div>
+                        
+                        <div class="detail-section" id="locks-section" style="display:none;">
+                            <span class="detail-label">Locks <span class="lock-label">LOCK</span></span>
+                            <ul id="locks-list" class="detail-list clickable"></ul>
                         </div>
                     </div>
                     
@@ -1565,6 +1793,7 @@
     <script src="modules/treeViewerUI.js"></script>
     <script src="modules/progressionUI.js"></script>
     <script src="modules/difficultyProfiles.js"></script>
+    <script src="modules/scannerPresets.js"></script>
     <script src="modules/llmApiSettings.js"></script>
     <script src="modules/buttonHandlers.js"></script>
     
@@ -1583,6 +1812,7 @@
 
     <!-- 5c. Tree Growth -->
     <script src="modules/classic/classicRenderer.js"></script>
+    <script src="modules/classic/classicThemeEngine.js"></script>
     <script src="modules/classic/classicLayout.js"></script>
     <script src="modules/classic/classicSettings.js"></script>
     <script src="modules/classic/classicMain.js"></script>
@@ -1607,6 +1837,9 @@
     <script src="modules/settingsAwareTreeBuilder.js"></script>
 
     <script src="modules/generationModeUI.js"></script>
+
+    <!-- 6.6. Pre Req Master -->
+    <script src="modules/prereqMaster.js"></script>
     
     <!-- 7. Main Application (init, tabs, dragging, early learning settings) -->
     <script src="script.js"></script>

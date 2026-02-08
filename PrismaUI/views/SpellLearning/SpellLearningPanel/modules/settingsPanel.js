@@ -778,6 +778,9 @@ function initializeSettings() {
     // Difficulty Profile System
     try { initializeDifficultyProfiles(); } catch(e) { console.error('[SpellLearning] Difficulty profiles init error:', e); }
 
+    // Scanner Presets
+    try { if (typeof initializeScannerPresets === 'function') initializeScannerPresets(); } catch(e) { console.error('[SpellLearning] Scanner presets init error:', e); }
+
     // Dynamic Tree Building Settings
     try {
         initializeDynamicTreeBuildingSettings();
@@ -1243,7 +1246,10 @@ function saveUnifiedConfig() {
         pluginWhitelist: settings.pluginWhitelist || [],
 
         // Dynamic tree building settings
-        treeGeneration: settings.treeGeneration
+        treeGeneration: settings.treeGeneration,
+
+        // Scanner presets (user-saved tree building configurations)
+        scannerPresets: scannerPresets
     };
 
     console.log('[SpellLearning] Saving unified config');
@@ -1495,6 +1501,17 @@ window.onUnifiedConfigLoaded = function(dataStr) {
             console.log('[SpellLearning] Loaded', Object.keys(customProfiles).length, 'custom profiles');
         } else {
             customProfiles = {};
+        }
+
+        // Scanner presets
+        if (data.scannerPresets && typeof data.scannerPresets === 'object') {
+            scannerPresets = data.scannerPresets;
+            console.log('[SpellLearning] Loaded', Object.keys(scannerPresets).length, 'scanner presets');
+        } else {
+            scannerPresets = {};
+        }
+        if (typeof updateScannerPresetsUI === 'function') {
+            updateScannerPresetsUI();
         }
         
         // Discovery mode

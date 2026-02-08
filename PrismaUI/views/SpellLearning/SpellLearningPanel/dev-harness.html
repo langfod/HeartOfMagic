@@ -218,19 +218,29 @@
 
                     <!-- Shared Build/Apply/Clear - Sticky at bottom -->
                     <div class="scan-actions-sticky scan-actions-bottom">
-                        <button id="tgBuildBtn" class="btn" disabled>
-                            <span class="btn-icon">[B]</span> Build Tree
-                        </button>
-                        <button id="tgApplyBtn" class="btn" disabled>
-                            <span class="btn-icon">[A]</span> Apply Tree
-                        </button>
-                        <button id="tgClearBtn" class="btn btn-danger" disabled>
-                            <span class="btn-icon">[X]</span> Clear Tree
-                        </button>
-                        <button id="tgSetupPythonBtn" class="btn" style="display:none;">
-                            Setup Python
-                        </button>
-                        <span style="margin-left:8px; font-size:11px;">Status: <span id="tgStatus" style="color:rgba(184,168,120,0.5);">Waiting for scan...</span></span>
+                        <!-- Scanner Presets row (hidden when no presets) -->
+                        <div id="scannerPresetsRow" class="scanner-presets-row">
+                            <span class="scanner-presets-label">PRESETS</span>
+                            <button id="saveScannerPresetBtn" class="btn btn-sm scanner-preset-save-btn">[+] Save</button>
+                            <div class="scanner-presets-divider"></div>
+                            <div id="scannerPresetChips" class="scanner-preset-chips"></div>
+                        </div>
+                        <!-- Action buttons -->
+                        <div class="scan-actions-buttons">
+                            <button id="tgBuildBtn" class="btn" disabled>
+                                <span class="btn-icon">[B]</span> Build Tree
+                            </button>
+                            <button id="tgApplyBtn" class="btn" disabled>
+                                <span class="btn-icon">[A]</span> Apply Tree
+                            </button>
+                            <button id="tgClearBtn" class="btn btn-danger" disabled>
+                                <span class="btn-icon">[X]</span> Clear Tree
+                            </button>
+                            <button id="tgSetupPythonBtn" class="btn" style="display:none;">
+                                Setup Python
+                            </button>
+                            <span style="margin-left:8px; font-size:11px;">Status: <span id="tgStatus" style="color:rgba(184,168,120,0.5);">Waiting for scan...</span></span>
+                        </div>
                     </div>
                 </div>
 
@@ -697,6 +707,7 @@
     <script src="modules/treeViewerUI.js"></script>
     <script src="modules/progressionUI.js"></script>
     <script src="modules/difficultyProfiles.js"></script>
+    <script src="modules/scannerPresets.js"></script>
     <script src="modules/llmApiSettings.js"></script>
     <script src="modules/buttonHandlers.js"></script>
     <script src="modules/treePreviewUtils.js"></script>

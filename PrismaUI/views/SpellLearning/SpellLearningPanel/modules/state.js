@@ -302,6 +302,9 @@ var settings = {
 // Custom difficulty profiles (user-created)
 var customProfiles = {};
 
+// Scanner presets (user-saved tree building configurations)
+var scannerPresets = {};
+
 // Per-node XP requirement overrides (formId -> requiredXP)
 var xpOverrides = {};
 
