@@ -110,14 +110,7 @@ var TreeGrowth = {
                 '<button class="tree-growth-tab" data-mode="tree">TREE</button>' +
                 '<button class="tree-growth-tab disabled" data-mode="life" disabled>LIFE</button>' +
             '</div>' +
-            // Shared action buttons (persist across tab switches)
-            '<div id="tgSharedActions" style="margin: 6px 8px; display:flex; align-items:center; gap:4px; flex-wrap:wrap;">' +
-                '<button id="tgBuildBtn" class="tree-action-btn" style="padding:4px 10px;" disabled>Build Tree</button>' +
-                '<button id="tgApplyBtn" class="tree-action-btn" style="padding:4px 10px;" disabled>Apply Tree</button>' +
-                '<button id="tgClearBtn" class="tree-action-btn" style="padding:4px 10px;" disabled>Clear Tree</button>' +
-                '<button id="tgSetupPythonBtn" class="tree-action-btn" style="padding:4px 10px; display:none;">Setup Python</button>' +
-                '<span style="margin-left:8px; font-size:11px;">Status: <span id="tgStatus" style="color:rgba(184,168,120,0.5);">Waiting for scan...</span></span>' +
-            '</div>' +
+            // Shared action buttons now live in index.html scan-actions-bottom
             '<div class="tree-preview-split" style="height:800px;">' +
                 '<div class="tree-preview-left" id="treeGrowthSettings">' +
                     '<!-- Settings injected by active growth mode module -->' +

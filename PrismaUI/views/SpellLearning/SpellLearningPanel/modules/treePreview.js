@@ -305,6 +305,9 @@ var TreePreview = {
     _markDirty: function() {
         this._needsRender = true;
         // Also notify downstream sections that depend on our output
+        if (typeof TreeCore !== 'undefined' && TreeCore._markDirty) {
+            TreeCore._markDirty();
+        }
         if (typeof TreeGrowth !== 'undefined' && TreeGrowth._markDirty) {
             TreeGrowth._markDirty();
         }

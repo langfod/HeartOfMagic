@@ -201,6 +201,10 @@
                     <div class="scan-section" id="treeBuildSection">
                     </div>
 
+                    <!-- Section 2a: Core Settings -->
+                    <div class="scan-section" id="treeCoreSection">
+                    </div>
+
                     <!-- Section 2b: Tree Growth -->
                     <div class="scan-section" id="treeGrowthSection">
                     </div>
@@ -212,14 +216,21 @@
                     <!-- Hidden output area used by Export Scan and C++ callbacks -->
                     <textarea id="outputArea" style="display:none;"></textarea>
 
-                    <!-- Build/Clear - Sticky at bottom (mirrors settings page pattern) -->
+                    <!-- Shared Build/Apply/Clear - Sticky at bottom -->
                     <div class="scan-actions-sticky scan-actions-bottom">
-                        <button id="proceduralBtn" class="btn btn-success" disabled>
-                            <span class="btn-icon">[T]</span> Build Tree
+                        <button id="tgBuildBtn" class="btn" disabled>
+                            <span class="btn-icon">[B]</span> Build Tree
                         </button>
-                        <button id="clearTreeBtn" class="btn btn-danger">
+                        <button id="tgApplyBtn" class="btn" disabled>
+                            <span class="btn-icon">[A]</span> Apply Tree
+                        </button>
+                        <button id="tgClearBtn" class="btn btn-danger" disabled>
                             <span class="btn-icon">[X]</span> Clear Tree
                         </button>
+                        <button id="tgSetupPythonBtn" class="btn" style="display:none;">
+                            Setup Python
+                        </button>
+                        <span style="margin-left:8px; font-size:11px;">Status: <span id="tgStatus" style="color:rgba(184,168,120,0.5);">Waiting for scan...</span></span>
                     </div>
                 </div>
 
@@ -658,6 +669,7 @@
     <script src="modules/treePreviewSun.js"></script>
     <script src="modules/treePreviewFlat.js"></script>
     <script src="modules/treePreview.js"></script>
+    <script src="modules/treeCore.js"></script>
     <script src="modules/classic/classicRenderer.js"></script>
     <script src="modules/classic/classicLayout.js"></script>
     <script src="modules/classic/classicSettings.js"></script>

@@ -22,10 +22,13 @@ var EditMode = {
     // Move tool state
     isDragging: false,
     draggedNode: null,
+    draggedGlobe: null,
     dragStartX: 0,
     dragStartY: 0,
     originalNodeX: 0,
     originalNodeY: 0,
+    originalGlobeX: 0,
+    originalGlobeY: 0,
 
     // Pen tool state
     penStartNode: null,
@@ -238,63 +241,16 @@ var EditMode = {
     buildGridPositions: function() {
         this.gridPositions = [];
 
-        if (typeof CanvasRenderer === 'undefined' || !CanvasRenderer.schools) return;
+        var spacing = 50;
+        var extent = 1300;
 
-        var schoolNames = Object.keys(CanvasRenderer.schools);
-        if (schoolNames.length === 0) return;
-
-        // MUST match LayoutEngine.getFixedGridPositions() defaults exactly
-        var gridCfg = typeof GRID_CONFIG !== 'undefined' ? GRID_CONFIG.getComputedConfig() : {
-            baseRadius: 90,
-            tierSpacing: 52,
-            arcSpacing: 56,
-            maxTiers: 25
-        };
-
-        var baseRadius = gridCfg.baseRadius;
-        var tierSpacing = gridCfg.tierSpacing;
-        var arcSpacing = gridCfg.arcSpacing;
-        var maxTiers = gridCfg.maxTiers;
-        var totalSchools = schoolNames.length;
-
-        for (var schoolIdx = 0; schoolIdx < totalSchools; schoolIdx++) {
-            var schoolName = schoolNames[schoolIdx];
-
-            // FIXED: Use the SAME angle formula as LayoutEngine.getFixedGridPositions()
-            // instead of school.startAngle (which can differ after _computeSchoolAngles)
-            var sliceAngle = 360 / totalSchools;
-            var startAngle = schoolIdx * sliceAngle - 90;
-            var usableAngle = sliceAngle * 0.85;
-            var centerAngle = startAngle + sliceAngle / 2;
-            var halfSpread = usableAngle / 2;
-
-            for (var tier = 0; tier < maxTiers; tier++) {
-                var radius = baseRadius + tier * tierSpacing;
-                var arcLength = (sliceAngle / 360) * 2 * Math.PI * radius;
-                var candidateCount = Math.max(3, Math.floor(arcLength / arcSpacing));
-
-                var angleStep = candidateCount > 1 ? usableAngle / (candidateCount - 1) : 0;
-
-                for (var i = 0; i < candidateCount; i++) {
-                    var angle = candidateCount === 1
-                        ? centerAngle
-                        : (centerAngle - halfSpread + i * angleStep);
-                    var rad = angle * Math.PI / 180;
-                    var x = Math.cos(rad) * radius;
-                    var y = Math.sin(rad) * radius;
-
-                    this.gridPositions.push({
-                        x: x,
-                        y: y,
-                        school: schoolName,
-                        tier: tier,
-                        angle: angle
-                    });
-                }
+        for (var gx = -extent; gx <= extent; gx += spacing) {
+            for (var gy = -extent; gy <= extent; gy += spacing) {
+                this.gridPositions.push({ x: gx, y: gy });
             }
         }
 
-        console.log('[EditMode] Built ' + this.gridPositions.length + ' grid positions');
+        console.log('[EditMode] Built ' + this.gridPositions.length + ' square grid positions');
     },
 
     /**
@@ -449,6 +405,9 @@ var EditMode = {
             case 'move':
                 this._undoMove(action.data);
                 break;
+            case 'moveGlobe':
+                this._undoMoveGlobe(action.data);
+                break;
             case 'addPrereq':
                 this._undoAddPrereq(action.data);
                 break;
@@ -477,6 +436,17 @@ var EditMode = {
             this.saveTree();
             CanvasRenderer._needsRender = true;
             CanvasRenderer.buildSpatialIndex();
+        }
+    },
+
+    _undoMoveGlobe: function(data) {
+        var globe = (state.treeData && state.treeData.globe);
+        if (globe) {
+            globe.x = data.oldX;
+            globe.y = data.oldY;
+            this.syncGlobePositionToRawData();
+            this.saveTree();
+            CanvasRenderer._needsRender = true;
         }
     },
 
@@ -687,11 +657,27 @@ var EditMode = {
     // =========================================================================
 
     handleMoveMouseDown: function(e, world) {
+        // Check globe first (it's on top visually)
+        var globe = CanvasRenderer.findGlobeAt(world.x, world.y);
+        if (globe && e.button === 0) {
+            this.isDragging = true;
+            this.draggedGlobe = globe;
+            this.draggedNode = null;
+            this.dragStartX = world.x;
+            this.dragStartY = world.y;
+            this.originalGlobeX = globe.x;
+            this.originalGlobeY = globe.y;
+            CanvasRenderer.canvas.style.cursor = 'grabbing';
+            console.log('[EditMode] Started dragging globe');
+            return;
+        }
+
         var node = CanvasRenderer.findNodeAt(world.x, world.y);
 
         if (node && e.button === 0) {
             this.isDragging = true;
             this.draggedNode = node;
+            this.draggedGlobe = null;
             this.dragStartX = world.x;
             this.dragStartY = world.y;
             this.originalNodeX = node.x;
@@ -704,6 +690,12 @@ var EditMode = {
     },
 
     handleMoveMouseMove: function(e, world) {
+        if (this.isDragging && this.draggedGlobe) {
+            this.draggedGlobe.x = this.originalGlobeX + (world.x - this.dragStartX);
+            this.draggedGlobe.y = this.originalGlobeY + (world.y - this.dragStartY);
+            CanvasRenderer._needsRender = true;
+            return;
+        }
         if (this.isDragging && this.draggedNode) {
             this.draggedNode.x = this.originalNodeX + (world.x - this.dragStartX);
             this.draggedNode.y = this.originalNodeY + (world.y - this.dragStartY);
@@ -714,6 +706,47 @@ var EditMode = {
     },
 
     handleMoveMouseUp: function(e, world) {
+        if (this.isDragging && this.draggedGlobe) {
+            // Snap globe to grid if Shift is held
+            if (e.shiftKey) {
+                var snapPos = this.findNearestEmptyGridPosition(
+                    this.draggedGlobe.x,
+                    this.draggedGlobe.y,
+                    null
+                );
+                if (snapPos) {
+                    this.draggedGlobe.x = snapPos.x;
+                    this.draggedGlobe.y = snapPos.y;
+                    console.log('[EditMode] Snapped globe to:', Math.round(snapPos.x), Math.round(snapPos.y));
+                }
+            }
+
+            // Round to 2 decimal places
+            this.draggedGlobe.x = Math.round(this.draggedGlobe.x * 100) / 100;
+            this.draggedGlobe.y = Math.round(this.draggedGlobe.y * 100) / 100;
+
+            console.log('[EditMode] Placed globe at:', this.draggedGlobe.x, this.draggedGlobe.y);
+
+            // Push to undo stack
+            this.pushUndo({
+                type: 'moveGlobe',
+                data: {
+                    oldX: this.originalGlobeX,
+                    oldY: this.originalGlobeY
+                }
+            });
+
+            // Sync to rawData and save
+            this.syncGlobePositionToRawData();
+            this.saveTree();
+
+            this.isDragging = false;
+            this.draggedGlobe = null;
+            CanvasRenderer.canvas.style.cursor = 'grab';
+            CanvasRenderer._needsRender = true;
+            return;
+        }
+
         if (this.isDragging && this.draggedNode) {
             // Only snap to grid if Shift is held
             if (e.shiftKey) {
@@ -1153,6 +1186,21 @@ var EditMode = {
             }
         }
         return false;
+    },
+
+    /**
+     * Sync globe position to rawData for serialization
+     */
+    syncGlobePositionToRawData: function() {
+        if (!state.treeData || !state.treeData.rawData) return;
+        var globe = state.treeData.globe;
+        if (!globe) return;
+        state.treeData.rawData.globe = {
+            x: globe.x,
+            y: globe.y,
+            radius: globe.radius
+        };
+        console.log('[EditMode] Synced globe position to rawData:', globe.x, globe.y);
     },
 
     /**

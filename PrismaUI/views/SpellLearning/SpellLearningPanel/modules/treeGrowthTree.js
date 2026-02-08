@@ -176,6 +176,18 @@ var TreeGrowthTree = {
             posLookup = layout.posMap;
         }
 
+        // LOG: How many positions did we get?
+        var posCount = Object.keys(posLookup).length;
+        console.log('[applyTree] layout=' + (layout ? 'yes' : 'null') +
+                    ', posMap keys=' + posCount +
+                    ', baseData=' + (baseData ? baseData.mode : 'null'));
+        if (window.callCpp) {
+            window.callCpp('LogMessage', JSON.stringify({
+                message: '[applyTree] posMap keys=' + posCount + ', baseData mode=' + (baseData ? baseData.mode : 'null'),
+                level: 'info'
+            }));
+        }
+
         // Re-center positions around (0,0) for the canvasRenderer.
         // Layout positions are in preview canvas coordinates (origin
         // at top-left, tree center at ~w/2,h/2). The wheel/canvas
@@ -235,6 +247,7 @@ var TreeGrowthTree = {
                 layoutMode: baseData ? baseData.mode : 'sun',
                 ringRadius: baseData && baseData.grid ? baseData.grid.ringRadius : 120
             },
+            globe: { x: 0, y: 0, radius: 45 },
             schools: {}
         };
 
@@ -270,6 +283,22 @@ var TreeGrowthTree = {
                     outNode.y = Math.round(pos.y * 100) / 100;
                 }
                 outNodes.push(outNode);
+            }
+
+            // LOG: Per-school position stats
+            var schoolWithPos = 0;
+            for (var ni = 0; ni < outNodes.length; ni++) {
+                if (outNodes[ni].x !== undefined || outNodes[ni].y !== undefined) schoolWithPos++;
+            }
+            var logMsg = '[applyTree] School "' + schoolName + '": ' + outNodes.length +
+                         ' nodes, ' + schoolWithPos + ' with x/y';
+            if (outNodes.length > 0) {
+                var s0 = outNodes[0];
+                logMsg += ', first={x:' + s0.x + ',y:' + s0.y + ',id:' + s0.formId + '}';
+            }
+            console.log(logMsg);
+            if (window.callCpp) {
+                window.callCpp('LogMessage', JSON.stringify({ message: logMsg, level: 'info' }));
             }
 
             // Bake sector angles from TreePreview

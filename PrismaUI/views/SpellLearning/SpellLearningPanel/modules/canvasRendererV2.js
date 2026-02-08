@@ -28,6 +28,7 @@ var CanvasRenderer = {
     panY: 0,
     rotation: 0,
     isAnimating: false,
+    noRotate: false,
     
     // Interaction state
     isPanning: false,
@@ -670,7 +671,15 @@ var CanvasRenderer = {
         
         return null;
     },
-    
+
+    findGlobeAt: function(worldX, worldY) {
+        var globe = (state.treeData && state.treeData.globe) || { x: 0, y: 0, radius: 45 };
+        var dx = worldX - globe.x;
+        var dy = worldY - globe.y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        return dist <= globe.radius ? globe : null;
+    },
+
     // =========================================================================
     // EVENT HANDLERS
     // =========================================================================
@@ -1010,9 +1019,11 @@ var CanvasRenderer = {
         // =====================================================================
         // RENDER CENTER HUB ON TOP (does NOT rotate with wheel) - with heartbeat
         // =====================================================================
+        var globeData = (state.treeData && state.treeData.globe) || { x: 0, y: 0, radius: 45 };
         ctx.save();
         ctx.translate(cx + this.panX, cy + this.panY);
         ctx.scale(this.zoom, this.zoom);
+        ctx.translate(globeData.x, globeData.y);
         // No rotation applied to hub!
         
         // Heartbeat animation - pulsing scale with configurable delay between pulse groups
@@ -1052,7 +1063,7 @@ var CanvasRenderer = {
         
         ctx.scale(scale, scale);
         
-        var baseRadius = 45;
+        var baseRadius = globeData.radius || 45;
         var ringColor = this._heartRingColor || '#b8a878';
         var bgColor = this._heartBgColor || '#000000';
         var bgOpacity = this._heartBgOpacity !== undefined ? this._heartBgOpacity : 1.0;
@@ -1650,96 +1661,18 @@ var CanvasRenderer = {
      */
     renderDebugGrid: function(ctx) {
         if (!this.showDebugGrid) return;
-        
-        var schoolNames = Object.keys(this.schools);
-        if (schoolNames.length === 0) return;
-        
-        // Layout config defaults (no GRID_CONFIG dependency)
-        var baseRadius = 90;
-        var tierSpacing = 52;
-        var arcSpacing = 56;
-        var maxTiers = 25;
-        var totalSchools = schoolNames.length;
-        
-        var defaultColors = ['#ff6666', '#66ff66', '#6666ff', '#ffff66', '#ff66ff', '#66ffff', '#ff9966'];
-        
-        for (var schoolIdx = 0; schoolIdx < totalSchools; schoolIdx++) {
-            var schoolName = schoolNames[schoolIdx];
-            var school = this.schools[schoolName];
-            
-            // Use padding-aware angle formula
-            var schoolPadding = 15;
-            var totalPadding = totalSchools * schoolPadding;
-            var availableAngle = 360 - totalPadding;
-            var sliceAngle = availableAngle / totalSchools;
-            var startAngle = schoolIdx * (sliceAngle + schoolPadding) - 90;
-            var endAngle = startAngle + sliceAngle;
-            
-            // Use school color or fallback
-            var color = this._getSchoolColor(schoolName) || defaultColors[schoolIdx % defaultColors.length];
-            
-            var startRad = startAngle * Math.PI / 180;
-            var endRad = endAngle * Math.PI / 180;
-            var outerRadius = baseRadius + maxTiers * tierSpacing;
 
-            // Draw sector boundary lines at BOTH edges of this school's slice
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 1;
-            ctx.globalAlpha = 0.3;
+        var spacing = 50;
+        var extent = 1300;
 
-            // Start boundary
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(Math.cos(startRad) * outerRadius, Math.sin(startRad) * outerRadius);
-            ctx.stroke();
-
-            // End boundary
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(Math.cos(endRad) * outerRadius, Math.sin(endRad) * outerRadius);
-            ctx.stroke();
-            
-            // Draw grid points for this school — same math as getFixedGridPositions
-            var usableAngle = sliceAngle * 0.85;
-            var centerAngle = startAngle + sliceAngle / 2;
-            var halfSpread = usableAngle / 2;
-            
-            for (var tier = 0; tier < maxTiers; tier++) {
-                var radius = baseRadius + tier * tierSpacing;
-                
-                // Calculate arc length and candidate count (matches layout engine)
-                var arcLength = (sliceAngle / 360) * 2 * Math.PI * radius;
-                var candidateCount = Math.max(3, Math.floor(arcLength / arcSpacing));
-                
-                // Draw tier arc
+        ctx.fillStyle = 'rgba(184, 168, 120, 0.35)';
+        for (var gx = -extent; gx <= extent; gx += spacing) {
+            for (var gy = -extent; gy <= extent; gy += spacing) {
                 ctx.beginPath();
-                ctx.arc(0, 0, radius, startRad, endRad);
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 0.5;
-                ctx.globalAlpha = 0.2;
-                ctx.stroke();
-                
-                // Draw candidate positions as small circles
-                var angleStep = candidateCount > 1 ? usableAngle / (candidateCount - 1) : 0;
-                
-                for (var i = 0; i < candidateCount; i++) {
-                    var angle = candidateCount === 1 
-                        ? centerAngle 
-                        : (centerAngle - halfSpread + i * angleStep);
-                    var rad = angle * Math.PI / 180;
-                    var x = Math.cos(rad) * radius;
-                    var y = Math.sin(rad) * radius;
-                    
-                    ctx.beginPath();
-                    ctx.arc(x, y, 4, 0, Math.PI * 2);
-                    ctx.fillStyle = color;
-                    ctx.globalAlpha = 0.5;
-                    ctx.fill();
-                }
+                ctx.arc(gx, gy, 3, 0, Math.PI * 2);
+                ctx.fill();
             }
         }
-        
-        ctx.globalAlpha = 1.0;
     },
     
     /**
@@ -2061,6 +1994,7 @@ var CanvasRenderer = {
     // =========================================================================
     
     rotateToNode: function(node) {
+        if (this.noRotate) return;
         if (!node || typeof node.angle === 'undefined') return;
         var targetRotation = -node.angle;
         var delta = targetRotation - this.rotation;
@@ -2070,6 +2004,7 @@ var CanvasRenderer = {
     },
     
     rotateSchoolToTop: function(schoolName) {
+        if (this.noRotate) return;
         var schoolConfig = this.schools[schoolName];
         if (!schoolConfig || schoolConfig.spokeAngle === undefined) return;
         

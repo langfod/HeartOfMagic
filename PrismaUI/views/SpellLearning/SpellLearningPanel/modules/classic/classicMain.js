@@ -388,18 +388,163 @@ var TreeGrowthClassic = {
 
     /**
      * Save the current tree data to the game via C++ backend.
+     * Bakes layout positions from _layoutData into the output JSON
+     * so the spell tree viewer can render at exact positions.
      */
     applyTree: function () {
         if (!this._treeData) return;
 
-        window.callCpp('SaveSpellTree', JSON.stringify(this._treeData));
+        // Build lookups from layout data:
+        //   posLookup:      formId → {x, y}
+        //   childrenLookup: formId → [childFormId, ...]  (from layout's parentFormId)
+        //   prereqLookup:   formId → [parentFormId]      (inverse of children)
+        //   placedSet:      formId → true                 (nodes actually placed by layout)
+        var posLookup = {};
+        var childrenLookup = {};
+        var prereqLookup = {};
+        var placedSet = {};
+
+        if (this._layoutData && this._layoutData.schools) {
+            var layoutSchools = this._layoutData.schools;
+            for (var lsName in layoutSchools) {
+                if (!layoutSchools.hasOwnProperty(lsName)) continue;
+                var lsNodes = layoutSchools[lsName].nodes || [];
+                for (var li = 0; li < lsNodes.length; li++) {
+                    var ln = lsNodes[li];
+                    posLookup[ln.formId] = { x: ln.x, y: ln.y };
+                    placedSet[ln.formId] = true;
+
+                    // Build parent→children from layout's parentFormId
+                    if (ln.parentFormId) {
+                        if (!childrenLookup[ln.parentFormId]) childrenLookup[ln.parentFormId] = [];
+                        childrenLookup[ln.parentFormId].push(ln.formId);
+
+                        if (!prereqLookup[ln.formId]) prereqLookup[ln.formId] = [];
+                        prereqLookup[ln.formId].push(ln.parentFormId);
+                    }
+                }
+            }
+        }
+
+        var posCount = Object.keys(posLookup).length;
+        var placedCount = Object.keys(placedSet).length;
+        console.log('[ClassicGrowth] applyTree: posLookup=' + posCount +
+                    ', placed=' + placedCount + ', childrenEdges=' + Object.keys(childrenLookup).length);
+
+        // Get base data for mode and root directions
+        var baseData = null;
+        if (typeof TreePreview !== 'undefined' && TreePreview.getOutput) {
+            baseData = TreePreview.getOutput();
+        }
+        var layoutMode = baseData ? baseData.mode : 'sun';
+
+        // Build output JSON with layout-derived edges and positions
+        var output = {
+            version: this._treeData.version || '1.0',
+            generator: 'PrismaUI ClassicGrowth',
+            generatedAt: new Date().toISOString(),
+            trustPrereqs: true,
+            noRotate: (layoutMode === 'flat'),
+            layoutMode: layoutMode,
+            config: this._treeData.config || {},
+            globe: { x: 0, y: 0, radius: 45 },
+            schools: {}
+        };
+
+        // Copy school_configs and seed if present
+        if (this._treeData.seed) output.seed = this._treeData.seed;
+        if (this._treeData.school_configs) output.school_configs = this._treeData.school_configs;
+
+        // Get root directions from TreePreview baseData for spoke angles
+        var rootDirBySchool = {};
+        if (baseData && baseData.rootNodes) {
+            for (var rni = 0; rni < baseData.rootNodes.length; rni++) {
+                var rn = baseData.rootNodes[rni];
+                if (rn.school && rn.dir !== undefined) {
+                    rootDirBySchool[rn.school] = rn.dir; // radians
+                }
+            }
+        }
+        var numSchools = Object.keys(this._treeData.schools || {}).length;
+        var sliceAngle = numSchools > 0 ? 360 / numSchools : 60;
+
+        var srcSchools = this._treeData.schools || {};
+        for (var schoolName in srcSchools) {
+            if (!srcSchools.hasOwnProperty(schoolName)) continue;
+            var src = srcSchools[schoolName];
+            var srcNodes = src.nodes || [];
+
+            var schoolRootId = src.root || (srcNodes.length > 0 ? srcNodes[0].formId : '');
+            var outNodes = [];
+            var nodesWithPos = 0;
+
+            for (var i = 0; i < srcNodes.length; i++) {
+                var sn = srcNodes[i];
+
+                // Only include nodes that were actually placed by the layout
+                if (!placedSet[sn.formId]) continue;
+
+                // Use layout-derived children and prereqs instead of Python builder's
+                var layoutChildren = childrenLookup[sn.formId] || [];
+                var layoutPrereqs = prereqLookup[sn.formId] || [];
+
+                var outNode = {
+                    formId: sn.formId,
+                    children: layoutChildren,
+                    prerequisites: layoutPrereqs,
+                    hardPrereqs: layoutPrereqs,
+                    softPrereqs: [],
+                    softNeeded: 0,
+                    tier: sn.tier || 1
+                };
+                if (sn.skillLevel) outNode.skillLevel = sn.skillLevel;
+                if (sn.theme) outNode.theme = sn.theme;
+                if (sn.name) outNode.name = sn.name;
+                if (sn.section) outNode.section = sn.section;
+                if (sn.formId === schoolRootId) outNode.isRoot = true;
+
+                // Bake layout position
+                var pos = posLookup[sn.formId];
+                if (pos) {
+                    outNode.x = Math.round(pos.x * 100) / 100;
+                    outNode.y = Math.round(pos.y * 100) / 100;
+                    nodesWithPos++;
+                }
+                outNodes.push(outNode);
+            }
+
+            console.log('[ClassicGrowth] School "' + schoolName + '": ' +
+                        outNodes.length + ' nodes, ' + nodesWithPos + ' with positions');
+
+            output.schools[schoolName] = {
+                root: schoolRootId,
+                layoutStyle: src.layoutStyle || 'classic',
+                nodes: outNodes
+            };
+
+            // Copy color if present
+            if (src.color) output.schools[schoolName].color = src.color;
+
+            // Bake spoke angle from root direction so CanvasRendererV2 rotates correctly
+            var dirRad = rootDirBySchool[schoolName];
+            if (dirRad !== undefined && !isNaN(dirRad)) {
+                var spokeDeg = dirRad * 180 / Math.PI; // convert radians to degrees
+                output.schools[schoolName].spokeAngle = Math.round(spokeDeg * 100) / 100;
+                output.schools[schoolName].startAngle = Math.round((spokeDeg - sliceAngle / 2) * 100) / 100;
+                output.schools[schoolName].endAngle = Math.round((spokeDeg + sliceAngle / 2) * 100) / 100;
+                output.schools[schoolName].rootDirection = dirRad;
+            }
+        }
+
+        // Save to disk via C++
+        window.callCpp('SaveSpellTree', JSON.stringify(output));
 
         // Load into the spell tree viewer so it displays immediately
         if (typeof loadTreeData === 'function') {
-            loadTreeData(this._treeData);
+            loadTreeData(output);
         }
 
-        ClassicSettings.setStatusText('Tree applied', '#22c55e');
+        ClassicSettings.setStatusText('Tree applied (' + posCount + ' positioned)', '#22c55e');
 
         // Switch to the Spell Tree tab after a brief delay
         if (typeof switchTab === 'function') {

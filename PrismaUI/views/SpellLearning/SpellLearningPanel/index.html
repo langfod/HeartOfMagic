@@ -99,6 +99,10 @@
                 <div class="scan-section" id="treeBuildSection">
                 </div>
 
+                <!-- Section 2a: Core Settings -->
+                <div class="scan-section" id="treeCoreSection">
+                </div>
+
                 <!-- Section 2b: Tree Growth -->
                 <div class="scan-section" id="treeGrowthSection">
                 </div>
@@ -110,14 +114,21 @@
                 <!-- Hidden output area used by Export Scan and C++ callbacks -->
                 <textarea id="outputArea" style="display:none;"></textarea>
 
-                <!-- Build/Clear - Sticky at bottom (mirrors settings page pattern) -->
+                <!-- Shared Build/Apply/Clear - Sticky at bottom -->
                 <div class="scan-actions-sticky scan-actions-bottom">
-                    <button id="proceduralBtn" class="btn btn-success" disabled style="display:none;">
-                        <span class="btn-icon">[T]</span> Build Tree
+                    <button id="tgBuildBtn" class="btn" disabled>
+                        <span class="btn-icon">[B]</span> Build Tree
                     </button>
-                    <button id="clearTreeBtn" class="btn btn-danger">
+                    <button id="tgApplyBtn" class="btn" disabled>
+                        <span class="btn-icon">[A]</span> Apply Tree
+                    </button>
+                    <button id="tgClearBtn" class="btn btn-danger" disabled>
                         <span class="btn-icon">[X]</span> Clear Tree
                     </button>
+                    <button id="tgSetupPythonBtn" class="btn" style="display:none;">
+                        Setup Python
+                    </button>
+                    <span style="margin-left:8px; font-size:11px;">Status: <span id="tgStatus" style="color:rgba(184,168,120,0.5);">Waiting for scan...</span></span>
                 </div>
             </div>
 
@@ -583,82 +594,78 @@
             <!-- TAB: Settings -->
             <!-- ============================================================ -->
             <div class="tab-content" id="contentSettings">
-                <!-- Hotkey Settings -->
-                <div class="settings-block">
-                    <div class="settings-block-header">
-                        <span class="settings-block-icon">[K]</span>
-                        <span class="settings-block-title">Hotkey Configuration</span>
+                <!-- ===== ROW 1: Hotkey + UI Display ===== -->
+                <div class="settings-split">
+                    <!-- Hotkey Settings -->
+                    <div class="settings-block">
+                        <div class="settings-block-header">
+                            <span class="settings-block-icon">[K]</span>
+                            <span class="settings-block-title">Hotkey</span>
+                        </div>
+                        <div class="settings-block-content">
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Panel Toggle Key</span>
+                                </div>
+                                <div class="hotkey-input-group">
+                                    <input type="text" id="hotkeyInput" class="hotkey-input" value="F8" readonly>
+                                    <button id="changeHotkeyBtn" class="btn btn-secondary btn-sm">Change</button>
+                                    <button id="resetHotkeyBtn" class="btn btn-secondary btn-sm">Reset</button>
+                                </div>
+                            </div>
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Pause Game on Open</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="pauseGameOnFocusToggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
                     </div>
-                    <div class="settings-block-content">
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Panel Toggle Key</span>
-                                <span class="setting-desc">Press any key to set a new hotkey</span>
-                            </div>
-                            <div class="hotkey-input-group">
-                                <input type="text" id="hotkeyInput" class="hotkey-input" value="F8" readonly>
-                                <button id="changeHotkeyBtn" class="btn btn-secondary btn-sm">Change</button>
-                                <button id="resetHotkeyBtn" class="btn btn-secondary btn-sm">Reset</button>
-                            </div>
+                    <!-- UI Display Settings -->
+                    <div class="settings-block">
+                        <div class="settings-block-header">
+                            <span class="settings-block-icon">[~]</span>
+                            <span class="settings-block-title">UI Display</span>
                         </div>
-                        <p class="setting-note">Note: Hotkey changes require game restart to take effect.</p>
-                        
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Pause Game When UI Opens</span>
-                                <span class="setting-desc">If disabled, game continues running and mouse can move freely (allows using with other UIs like ChatBox)</span>
+                        <div class="settings-block-content">
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">UI Theme</span>
+                                </div>
+                                <div class="theme-selector-row">
+                                    <select id="uiThemeSelect" class="setting-select">
+                                        <!-- Options populated dynamically from themes/ folder -->
+                                    </select>
+                                    <button id="refreshThemesBtn" class="btn btn-sm btn-icon" title="Rescan themes folder">[R]</button>
+                                </div>
                             </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="pauseGameOnFocusToggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- UI Display Settings -->
-                <div class="settings-block">
-                    <div class="settings-block-header">
-                        <span class="settings-block-icon">[~]</span>
-                        <span class="settings-block-title">UI Display</span>
-                    </div>
-                    <div class="settings-block-content">
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">UI Theme</span>
-                                <span class="setting-desc" id="themeDescription">Visual style for the entire panel</span>
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Learning Color</span>
+                                </div>
+                                <div class="color-picker-wrapper">
+                                    <input type="color" id="learningColorPicker" class="color-picker" value="#7890A8">
+                                    <span class="color-value" id="learningColorValue">#7890A8</span>
+                                </div>
                             </div>
-                            <div class="theme-selector-row">
-                                <select id="uiThemeSelect" class="setting-select">
-                                    <!-- Options populated dynamically from themes/ folder -->
-                                </select>
-                                <button id="refreshThemesBtn" class="btn btn-sm btn-icon" title="Rescan themes folder">[R]</button>
-                            </div>
-                        </div>
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Learning Color</span>
-                                <span class="setting-desc">Color for spells currently being learned</span>
-                            </div>
-                            <div class="color-picker-wrapper">
-                                <input type="color" id="learningColorPicker" class="color-picker" value="#7890A8">
-                                <span class="color-value" id="learningColorValue">#7890A8</span>
-                            </div>
-                        </div>
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Font Size</span>
-                                <span class="setting-desc">Scale UI text size (affects all panels)</span>
-                            </div>
-                            <div class="slider-with-value">
-                                <input type="range" id="fontSizeSlider" class="setting-slider" min="0.7" max="1.5" step="0.1" value="1.0">
-                                <span class="slider-value" id="fontSizeValue">1.0x</span>
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Font Size</span>
+                                </div>
+                                <div class="slider-with-value">
+                                    <input type="range" id="fontSizeSlider" class="setting-slider" min="0.7" max="1.5" step="0.1" value="1.0">
+                                    <span class="slider-value" id="fontSizeValue">1.0x</span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-
+                <!-- ===== ROW 2: Progression + Early Learning ===== -->
+                <div class="settings-split">
                 <!-- Progression Settings -->
                 <div class="settings-block">
                     <div class="settings-block-header">
@@ -705,28 +712,28 @@
                             <span class="subsection-title">XP Settings</span>
                         </div>
                         
-                        <!-- Learning Mode -->
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Learning Mode</span>
-                                <span class="setting-desc">How many spells can be learned simultaneously</span>
+                        <!-- Learning Mode + Discovery Mode (paired) -->
+                        <div class="setting-pair">
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Learning Mode</span>
+                                    <span class="setting-desc">How many spells learned at once</span>
+                                </div>
+                                <select id="learningModeSelect" class="setting-select">
+                                    <option value="perSchool">One spell per school</option>
+                                    <option value="single">One spell at a time</option>
+                                </select>
                             </div>
-                            <select id="learningModeSelect" class="setting-select">
-                                <option value="perSchool">One spell per school</option>
-                                <option value="single">One spell at a time</option>
-                            </select>
-                        </div>
-                        
-                        <!-- Discovery Mode -->
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Discovery Mode</span>
-                                <span class="setting-desc">Hide locked nodes - tree reveals as you progress</span>
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Discovery Mode</span>
+                                    <span class="setting-desc">Hide locked nodes until progress</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="discoveryModeToggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
                             </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="discoveryModeToggle">
-                                <span class="toggle-slider"></span>
-                            </label>
                         </div>
                         <div class="setting-row" id="showRootNamesRow">
                             <div class="setting-info">
@@ -751,40 +758,30 @@
                             </div>
                         </div>
                         
-                        <!-- XP Multipliers -->
-                        <div class="setting-row slider-row">
-                            <div class="setting-info">
-                                <span class="setting-label">XP from Direct Prerequisite</span>
-                                <span class="setting-desc">Casting a spell that directly leads to the learning target</span>
+                        <!-- XP Multipliers (compact 3-column grid) -->
+                        <div class="slider-grid slider-grid-3">
+                            <div class="slider-compact" title="Casting a spell that directly leads to the learning target">
+                                <span class="slider-compact-label">Direct Prereq XP</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="xpDirectSlider" min="0" max="100" value="100" class="setting-slider">
+                                    <span id="xpDirectValue" class="slider-value">100%</span>
+                                </div>
                             </div>
-                            <div class="slider-container">
-                                <input type="range" id="xpDirectSlider" min="0" max="100" value="100" class="setting-slider">
-                                <span id="xpDirectValue" class="slider-value">100%</span>
+                            <div class="slider-compact" title="Casting any spell from the same magic school">
+                                <span class="slider-compact-label">Same School XP</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="xpSchoolSlider" min="0" max="100" value="50" class="setting-slider">
+                                    <span id="xpSchoolValue" class="slider-value">50%</span>
+                                </div>
                             </div>
-                        </div>
-                        
-                        <div class="setting-row slider-row">
-                            <div class="setting-info">
-                                <span class="setting-label">XP from Same School</span>
-                                <span class="setting-desc">Casting any spell from the same magic school</span>
-                            </div>
-                            <div class="slider-container">
-                                <input type="range" id="xpSchoolSlider" min="0" max="100" value="50" class="setting-slider">
-                                <span id="xpSchoolValue" class="slider-value">50%</span>
-                            </div>
-                        </div>
-                        
-                        <div class="setting-row slider-row">
-                            <div class="setting-info">
-                                <span class="setting-label">XP from Any Spell</span>
-                                <span class="setting-desc">Casting spells from any magic school</span>
-                            </div>
-                            <div class="slider-container">
-                                <input type="range" id="xpAnySlider" min="0" max="100" value="10" class="setting-slider">
-                                <span id="xpAnyValue" class="slider-value">10%</span>
+                            <div class="slider-compact" title="Casting spells from any magic school">
+                                <span class="slider-compact-label">Any Spell XP</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="xpAnySlider" min="0" max="100" value="10" class="setting-slider">
+                                    <span id="xpAnyValue" class="slider-value">10%</span>
+                                </div>
                             </div>
                         </div>
-                        
                         <p class="setting-note">Multipliers determine how much XP you gain per cast.</p>
                         
                         <!-- XP Caps - Max contribution from each source -->
@@ -792,42 +789,34 @@
                             <span class="subsection-title">XP Caps (Maximum Contribution)</span>
                         </div>
                         
-                        <p class="setting-note">Caps limit how much total progress each source can provide. Once a cap is reached, you must use other sources to continue.</p>
+                        <p class="setting-note">Caps limit how much total progress each source can provide. Once a cap is reached, you must use other sources.</p>
                         
-                        <div class="setting-row slider-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Max from Any Spell</span>
-                                <span class="setting-desc">After this %, "any spell" XP stops contributing</span>
+                        <!-- XP Caps (compact 3-column grid) -->
+                        <div class="slider-grid slider-grid-3">
+                            <div class="slider-compact" title="After this %, 'any spell' XP stops contributing">
+                                <span class="slider-compact-label">Max Any Spell</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="xpCapAnySlider" min="0" max="100" value="5" class="setting-slider">
+                                    <span id="xpCapAnyValue" class="slider-value">5%</span>
+                                </div>
                             </div>
-                            <div class="slider-container">
-                                <input type="range" id="xpCapAnySlider" min="0" max="100" value="5" class="setting-slider">
-                                <span id="xpCapAnyValue" class="slider-value">5%</span>
+                            <div class="slider-compact" title="After this %, 'same school' XP stops contributing">
+                                <span class="slider-compact-label">Max Same School</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="xpCapSchoolSlider" min="0" max="100" value="15" class="setting-slider">
+                                    <span id="xpCapSchoolValue" class="slider-value">15%</span>
+                                </div>
+                            </div>
+                            <div class="slider-compact" title="After this %, prerequisite XP stops contributing">
+                                <span class="slider-compact-label">Max Direct Prereq</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="xpCapDirectSlider" min="0" max="100" value="50" class="setting-slider">
+                                    <span id="xpCapDirectValue" class="slider-value">50%</span>
+                                </div>
                             </div>
                         </div>
                         
-                        <div class="setting-row slider-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Max from Same School</span>
-                                <span class="setting-desc">After this %, "same school" XP stops contributing</span>
-                            </div>
-                            <div class="slider-container">
-                                <input type="range" id="xpCapSchoolSlider" min="0" max="100" value="15" class="setting-slider">
-                                <span id="xpCapSchoolValue" class="slider-value">15%</span>
-                            </div>
-                        </div>
-                        
-                        <div class="setting-row slider-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Max from Direct Prereq</span>
-                                <span class="setting-desc">After this %, prerequisite XP stops contributing</span>
-                            </div>
-                            <div class="slider-container">
-                                <input type="range" id="xpCapDirectSlider" min="0" max="100" value="50" class="setting-slider">
-                                <span id="xpCapDirectValue" class="slider-value">50%</span>
-                            </div>
-                        </div>
-                        
-                        <p class="setting-note">Example: With caps at 5%/15%/50%, the final 50% must come from casting the spell itself (self-cast with early learning).</p>
+                        <p class="setting-note">Example: With caps at 5%/15%/50%, the final 50% must come from casting the spell itself.</p>
                         
                         <!-- XP Required per Tier -->
                         <div class="settings-subsection">
@@ -862,36 +851,28 @@
                             <span class="subsection-title">Detail Reveal Thresholds</span>
                         </div>
                         
-                        <div class="setting-row slider-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Reveal Name</span>
-                                <span class="setting-desc">Progress % to show spell name</span>
+                        <!-- Reveal Thresholds (compact 3-column grid) -->
+                        <div class="slider-grid slider-grid-3">
+                            <div class="slider-compact" title="Progress % to show spell name">
+                                <span class="slider-compact-label">Reveal Name</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="revealNameSlider" min="0" max="100" value="10" step="5" class="setting-slider">
+                                    <span id="revealNameValue" class="slider-value">10%</span>
+                                </div>
                             </div>
-                            <div class="slider-container">
-                                <input type="range" id="revealNameSlider" min="0" max="100" value="10" step="5" class="setting-slider">
-                                <span id="revealNameValue" class="slider-value">10%</span>
+                            <div class="slider-compact" title="Progress % to show spell effects">
+                                <span class="slider-compact-label">Reveal Effects</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="revealEffectsSlider" min="0" max="100" value="25" step="5" class="setting-slider">
+                                    <span id="revealEffectsValue" class="slider-value">25%</span>
+                                </div>
                             </div>
-                        </div>
-                        
-                        <div class="setting-row slider-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Reveal Effects</span>
-                                <span class="setting-desc">Progress % to show spell effects</span>
-                            </div>
-                            <div class="slider-container">
-                                <input type="range" id="revealEffectsSlider" min="0" max="100" value="25" step="5" class="setting-slider">
-                                <span id="revealEffectsValue" class="slider-value">25%</span>
-                            </div>
-                        </div>
-                        
-                        <div class="setting-row slider-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Reveal Description</span>
-                                <span class="setting-desc">Progress % to show description</span>
-                            </div>
-                            <div class="slider-container">
-                                <input type="range" id="revealDescSlider" min="0" max="100" value="50" step="5" class="setting-slider">
-                                <span id="revealDescValue" class="slider-value">50%</span>
+                            <div class="slider-compact" title="Progress % to show description">
+                                <span class="slider-compact-label">Reveal Description</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="revealDescSlider" min="0" max="100" value="50" step="5" class="setting-slider">
+                                    <span id="revealDescValue" class="slider-value">50%</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -909,73 +890,64 @@
                             <span class="setting-desc" style="display: block; margin-bottom: 8px;">Grant spells early at reduced power. Power increases as you practice.</span>
                         </div>
                         
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Enable Early Learning</span>
-                                <span class="setting-desc">Spells granted early but weakened until mastery</span>
+                        <!-- Enable + Modify Display (paired toggles) -->
+                        <div class="setting-pair">
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Enable Early Learning</span>
+                                    <span class="setting-desc">Spells granted early but weakened</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="earlyLearningEnabledToggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
                             </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="earlyLearningEnabledToggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        
-                        <div class="setting-row slider-row" id="unlockThresholdRow">
-                            <div class="setting-info">
-                                <span class="setting-label">Unlock Threshold</span>
-                                <span class="setting-desc">Progress % to grant spell (weakened)</span>
-                            </div>
-                            <div class="slider-container">
-                                <input type="range" id="unlockThresholdSlider" min="10" max="50" value="25" step="5" class="setting-slider">
-                                <span id="unlockThresholdValue" class="slider-value">25%</span>
-                            </div>
-                        </div>
-                        
-                        <!-- Power steps are now configured in the Power Step Configuration section below -->
-                        <!-- Min/Max effectiveness replaced by discrete power steps -->
-                        
-                        <div class="setting-row slider-row" id="selfCastRequiredRow">
-                            <div class="setting-info">
-                                <span class="setting-label">Self-Cast Required At</span>
-                                <span class="setting-desc">Progress % after which you must cast the spell itself</span>
-                            </div>
-                            <div class="slider-container">
-                                <input type="range" id="selfCastRequiredSlider" min="50" max="90" value="75" step="5" class="setting-slider">
-                                <span id="selfCastRequiredValue" class="slider-value">75%</span>
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Modify Game Display</span>
+                                    <span class="setting-desc">Show "(Learning - X%)" in menus</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="modifyGameDisplayToggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
                             </div>
                         </div>
                         
-                        <div class="setting-row slider-row" id="selfCastMultiplierRow">
-                            <div class="setting-info">
-                                <span class="setting-label">Self-Cast XP Bonus</span>
-                                <span class="setting-desc">XP multiplier when casting the learning target</span>
+                        <!-- Unlock + Self-Cast Required (compact 2-column) -->
+                        <div class="slider-grid slider-grid-2">
+                            <div class="slider-compact" id="unlockThresholdRow" title="Progress % to grant spell (weakened)">
+                                <span class="slider-compact-label">Unlock Threshold</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="unlockThresholdSlider" min="10" max="50" value="25" step="5" class="setting-slider">
+                                    <span id="unlockThresholdValue" class="slider-value">25%</span>
+                                </div>
                             </div>
-                            <div class="slider-container">
-                                <input type="range" id="selfCastMultiplierSlider" min="100" max="300" value="150" step="25" class="setting-slider">
-                                <span id="selfCastMultiplierValue" class="slider-value">150%</span>
-                            </div>
-                        </div>
-                        
-                        <div class="setting-row slider-row" id="binaryThresholdRow">
-                            <div class="setting-info">
-                                <span class="setting-label">Binary Effect Threshold</span>
-                                <span class="setting-desc">Progress % for on/off effects (Paralyze, etc.)</span>
-                            </div>
-                            <div class="slider-container">
-                                <input type="range" id="binaryThresholdSlider" min="60" max="100" value="80" step="5" class="setting-slider">
-                                <span id="binaryThresholdValue" class="slider-value">80%</span>
+                            <div class="slider-compact" id="selfCastRequiredRow" title="Progress % after which you must cast the spell itself">
+                                <span class="slider-compact-label">Self-Cast Required At</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="selfCastRequiredSlider" min="50" max="90" value="75" step="5" class="setting-slider">
+                                    <span id="selfCastRequiredValue" class="slider-value">75%</span>
+                                </div>
                             </div>
                         </div>
                         
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Modify Game Spell Display</span>
-                                <span class="setting-desc">Show "(Learning - X%)" in game menus, not just this panel</span>
+                        <!-- Self-Cast Bonus + Binary Threshold (compact 2-column) -->
+                        <div class="slider-grid slider-grid-2">
+                            <div class="slider-compact" id="selfCastMultiplierRow" title="XP multiplier when casting the learning target">
+                                <span class="slider-compact-label">Self-Cast XP Bonus</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="selfCastMultiplierSlider" min="100" max="300" value="150" step="25" class="setting-slider">
+                                    <span id="selfCastMultiplierValue" class="slider-value">150%</span>
+                                </div>
                             </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="modifyGameDisplayToggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
+                            <div class="slider-compact" id="binaryThresholdRow" title="Progress % for on/off effects (Paralyze, etc.)">
+                                <span class="slider-compact-label">Binary Effect Threshold</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="binaryThresholdSlider" min="60" max="100" value="80" step="5" class="setting-slider">
+                                    <span id="binaryThresholdValue" class="slider-value">80%</span>
+                                </div>
+                            </div>
                         </div>
                         
                         <!-- Power Steps Configuration -->
@@ -995,7 +967,10 @@
                         </div>
                     </div>
                 </div>
+                </div><!-- /settings-split ROW 2 -->
 
+                <!-- ===== ROW 3: Spell Tome + (Notifications + Display) ===== -->
+                <div class="settings-split">
                 <!-- Spell Tome Learning Settings -->
                 <div class="settings-block" id="spellTomeLearningBlock">
                     <div class="settings-block-header">
@@ -1034,99 +1009,86 @@
                             </div>
                         </div>
                         
-                        <div class="settings-subsection" style="margin-top: 16px;">
-                            <span class="subsection-title">Inventory Boost</span>
-                            <span class="setting-desc" style="display: block; margin-bottom: 8px;">Bonus XP while tome is in your inventory.</span>
-                        </div>
-                        
-                        <div class="setting-row">
+                        <!-- Inventory Boost (inline toggle + slider) -->
+                        <div class="setting-row-inline">
                             <div class="setting-info">
-                                <span class="setting-label">Enable Inventory Boost</span>
-                                <span class="setting-desc">Bonus XP when carrying the spell's tome</span>
+                                <span class="setting-label">Inventory Boost</span>
+                                <span class="setting-desc">Bonus XP while carrying the tome</span>
                             </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="tomeInventoryBoostToggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        
-                        <div class="setting-row slider-row" id="tomeInventoryBoostRow">
-                            <div class="setting-info">
-                                <span class="setting-label">Inventory Boost Amount</span>
-                                <span class="setting-desc">XP bonus % while tome is in inventory</span>
-                            </div>
-                            <div class="slider-container">
-                                <input type="range" id="tomeInventoryBoostSlider" min="10" max="100" value="25" step="5" class="setting-slider">
-                                <span id="tomeInventoryBoostValue" class="slider-value">+25%</span>
+                            <div class="inline-controls">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="tomeInventoryBoostToggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <div class="inline-slider-group" id="tomeInventoryBoostRow">
+                                    <input type="range" id="tomeInventoryBoostSlider" min="10" max="100" value="25" step="5" class="setting-slider">
+                                    <span id="tomeInventoryBoostValue" class="slider-value">+25%</span>
+                                </div>
                             </div>
                         </div>
                         
-                        <div class="settings-subsection" style="margin-top: 16px;">
+                        <div class="settings-subsection" style="margin-top: 12px;">
                             <span class="subsection-title">Learning Requirements</span>
-                            <span class="setting-desc" style="display: block; margin-bottom: 8px;">What's required before a tome can teach you a spell.</span>
                         </div>
                         
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Require Tree Prerequisites</span>
-                                <span class="setting-desc">Must master parent spells in the tree first</span>
+                        <!-- Requirements (triple row) -->
+                        <div class="setting-triple">
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Require Prereqs</span>
+                                    <span class="setting-desc">Master parent spells first</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="tomeRequirePrereqsToggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
                             </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="tomeRequirePrereqsToggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        
-                        <div class="setting-row child-setting" id="tomeRequireAllPrereqsRow">
-                            <div class="setting-info">
-                                <span class="setting-label">Require ALL Prerequisites</span>
-                                <span class="setting-desc">All parents must be mastered (vs just one)</span>
+                            <div class="setting-row" id="tomeRequireAllPrereqsRow">
+                                <div class="setting-info">
+                                    <span class="setting-label">Require ALL</span>
+                                    <span class="setting-desc">All parents, not just one</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="tomeRequireAllPrereqsToggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
                             </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="tomeRequireAllPrereqsToggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Require Skill Level</span>
-                                <span class="setting-desc">Must meet spell's minimum skill requirement</span>
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Require Skill</span>
+                                    <span class="setting-desc">Meet minimum skill level</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="tomeRequireSkillLevelToggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
                             </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="tomeRequireSkillLevelToggle">
-                                <span class="toggle-slider"></span>
-                            </label>
                         </div>
                     </div>
                 </div>
 
-                <!-- In-Game Notifications -->
+                <!-- Right column: Notifications + Display Options stacked -->
+                <div class="settings-split-column">
                 <div class="settings-block" id="notificationsBlock">
                     <div class="settings-block-header">
                         <span class="settings-block-icon">[!]</span>
-                        <span class="settings-block-title">In-Game Notifications</span>
+                        <span class="settings-block-title">Notifications</span>
                     </div>
                     <div class="settings-block-content">
-                        <div class="setting-row">
+                        <div class="setting-row-inline">
                             <div class="setting-info">
-                                <span class="setting-label">Weakened Spell Notifications</span>
-                                <span class="setting-desc">Show power level and XP when casting learning spells</span>
+                                <span class="setting-label">Weakened Spell Alerts</span>
                             </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="weakenedNotificationsToggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        
-                        <div class="setting-row" id="notificationIntervalRow">
-                            <div class="setting-info">
-                                <span class="setting-label">Notification Interval</span>
-                                <span class="setting-desc">Seconds between power notifications</span>
-                            </div>
-                            <div class="slider-container">
-                                <input type="range" id="notificationIntervalSlider" min="5" max="60" value="10" class="setting-slider">
-                                <span class="slider-value" id="notificationIntervalValue">10s</span>
+                            <div class="inline-controls">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="weakenedNotificationsToggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <div class="inline-slider-group" id="notificationIntervalRow">
+                                    <span class="inline-slider-label">Every</span>
+                                    <input type="range" id="notificationIntervalSlider" min="5" max="60" value="10" class="setting-slider">
+                                    <span class="slider-value" id="notificationIntervalValue">10s</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1187,85 +1149,91 @@
                         <span class="settings-block-title">Display Options</span>
                     </div>
                     <div class="settings-block-content">
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Node Size Scaling</span>
-                                <span class="setting-desc">Higher tier spells appear larger</span>
+                        <!-- Tree display toggles (2x2 grid) -->
+                        <div class="setting-pair">
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Node Size Scaling</span>
+                                    <span class="setting-desc">Higher tiers appear larger</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="nodeSizeScalingToggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
                             </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="nodeSizeScalingToggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Show Node Names</span>
-                                <span class="setting-desc">Display spell names on all nodes</span>
-                            </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="showNodeNamesToggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Show School Dividers</span>
-                                <span class="setting-desc">Display border lines between magic schools</span>
-                            </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="showSchoolDividersToggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-label">Strict Pie Slices</span>
-                                <span class="setting-desc">Keep schools strictly within their pie slice boundaries</span>
-                            </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="strictPieSlicesToggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        <div class="setting-row" id="dividerFadeRow">
-                            <div class="setting-info">
-                                <span class="setting-label">Divider Line Fade</span>
-                                <span class="setting-desc">How much the lines fade out at the end</span>
-                            </div>
-                            <div class="setting-control">
-                                <input type="range" id="dividerFadeSlider" min="0" max="100" value="50" class="setting-slider">
-                                <span id="dividerFadeValue" class="slider-value">50%</span>
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Show Node Names</span>
+                                    <span class="setting-desc">Display spell names on nodes</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="showNodeNamesToggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
                             </div>
                         </div>
-                        <div class="setting-row" id="dividerSpacingRow">
-                            <div class="setting-info">
-                                <span class="setting-label">Divider Line Spacing</span>
-                                <span class="setting-desc">Distance between parallel lines (px)</span>
+                        <div class="setting-pair">
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Show School Dividers</span>
+                                    <span class="setting-desc">Border lines between schools</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="showSchoolDividersToggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
                             </div>
-                            <div class="setting-control">
-                                <input type="range" id="dividerSpacingSlider" min="1" max="10" value="3" class="setting-slider">
-                                <span id="dividerSpacingValue" class="slider-value">3px</span>
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <span class="setting-label">Strict Pie Slices</span>
+                                    <span class="setting-desc">Schools stay in their slice</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="strictPieSlicesToggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
                             </div>
                         </div>
-                        <div class="setting-row" id="dividerColorModeRow">
-                            <div class="setting-info">
-                                <span class="setting-label">Divider Line Color</span>
-                                <span class="setting-desc">Match school colors or use custom</span>
+                        
+                        <!-- Divider sliders (compact 2-column) -->
+                        <div class="slider-grid slider-grid-2">
+                            <div class="slider-compact" id="dividerFadeRow" title="How much the lines fade out at the end">
+                                <span class="slider-compact-label">Divider Fade</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="dividerFadeSlider" min="0" max="100" value="50" class="setting-slider">
+                                    <span id="dividerFadeValue" class="slider-value">50%</span>
+                                </div>
                             </div>
-                            <div class="setting-control">
-                                <select id="dividerColorModeSelect" class="setting-select">
-                                    <option value="school">Match School</option>
-                                    <option value="custom">Custom Color</option>
-                                </select>
+                            <div class="slider-compact" id="dividerSpacingRow" title="Distance between parallel divider lines (px)">
+                                <span class="slider-compact-label">Divider Spacing</span>
+                                <div class="slider-compact-control">
+                                    <input type="range" id="dividerSpacingSlider" min="1" max="10" value="3" class="setting-slider">
+                                    <span id="dividerSpacingValue" class="slider-value">3px</span>
+                                </div>
                             </div>
                         </div>
-                        <div class="setting-row" id="dividerCustomColorRow" style="display: none;">
-                            <div class="setting-info">
-                                <span class="setting-label">Custom Divider Color</span>
-                                <span class="setting-desc">Color for all divider lines</span>
+                        
+                        <!-- Divider color (paired: select + conditional color picker) -->
+                        <div class="setting-pair">
+                            <div class="setting-row" id="dividerColorModeRow">
+                                <div class="setting-info">
+                                    <span class="setting-label">Divider Color</span>
+                                    <span class="setting-desc">Match school or custom</span>
+                                </div>
+                                <div class="setting-control">
+                                    <select id="dividerColorModeSelect" class="setting-select">
+                                        <option value="school">Match School</option>
+                                        <option value="custom">Custom Color</option>
+                                    </select>
+                                </div>
                             </div>
-                            <div class="setting-control">
-                                <input type="color" id="dividerCustomColorPicker" value="#ffffff" class="color-picker">
+                            <div class="setting-row" id="dividerCustomColorRow" style="display: none;">
+                                <div class="setting-info">
+                                    <span class="setting-label">Custom Color</span>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="color" id="dividerCustomColorPicker" value="#ffffff" class="color-picker">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1726,6 +1694,7 @@
     <script src="modules/starfield.js"></script>
     <script src="modules/globe3D.js"></script>
     <script src="modules/canvasRendererV2.js"></script>
+    <script src="modules/trustedRenderer.js"></script>
     <script src="modules/editMode.js"></script>
     <!-- Note: WebGL is NOT supported in Ultralight/PrismaUI - Canvas 2D is used for large trees -->
     <!-- Old renderer: canvasRenderer.js (depends on TREE_CONFIG/WheelRenderer/GRID_CONFIG) -->
@@ -1749,6 +1718,9 @@
     <script src="modules/treePreviewSun.js"></script>
     <script src="modules/treePreviewFlat.js"></script>
     <script src="modules/treePreview.js"></script>
+
+    <!-- 5b2. Core Settings -->
+    <script src="modules/treeCore.js"></script>
 
     <!-- 5c. Tree Growth -->
     <script src="modules/classic/classicRenderer.js"></script>

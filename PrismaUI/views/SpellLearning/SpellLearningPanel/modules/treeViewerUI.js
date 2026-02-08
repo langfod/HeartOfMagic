@@ -449,7 +449,249 @@ function showImportError(msg) {
     }
 }
 
+/** Log to both console and spelllearning.log via C++. */
+function _logToSKSE(msg) {
+    console.log(msg);
+    if (window.callCpp) {
+        try {
+            window.callCpp('LogMessage', JSON.stringify({ message: msg, level: 'info' }));
+        } catch (e) { /* ignore */ }
+    }
+}
+
+/**
+ * Fast path for trustPrereqs data — builds nodes/edges/schools directly
+ * from JSON and sends to TrustedRenderer. No TreeParser, no WheelRenderer,
+ * no CanvasRenderer, no layout logic, no prereq mutations.
+ */
+function _loadTrustedTree(data, switchToTreeTab) {
+    _logToSKSE('[_loadTrustedTree] === ENTRY ===');
+    _logToSKSE('[_loadTrustedTree] trustPrereqs=' + data.trustPrereqs +
+               ', schools=' + Object.keys(data.schools || {}).join(','));
+
+    var nodes = [];
+    var edges = [];
+    var schools = {};
+    var allFormIds = [];
+    var rootIds = {};
+    var nodesWithXY = 0;
+    var nodesWithoutXY = 0;
+
+    for (var schoolName in data.schools) {
+        if (!data.schools.hasOwnProperty(schoolName)) continue;
+        var sd = data.schools[schoolName];
+        var schoolNodes = sd.nodes || [];
+
+        _logToSKSE('[_loadTrustedTree] School "' + schoolName + '": ' +
+                   schoolNodes.length + ' nodes, root=' + sd.root +
+                   ', color=' + sd.color + ', spokeAngle=' + sd.spokeAngle);
+
+        // Filter out NaN angles — let CanvasRendererV2 compute from node positions instead
+        var validSpoke = (sd.spokeAngle !== undefined && !isNaN(sd.spokeAngle));
+        var validStart = (sd.startAngle !== undefined && !isNaN(sd.startAngle));
+        var validEnd = (sd.endAngle !== undefined && !isNaN(sd.endAngle));
+
+        schools[schoolName] = {
+            root: sd.root,
+            nodeIds: [],
+            spokeAngle: validSpoke ? sd.spokeAngle : undefined,
+            startAngle: validStart ? sd.startAngle : undefined,
+            endAngle: validEnd ? sd.endAngle : undefined,
+            angleSpan: (validEnd && validStart) ? sd.endAngle - sd.startAngle : undefined,
+            color: sd.color,
+            layoutStyle: sd.layoutStyle || 'tree'
+        };
+
+        rootIds[sd.root] = true;
+
+        for (var i = 0; i < schoolNodes.length; i++) {
+            var nd = schoolNodes[i];
+            var id = nd.formId;
+            allFormIds.push(id);
+            schools[schoolName].nodeIds.push(id);
+
+            // Use explicit undefined check — nd.x || 0 would lose x=0 values
+            var nx = (nd.x !== undefined && nd.x !== null) ? nd.x : 0;
+            var ny = (nd.y !== undefined && nd.y !== null) ? nd.y : 0;
+
+            // Track position stats
+            if (nd.x !== undefined && nd.x !== null) {
+                nodesWithXY++;
+            } else {
+                nodesWithoutXY++;
+            }
+
+            // Log first 3 nodes per school
+            if (i < 3) {
+                _logToSKSE('[_loadTrustedTree]   node[' + i + ']: formId=' + id +
+                           ', raw x=' + nd.x + ', raw y=' + nd.y +
+                           ', used x=' + nx + ', used y=' + ny +
+                           ', name=' + (nd.name || '?') + ', tier=' + nd.tier);
+            }
+
+            var node = {
+                id: id,
+                formId: id,
+                name: nd.name || null,
+                school: schoolName,
+                children: nd.children || [],
+                prerequisites: nd.prerequisites || [],
+                hardPrereqs: nd.hardPrereqs || nd.prerequisites || [],
+                softPrereqs: nd.softPrereqs || [],
+                softNeeded: nd.softNeeded || 0,
+                tier: nd.tier || 0,
+                depth: nd.tier || 0,
+                x: nx,
+                y: ny,
+                isRoot: nd.isRoot || false,
+                _fromLayoutEngine: true,
+                state: 'locked'
+            };
+
+            // Roots and prereq-less nodes are available
+            if (nd.isRoot || !nd.prerequisites || nd.prerequisites.length === 0) {
+                node.state = 'available';
+            }
+
+            nodes.push(node);
+
+            // Build edges from children
+            var ch = nd.children || [];
+            for (var c = 0; c < ch.length; c++) {
+                edges.push({ from: id, to: ch[c] });
+            }
+        }
+    }
+
+    _logToSKSE('[_loadTrustedTree] TOTALS: ' + nodes.length + ' nodes, ' +
+               edges.length + ' edges, ' + Object.keys(schools).length + ' schools');
+    _logToSKSE('[_loadTrustedTree] POSITIONS: withXY=' + nodesWithXY +
+               ', withoutXY=' + nodesWithoutXY);
+
+    // Store for state tracking
+    state.treeData = {
+        nodes: nodes,
+        edges: edges,
+        schools: schools,
+        allFormIds: allFormIds,
+        rawData: data,
+        globe: data.globe
+            ? { x: data.globe.x || 0, y: data.globe.y || 0, radius: data.globe.radius || 45 }
+            : { x: 0, y: 0, radius: 45 }
+    };
+
+    // Use CanvasRendererV2 — nodes already have _fromLayoutEngine flag so spiral fallback won't trigger
+    if (typeof CanvasRenderer !== 'undefined') {
+        _logToSKSE('[_loadTrustedTree] Using CanvasRendererV2 with baked positions, noRotate=' + !!data.noRotate);
+        var container = document.getElementById('tree-container');
+        if (container) {
+            // Hide TrustedRenderer if it was previously shown
+            if (typeof TrustedRenderer !== 'undefined' && TrustedRenderer.canvas) {
+                TrustedRenderer.hide();
+            }
+            if (!CanvasRenderer.container || CanvasRenderer.container !== container) {
+                CanvasRenderer.init(container);
+            }
+            CanvasRenderer.clear();
+            var isFlat = !!data.noRotate || (data.config && data.config.layoutMode === 'flat') || data.layoutMode === 'flat';
+            CanvasRenderer.noRotate = isFlat;
+            CanvasRenderer.setData(nodes, edges, schools);
+            CanvasRenderer.show();
+            CanvasRenderer.centerView();
+            CanvasRenderer.forceRender();
+        }
+    } else {
+        _logToSKSE('[_loadTrustedTree] FALLBACK: No CanvasRenderer, using TrustedRenderer');
+        var container2 = document.getElementById('tree-container');
+        if (container2 && typeof TrustedRenderer !== 'undefined') {
+            TrustedRenderer.init(container2);
+            TrustedRenderer.setData(nodes, edges, schools);
+            TrustedRenderer.show();
+        }
+    }
+
+    // Update UI
+    var emptyState = document.getElementById('empty-state');
+    if (emptyState) emptyState.classList.add('hidden');
+    document.getElementById('total-count').textContent = nodes.length;
+    document.getElementById('unlocked-count').textContent = '0';
+
+    if (switchToTreeTab !== false) {
+        switchTab('spellTree');
+    }
+
+    // Send prereqs to C++ (already baked, no splitting needed)
+    if (window.callCpp) {
+        var prereqData = [];
+        for (var pi = 0; pi < nodes.length; pi++) {
+            prereqData.push({
+                formId: nodes[pi].formId,
+                hardPrereqs: nodes[pi].hardPrereqs,
+                softPrereqs: nodes[pi].softPrereqs,
+                softNeeded: nodes[pi].softNeeded
+            });
+        }
+        window.callCpp('SetTreePrerequisites', JSON.stringify({ clear: true }));
+        window.callCpp('SetTreePrerequisites', JSON.stringify(prereqData));
+    }
+
+    // Request spell names for display
+    SpellCache.requestBatch(allFormIds, function() {
+        for (var si = 0; si < nodes.length; si++) {
+            TreeParser.updateNodeFromCache(nodes[si]);
+        }
+        if (typeof CanvasRenderer !== 'undefined') {
+            CanvasRenderer._needsRender = true;
+        }
+    });
+
+    // Sync progress
+    if (window.callCpp) {
+        window.callCpp('GetProgress', '');
+        window.callCpp('GetPlayerKnownSpells', '');
+    }
+
+    _logToSKSE('[_loadTrustedTree] === DONE ===');
+    setTreeStatus('Loaded ' + nodes.length + ' spells (trusted tree)');
+}
+
 function loadTreeData(jsonData, switchToTreeTab, isManualImport) {
+    var data = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData;
+
+    _logToSKSE('[loadTreeData] === ENTRY === typeof=' + (typeof jsonData) +
+               ', trustPrereqs=' + data.trustPrereqs +
+               ', isManualImport=' + isManualImport +
+               ', keys=' + Object.keys(data).join(','));
+
+    // =====================================================================
+    // FAST PATH: trustPrereqs data bypasses TreeParser entirely.
+    // Positions, prereqs, and edges are authoritative — no mutations.
+    // Also detect if nodes have x/y even without the flag (old saves).
+    // =====================================================================
+    var hasTrustFlag = !!data.trustPrereqs;
+    var hasNodePositions = false;
+    if (!hasTrustFlag && data.schools) {
+        // Check first school's first node for x/y
+        for (var _sk in data.schools) {
+            if (data.schools.hasOwnProperty(_sk)) {
+                var _sn = data.schools[_sk].nodes;
+                if (_sn && _sn.length > 0 && _sn[0].x !== undefined) {
+                    hasNodePositions = true;
+                    _logToSKSE('[loadTreeData] No trustPrereqs flag but nodes have x/y — using fast path');
+                }
+                break;
+            }
+        }
+    }
+
+    if (hasTrustFlag || hasNodePositions) {
+        _logToSKSE('[loadTreeData] FAST PATH — bypassing TreeParser (trust=' + hasTrustFlag + ', hasPos=' + hasNodePositions + ')');
+        _loadTrustedTree(data, switchToTreeTab);
+        return;
+    }
+
+    _logToSKSE('[loadTreeData] SLOW PATH — going through TreeParser (no positions in data)');
+
     var result = TreeParser.parse(jsonData);
     if (!result.success) {
         showImportError(result.error);
@@ -494,6 +736,10 @@ function loadTreeData(jsonData, switchToTreeTab, isManualImport) {
 
     // Store raw data for future merges
     result.rawData = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData;
+    var rawGlobe = result.rawData ? result.rawData.globe : null;
+    result.globe = rawGlobe
+        ? { x: rawGlobe.x || 0, y: rawGlobe.y || 0, radius: rawGlobe.radius || 45 }
+        : { x: 0, y: 0, radius: 45 };
     state.treeData = result;
     
     // AGGRESSIVE PATH VALIDATION for manual imports

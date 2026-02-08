@@ -590,9 +590,7 @@ function initializePanel() {
     safeAddListener('blacklistBtn', 'click', showBlacklistModal);
     safeAddListener('whitelistBtn', 'click', showWhitelistModal);
     safeAddListener('fullAutoBtn', 'click', onFullAutoClick);
-    safeAddListener('proceduralBtn', 'click', onProceduralClick);
     safeAddListener('proceduralPlusBtn', 'click', onProceduralPlusClick);
-    safeAddListener('clearTreeBtn', 'click', clearTree);
     safeAddListener('saveBtn', 'click', onSaveClick);
 
     // Tome toggle - client-side filter, triggers tome scan for IDs

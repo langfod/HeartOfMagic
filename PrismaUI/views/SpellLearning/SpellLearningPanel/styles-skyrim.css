@@ -3196,6 +3196,207 @@ body {
     background: rgba(255, 255, 255, 0.04);
 }
 
+/* ===== COMPACT LAYOUT HELPERS ===== */
+
+/* Two settings side-by-side */
+.setting-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+}
+
+.setting-pair > .setting-row {
+    margin-bottom: 0;
+    padding: 10px 8px;
+}
+
+.setting-pair .setting-desc {
+    font-size: 0.7em;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.setting-pair .setting-select {
+    min-width: 0;
+    max-width: 100%;
+    font-size: 0.75em;
+}
+
+/* Three settings side-by-side */
+.setting-triple {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 2px;
+}
+
+.setting-triple > .setting-row {
+    margin-bottom: 0;
+    padding: 10px 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.setting-triple .setting-desc {
+    display: none;
+}
+
+.setting-triple .toggle-switch {
+    align-self: flex-end;
+}
+
+/* Compact slider grids (2 or 3-column) */
+.slider-grid {
+    display: grid;
+    gap: 2px;
+    margin-bottom: 2px;
+}
+
+.slider-grid-2 {
+    grid-template-columns: 1fr 1fr;
+}
+
+.slider-grid-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+.slider-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.slider-compact:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.slider-compact-label {
+    font-size: 0.85em;
+    color: var(--text-bright);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.slider-compact-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.slider-compact-control .setting-slider {
+    flex: 1;
+    min-width: 0;
+}
+
+.slider-compact-control .slider-value {
+    font-size: 0.75em;
+    min-width: 32px;
+}
+
+/* Inline toggle + slider on same row */
+.setting-row-inline {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.02);
+    margin-bottom: 2px;
+    gap: 12px;
+}
+
+.setting-row-inline:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.setting-row-inline .setting-info {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+.setting-row-inline .inline-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: 1;
+    justify-content: flex-end;
+}
+
+.setting-row-inline .inline-slider-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.setting-row-inline .inline-slider-group .setting-slider {
+    width: 100px;
+}
+
+.setting-row-inline .inline-slider-label {
+    font-size: 0.75em;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+/* Split panel - two settings blocks side by side */
+.settings-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+    align-items: start;
+}
+
+.settings-split > .settings-block,
+.settings-split > .settings-split-column > .settings-block {
+    margin-bottom: 0;
+}
+
+.settings-split-column {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* When blocks are in split, reduce internal padding slightly for density */
+.settings-split .settings-block-content {
+    padding: 12px;
+}
+
+.settings-split .settings-block-header {
+    padding: 10px 12px;
+}
+
+.settings-split .setting-row {
+    padding: 8px 6px;
+}
+
+.settings-split .settings-subsection {
+    margin-top: 12px;
+    margin-bottom: 6px;
+    padding: 6px 8px;
+}
+
+.settings-split .setting-note {
+    font-size: 0.65em;
+    margin-top: 6px;
+    padding: 4px 6px;
+}
+
+.settings-split .slider-compact {
+    padding: 6px 8px;
+}
+
+/* ===== END COMPACT LAYOUT HELPERS ===== */
+
 .setting-info {
     display: flex;
     flex-direction: column;

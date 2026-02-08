@@ -227,11 +227,7 @@ window.updateSpellData = function(jsonStr) {
             }
         }
         
-        // Simple Build (proceduralBtn) always enabled when spells are available
-        var simpleBuildBtn = document.getElementById('proceduralBtn');
-        if (simpleBuildBtn && data.spells && data.spells.length > 0) {
-            simpleBuildBtn.disabled = false;
-        }
+        // Build button managed by TreeGrowth.updateScanStatus / updateBuildButton
 
         // Enable scan-dependent buttons after successful scan
         if (data.spells && data.spells.length > 0) {
@@ -295,6 +291,15 @@ window.updateSpellData = function(jsonStr) {
             TreePreview.show(state.lastSpellData);
         } catch (tpErr) {
             console.error('[TreePreview] Failed to show:', tpErr);
+        }
+    }
+
+    // Show core settings section (globe position/size)
+    if (typeof TreeCore !== 'undefined') {
+        try {
+            TreeCore.show();
+        } catch (tcErr) {
+            console.error('[TreeCore] Failed to show:', tcErr);
         }
     }
 
