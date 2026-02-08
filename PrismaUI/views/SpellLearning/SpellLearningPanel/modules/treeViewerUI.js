@@ -23,67 +23,55 @@
 
 // Smart renderer - auto-selects best renderer based on node count
 // Tiers: SVG (<200), Canvas 2D (200+)
-// NOTE: WebGL is NOT supported in Ultralight/PrismaUI - use Canvas 2D for large trees
 var SmartRenderer = {
-    activeRenderer: 'svg',  // 'svg' or 'canvas' (webgl not supported in Ultralight)
-    
+    activeRenderer: 'svg',  // 'svg' or 'canvas'
+
     // Thresholds for renderer selection
     svgThreshold: 200,      // Use SVG below this, Canvas 2D above
-    
+
     // Force a specific renderer (set to null for auto)
     forceRenderer: 'canvas',    // FORCED: Always use Canvas 2D for best performance
-    
+
     /**
      * Select the best renderer for given node count
-     * NOTE: WebGL is NOT supported in Ultralight/PrismaUI
      * @param {number} nodeCount
      * @returns {string} 'svg' or 'canvas'
      */
     selectRenderer: function(nodeCount) {
-        // Check forced mode first
         if (this.forceRenderer) {
             if (this.forceRenderer === 'canvas' && typeof CanvasRenderer !== 'undefined') {
                 return 'canvas';
             } else if (this.forceRenderer === 'svg') {
                 return 'svg';
             }
-            // Forced renderer not available, fall through to auto
         }
-        
-        // Auto selection based on node count
-        // Canvas 2D is the best option for any tree with 200+ nodes
-        if (nodeCount > this.svgThreshold) {
-            if (typeof CanvasRenderer !== 'undefined') {
-                return 'canvas';
-            }
+
+        if (nodeCount > this.svgThreshold && typeof CanvasRenderer !== 'undefined') {
+            return 'canvas';
         }
-        
-        // Default to SVG for small trees or if Canvas not available
+
         return 'svg';
     },
-    
+
     setData: function(nodes, edges, schools) {
         var nodeCount = nodes ? nodes.length : 0;
         var targetRenderer = this.selectRenderer(nodeCount);
-        
+
         console.log('[SmartRenderer] setData: ' + nodeCount + ' nodes -> ' + targetRenderer + ' mode');
-        
+
         var container = document.getElementById('tree-container');
         if (!container) {
             console.error('[SmartRenderer] tree-container not found!');
             return;
         }
-        
-        // Hide all renderers first
+
         this.hideAll();
-        
-        // Switch to target renderer (Canvas 2D or SVG - WebGL not supported in Ultralight)
+
         if (targetRenderer === 'canvas' && typeof CanvasRenderer !== 'undefined') {
-            // Initialize if needed
             if (!CanvasRenderer.container || CanvasRenderer.container !== container) {
                 CanvasRenderer.init(container);
             }
-            
+
             this.activeRenderer = 'canvas';
             CanvasRenderer.clear();
             CanvasRenderer.setData(nodes, edges, schools);
@@ -91,61 +79,59 @@ var SmartRenderer = {
             CanvasRenderer.centerView();
             CanvasRenderer.forceRender();
             this.updateRendererBadge();
-            console.log('[SmartRenderer] Canvas 2D render triggered with ' + nodeCount + ' nodes');
+            console.log('[SmartRenderer] Canvas render triggered with ' + nodeCount + ' nodes');
             return;
         }
-        
-        // Fallback to SVG
+
         this.activeRenderer = 'svg';
         WheelRenderer.setData(nodes, edges, schools);
         this.updateRendererBadge();
         console.log('[SmartRenderer] SVG render triggered with ' + nodeCount + ' nodes');
     },
-    
+
     hideAll: function() {
         if (typeof CanvasRenderer !== 'undefined' && CanvasRenderer.canvas) {
             CanvasRenderer.hide();
         }
-        // SVG is always there, just clear it
         WheelRenderer.clear();
     },
-    
+
     render: function() {
-        if (this.activeRenderer === 'canvas' && typeof CanvasRenderer !== 'undefined') {
-            CanvasRenderer.forceRender();
+        if (this.activeRenderer === 'canvas') {
+            if (typeof CanvasRenderer !== 'undefined') CanvasRenderer.forceRender();
         } else {
             WheelRenderer.render();
         }
     },
-    
+
     clear: function() {
         this.hideAll();
         this.activeRenderer = 'svg';
     },
-    
+
     setZoom: function(z) {
         if (this.activeRenderer === 'canvas') {
-            CanvasRenderer.setZoom(z);
+            if (typeof CanvasRenderer !== 'undefined') CanvasRenderer.setZoom(z);
         } else {
             WheelRenderer.setZoom(z);
         }
     },
-    
+
     centerView: function() {
         if (this.activeRenderer === 'canvas') {
-            CanvasRenderer.centerView();
+            if (typeof CanvasRenderer !== 'undefined') CanvasRenderer.centerView();
         } else {
             WheelRenderer.centerView();
         }
     },
-    
+
     getZoom: function() {
         if (this.activeRenderer === 'canvas') {
-            return CanvasRenderer.zoom;
+            if (typeof CanvasRenderer !== 'undefined') return CanvasRenderer.zoom;
         }
         return WheelRenderer.zoom;
     },
-    
+
     /**
      * Get current renderer info for debugging
      */
@@ -153,40 +139,36 @@ var SmartRenderer = {
         return {
             active: this.activeRenderer,
             forced: this.forceRenderer,
-            canvasAvailable: typeof CanvasRenderer !== 'undefined'
-            // Note: WebGL is NOT supported in Ultralight/PrismaUI
+            canvasAvailable: typeof CanvasRenderer !== 'undefined',
+            rendererName: 'CanvasRenderer'
         };
     },
-    
+
     /**
      * Refresh the active renderer when node states change
      * Call this after spell unlock/progression changes
      */
     refresh: function() {
-        if (this.activeRenderer === 'canvas' && typeof CanvasRenderer !== 'undefined') {
-            CanvasRenderer.refresh();  // Rebuilds discovery visibility and re-renders
+        if (this.activeRenderer === 'canvas') {
+            if (typeof CanvasRenderer !== 'undefined') CanvasRenderer.refresh();
         } else {
             WheelRenderer.render();
         }
     },
-    
+
     /**
      * Update the renderer badge UI to show current renderer
      */
     updateRendererBadge: function() {
         var badge = document.getElementById('renderer-badge');
         if (!badge) return;
-        
-        // Remove old classes
+
         badge.classList.remove('svg', 'canvas');
-        
-        // Set text and class based on active renderer
         var renderer = this.activeRenderer.toUpperCase();
         badge.textContent = renderer;
         badge.classList.add(this.activeRenderer);
-        badge.title = 'Renderer: ' + renderer + 
-            (this.activeRenderer === 'webgl' ? ' (GPU accelerated)' : 
-             this.activeRenderer === 'canvas' ? ' (Canvas 2D)' : ' (SVG DOM)');
+        badge.title = 'Renderer: ' + renderer +
+            (this.activeRenderer === 'canvas' ? ' (Canvas 2D)' : ' (SVG DOM)');
     }
 };
 
@@ -196,15 +178,14 @@ window.SmartRenderer = SmartRenderer;
 function initializeTreeViewer() {
     var svg = document.getElementById('tree-svg');
     if (!svg) return;
-    
+
     WheelRenderer.init(svg);
-    
-    // Initialize canvas renderer (lazy - just prepare container ref)
-    // Note: WebGL is NOT supported in Ultralight/PrismaUI - Canvas 2D is our best option
+
+    // Initialize canvas renderer
     var container = document.getElementById('tree-container');
     if (container && typeof CanvasRenderer !== 'undefined') {
         CanvasRenderer.init(container);
-        console.log('[TreeViewer] Canvas 2D renderer ready (primary for large trees)');
+        console.log('[TreeViewer] CanvasRenderer ready');
     }
     
     state.treeInitialized = true;
@@ -226,6 +207,8 @@ function initializeTreeViewer() {
 
     if (importTreeBtn) importTreeBtn.addEventListener('click', showImportModal);
     if (loadSavedBtn) loadSavedBtn.addEventListener('click', loadSavedTree);
+    var goToScannerBtn = document.getElementById('go-to-scanner-btn');
+    if (goToScannerBtn) goToScannerBtn.addEventListener('click', function() { switchTab('spellScan'); });
     if (importBtn) importBtn.addEventListener('click', showImportModal);
     if (llmAutoBtn) llmAutoBtn.addEventListener('click', startLLMAutoGenerate);
     if (llmToolbarBtn) llmToolbarBtn.addEventListener('click', startLLMAutoGenerate);
@@ -285,11 +268,8 @@ function initializeTreeViewer() {
     if (modalCloseBtn) modalCloseBtn.addEventListener('click', hideImportModal);
     if (importCancel) importCancel.addEventListener('click', hideImportModal);
     if (pasteTreeBtn) pasteTreeBtn.addEventListener('click', onPasteTreeClick);
-    if (importConfirm) importConfirm.addEventListener('click', function() { importTreeFromModal(false); });
+    if (importConfirm) importConfirm.addEventListener('click', importTreeFromModal);
     if (modalBackdrop) modalBackdrop.addEventListener('click', hideImportModal);
-    
-    var importMerge = document.getElementById('import-merge');
-    if (importMerge) importMerge.addEventListener('click', function() { importTreeFromModal(true); });
     
     // Details panel
     window.addEventListener('nodeSelected', function(e) { showSpellDetails(e.detail); });
@@ -339,6 +319,12 @@ function showImportModal() {
     if (modal) modal.classList.remove('hidden');
     var errorBox = document.getElementById('import-error');
     if (errorBox) errorBox.classList.add('hidden');
+
+    // Pre-fill with current tree JSON
+    var textarea = document.getElementById('import-textarea');
+    if (textarea && state.treeData && state.treeData.rawData) {
+        textarea.value = JSON.stringify(state.treeData.rawData, null, 2);
+    }
 }
 
 function hideImportModal() {
@@ -355,35 +341,38 @@ function loadSavedTree() {
     }
 }
 
-function importTreeFromModal(mergeMode) {
+function importTreeFromModal() {
     var textarea = document.getElementById('import-textarea');
     var text = textarea ? textarea.value.trim() : '';
     if (!text) {
-        showImportError('Please paste JSON');
+        showImportError('No JSON to save');
         return;
     }
+
+    // Step 1: Parse JSON
+    var data;
     try {
-        var data = JSON.parse(text);
-        
-        if (mergeMode && state.treeData && state.treeData.success) {
-            // Merge with existing tree
-            data = mergeTreeData(state.treeData.rawData, data);
-            loadTreeData(data, true, true);  // isManualImport = true
-            hideImportModal();
-            setTreeStatus('Tree merged - added new spells');
-        } else {
-            // Replace mode
-            loadTreeData(data, true, true);  // isManualImport = true
-            hideImportModal();
-            setTreeStatus('Tree imported');
-        }
-        
-        // Save merged/imported tree to file
-        if (window.callCpp) {
-            window.callCpp('SaveSpellTree', JSON.stringify(data));
-        }
+        data = JSON.parse(text);
     } catch (e) {
         showImportError('Invalid JSON: ' + e.message);
+        return;
+    }
+
+    // Step 2: Validate through TreeParser
+    var parsed = TreeParser.parse(data);
+    if (!parsed.success) {
+        showImportError('Tree validation failed: ' + (parsed.error || 'Unknown error'));
+        return;
+    }
+
+    // Step 3: Load the validated tree
+    loadTreeData(data, true, true);
+    hideImportModal();
+    setTreeStatus('Tree saved (' + parsed.nodes.length + ' spells)');
+
+    // Save to file via C++
+    if (window.callCpp) {
+        window.callCpp('SaveSpellTree', JSON.stringify(data));
     }
 }
 
