@@ -1174,10 +1174,11 @@ var CanvasRenderer = {
                 color = this._getSchoolColor(schoolName) || '#ffffff';
             }
             
-            // Create gradient for fade effect (center to outer edge)
-            var endX = Math.cos(rad) * length;
-            var endY = Math.sin(rad) * length;
-            var gradient = ctx.createLinearGradient(0, 0, endX, endY);
+            // Create gradient for fade effect (globe center to outer edge)
+            var gd = (state.treeData && state.treeData.globe) || { x: 0, y: 0 };
+            var endX = gd.x + Math.cos(rad) * length;
+            var endY = gd.y + Math.sin(rad) * length;
+            var gradient = ctx.createLinearGradient(gd.x, gd.y, endX, endY);
             
             // Fade setting: 0% = solid line, 100% = fades to transparent
             // Higher fade = more transparent at the end
@@ -1192,7 +1193,7 @@ var CanvasRenderer = {
             ctx.strokeStyle = gradient;
             
             ctx.beginPath();
-            ctx.moveTo(0, 0);
+            ctx.moveTo(gd.x, gd.y);
             ctx.lineTo(endX, endY);
             ctx.stroke();
         }
@@ -1265,9 +1266,10 @@ var CanvasRenderer = {
             var hasSelectedPath = this._selectedPathEdges && this._selectedPathEdges.size > 0;
             var showSelectionPathRoot = settings.showSelectionPath !== false;
 
-            // Draw line from center (0,0) to root node
+            // Draw line from globe center to root node
+            var gd = (state.treeData && state.treeData.globe) || { x: 0, y: 0 };
             ctx.beginPath();
-            ctx.moveTo(0, 0);
+            ctx.moveTo(gd.x, gd.y);
             ctx.lineTo(node.x, node.y);
 
             if (isOnLearningPath) {
@@ -1722,8 +1724,9 @@ var CanvasRenderer = {
             current = prereq;
         }
         
-        // Add center origin at start
-        path.unshift({ x: 0, y: 0, node: null });
+        // Add globe position at start (instead of hardcoded origin)
+        var gd = (state.treeData && state.treeData.globe) || { x: 0, y: 0 };
+        path.unshift({ x: gd.x, y: gd.y, node: null });
         
         return path;
     },
@@ -2273,11 +2276,12 @@ var CanvasRenderer = {
             
             var segments = [];
             
-            // First segment: center (0,0) to root node
+            // First segment: globe center to root node
+            var gd = (state.treeData && state.treeData.globe) || { x: 0, y: 0 };
             var rootNode = self._nodeMap.get(pathNodeIds[0]);
             if (rootNode) {
                 segments.push({
-                    from: { x: 0, y: 0 },
+                    from: { x: gd.x, y: gd.y },
                     to: { x: rootNode.x, y: rootNode.y }
                 });
             }

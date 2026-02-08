@@ -2184,6 +2184,12 @@ body {
 .setting-row-inline .inline-slider-group { display: flex; align-items: center; gap: 8px; }
 .setting-row-inline .inline-slider-group .setting-slider { width: 100px; }
 .setting-row-inline .inline-slider-label { font-size: 0.75em; color: var(--text-secondary); white-space: nowrap; }
+.settings-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; align-items: start; }
+.settings-split > .settings-block, .settings-split > .settings-split-column > .settings-block { margin-bottom: 0; }
+.settings-split-column { display: flex; flex-direction: column; gap: 16px; }
+.settings-split .settings-block-content { padding: 12px; }
+.settings-split .settings-block-header { padding: 10px 12px; }
+.settings-split .setting-row { padding: 8px 6px; }
 /* ===== END COMPACT LAYOUT HELPERS ===== */
 
 .setting-info {
