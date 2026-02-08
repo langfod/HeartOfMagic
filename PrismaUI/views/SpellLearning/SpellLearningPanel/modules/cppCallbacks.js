@@ -1216,8 +1216,17 @@ window.onPanelShowing = function() {
         if (CanvasRenderer.startRenderLoop) {
             CanvasRenderer.startRenderLoop();
         }
-        // Force a render to refresh the display
         CanvasRenderer._needsRender = true;
+    }
+    // Resume TreeGrowth if it was visible before hiding
+    if (typeof TreeGrowth !== 'undefined' && TreeGrowth._visible) {
+        TreeGrowth._startRenderLoop();
+        TreeGrowth._markDirty();
+    }
+    // Resume TreePreview if it was visible before hiding
+    if (typeof TreePreview !== 'undefined' && TreePreview._visible) {
+        TreePreview._startRenderLoop();
+        TreePreview._markDirty();
     }
 
     // Re-fetch progress and known spells from C++ to catch any XP gained while panel was hidden
@@ -1241,22 +1250,34 @@ window.onPanelShowing = function() {
     }
 };
 
-// Called before panel hides (from C++)  
+// Called before panel hides (from C++)
 window.onPanelHiding = function() {
     console.log('[SpellLearning] Panel hiding - stopping rendering');
     window._panelVisible = false;
-    
-    // Stop render loop to free CPU
+
+    // Stop ALL render loops to free CPU
+    // CanvasRenderer (main tree view - canvasRendererV2)
     if (typeof CanvasRenderer !== 'undefined' && CanvasRenderer.stopRenderLoop) {
         CanvasRenderer.stopRenderLoop();
     }
-    
-    // Stop LLM polling if active
+    // TreeGrowth preview canvas
+    if (typeof TreeGrowth !== 'undefined' && TreeGrowth._stopRenderLoop) {
+        TreeGrowth._stopRenderLoop();
+    }
+    // TreePreview canvas
+    if (typeof TreePreview !== 'undefined' && TreePreview._stopRenderLoop) {
+        TreePreview._stopRenderLoop();
+    }
+
+    // Stop ALL polling intervals
     if (state.llmPollInterval) {
         clearInterval(state.llmPollInterval);
         state.llmPollInterval = null;
     }
-    
+    if (typeof stopFeaturePolling === 'function') {
+        stopFeaturePolling();
+    }
+
     // Auto-save settings when panel closes
     if (typeof saveSettings === 'function') {
         saveSettings();
