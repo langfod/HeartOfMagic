@@ -193,6 +193,7 @@ function initializeSettings() {
             settings.cheatMode = this.checked;
             console.log('[SpellLearning] Cheat mode:', settings.cheatMode);
             if (cheatInfo) cheatInfo.classList.toggle('hidden', !settings.cheatMode);
+            autoSaveSettings();
             // Re-render tree to show/hide all spell names
             if (state.treeData) {
                 WheelRenderer.render();

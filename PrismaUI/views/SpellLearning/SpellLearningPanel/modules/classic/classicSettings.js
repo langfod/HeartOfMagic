@@ -61,10 +61,26 @@ var ClassicSettings = {
         var spread = s.spread !== undefined ? s.spread : 50;
         var radialBias = s.radialBias !== undefined ? s.radialBias : 50;
         var centerMask = s.centerMask !== undefined ? s.centerMask : 3;
+        var spellMatching = s.spellMatching || 'layered';
         var H = TreePreviewUtils.settingHTML;
+
+        // Toggle button styles
+        var btnBase = 'display:inline-block; padding:3px 10px; font-size:10px; cursor:pointer; border:1px solid rgba(184,168,120,0.3); transition:background 0.15s;';
+        var btnActive = 'background:rgba(184,168,120,0.25); color:rgba(184,168,120,0.9);';
+        var btnInactive = 'background:transparent; color:rgba(184,168,120,0.4);';
+        var isSimple = spellMatching === 'simple';
 
         return '' +
             '<div class="tree-preview-settings-title">Classic Growth Settings</div>' +
+
+            // --- Spell Matching toggle ---
+            '<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; padding:0 4px;">' +
+                '<span style="font-size:10px; color:rgba(184,168,120,0.6); white-space:nowrap;">Spell Matching</span>' +
+                '<div style="display:flex;">' +
+                    '<div id="tgClassicMatchSimple" style="' + btnBase + ' border-radius:3px 0 0 3px; ' + (isSimple ? btnActive : btnInactive) + '">Simple</div>' +
+                    '<div id="tgClassicMatchLayered" style="' + btnBase + ' border-radius:0 3px 3px 0; border-left:none; ' + (!isSimple ? btnActive : btnInactive) + '">Layered</div>' +
+                '</div>' +
+            '</div>' +
 
             // --- Slider grid ---
             '<div class="tree-preview-settings-grid">' +
@@ -167,6 +183,28 @@ var ClassicSettings = {
         TreePreviewUtils.bindInput('tgClassicCenterMask', function (v) {
             onChanged('centerMask', v);
         });
+
+        // Spell Matching toggle
+        var btnSimple = document.getElementById('tgClassicMatchSimple');
+        var btnLayered = document.getElementById('tgClassicMatchLayered');
+        if (btnSimple && btnLayered) {
+            var activeStyle = 'background:rgba(184,168,120,0.25); color:rgba(184,168,120,0.9);';
+            var inactiveStyle = 'background:transparent; color:rgba(184,168,120,0.4);';
+            var setActive = function (mode) {
+                btnSimple.style.cssText = btnSimple.style.cssText.replace(/background:[^;]+;/, (mode === 'simple' ? activeStyle : inactiveStyle).split(';')[0] + ';')
+                    .replace(/color:[^;]+;/, (mode === 'simple' ? activeStyle : inactiveStyle).split(';')[1] + ';');
+                btnLayered.style.cssText = btnLayered.style.cssText.replace(/background:[^;]+;/, (mode === 'layered' ? activeStyle : inactiveStyle).split(';')[0] + ';')
+                    .replace(/color:[^;]+;/, (mode === 'layered' ? activeStyle : inactiveStyle).split(';')[1] + ';');
+            };
+            btnSimple.addEventListener('click', function () {
+                setActive('simple');
+                onChanged('spellMatching', 'simple');
+            });
+            btnLayered.addEventListener('click', function () {
+                setActive('layered');
+                onChanged('spellMatching', 'layered');
+            });
+        }
 
         // Tier zone drag
         this._bindTierZoneDrag(cb);

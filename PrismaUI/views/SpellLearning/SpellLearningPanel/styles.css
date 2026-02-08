@@ -1482,9 +1482,11 @@ body {
     padding: 10px 12px;
     border-top: 1px solid var(--panel-border);
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     background: rgba(0, 0, 0, 0.3);
+    gap: 6px 10px;
 }
 
 .state-badge {
@@ -1575,7 +1577,7 @@ body {
 
 /* Progress Section */
 .progress-section {
-    padding: 10px 0;
+    padding: 12px;
     border-top: 1px solid var(--panel-border);
     margin-top: 10px;
 }
@@ -1585,7 +1587,7 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
 
 .learning-status-badge {

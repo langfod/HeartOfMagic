@@ -2136,10 +2136,11 @@ body {
     padding: 10px 12px;
     border-top: 1px solid var(--divider);
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     background: rgba(0, 0, 0, 0.4);
-    gap: 10px;
+    gap: 6px 10px;
 }
 
 .state-badge {
@@ -2215,7 +2216,7 @@ body {
 
 /* Progress Section */
 .progress-section {
-    padding: 8px 0;
+    padding: 12px 12px;
     border-top: 1px solid var(--divider);
     margin-top: 8px;
 }
@@ -2225,7 +2226,7 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 6px;
+    margin-bottom: 10px;
 }
 
 .learning-status-badge {
@@ -2280,7 +2281,7 @@ body {
 .learning-status-hint {
     font-size: 0.65em;
     color: var(--text-muted);
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     line-height: 1.4;
 }
 

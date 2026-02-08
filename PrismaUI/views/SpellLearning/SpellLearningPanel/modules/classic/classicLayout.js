@@ -41,6 +41,9 @@ var ClassicLayout = {
         // Direction score is ±1.0, so radialWeight of 3.0 at max fully overrides it.
         this._radialWeight = radialBias * 0.03;
 
+        // Spell Matching: 'simple' = no theme scoring, 'layered' = theme-aware
+        this._useThemeScoring = (ls.spellMatching || 'layered') === 'layered';
+
         var mode = baseData.mode || 'sun';
         var grid = baseData.grid;
         var baseSchools = baseData.schools || [];
@@ -249,8 +252,20 @@ var ClassicLayout = {
         var gridGraph = this._buildGridGraph(schoolGridPts, tierSpacing);
 
         var nodeLookup = this._buildNodeLookup(schoolTree.nodes);
+        this._currentNodeLookup = nodeLookup;
         var rootFormId = schoolTree.root;
         if (!nodeLookup[rootFormId]) return [];
+
+        // Compute theme angular sectors for this school (layered mode only)
+        this._currentThemeSectors = null;
+        if (this._useThemeScoring) {
+            var growAngleDir = schoolRoots.length > 0
+                ? { x: Math.cos(schoolRoots[0].dir || 0), y: Math.sin(schoolRoots[0].dir || 0) }
+                : { x: 1, y: 0 };
+            this._currentThemeSectors = this._computeThemeSectors(
+                schoolTree.nodes, growAngleDir.x, growAngleDir.y
+            );
+        }
 
         var rootNode = nodeLookup[rootFormId];
         var rootChildren = rootNode.children || [];
@@ -315,12 +330,15 @@ var ClassicLayout = {
                 var sfSpell = this._findSpell(sfId, spells);
                 var sfLevel = sfSpell ? sfSpell.skillLevel : '';
                 var sfZone = this._tierZones ? this._tierZones[sfLevel] : null;
+                var sfNodeInfo = nodeLookup[sfId];
+                var sfTheme = sfNodeInfo ? sfNodeInfo.theme : null;
                 if (sfZone && (seedPct < sfZone.min - 5 || seedPct > sfZone.max + 5)) {
                     // Seed position outside this tier's zone — defer
                     deferredNodes.push({
                         formId: sfId,
                         originalParent: groupRootId,
                         skillLevel: sfLevel,
+                        theme: sfTheme,
                         groupIdx: gi
                     });
                     queued[sfId] = true;
@@ -333,9 +351,12 @@ var ClassicLayout = {
             var seedPositions = [rootIdx];
             occupied[rootIdx] = true;
             if (validSeeds.length > 1) {
+                var seedNodeInfo = nodeLookup[groupRootId];
+                var seedTheme = seedNodeInfo ? seedNodeInfo.theme : null;
                 var extraSlots = this._findSlots(
                     gridGraph, occupied, rootIdx,
-                    validSeeds.length - 1, growDirX, growDirY, minR2
+                    validSeeds.length - 1, growDirX, growDirY, minR2,
+                    null, 0, seedTheme
                 );
                 for (var es = 0; es < extraSlots.length; es++) {
                     seedPositions.push(extraSlots[es]);
@@ -413,6 +434,7 @@ var ClassicLayout = {
                     parentFormId: cur.parentFormId,
                     tier: curNode.tier || 0,
                     skillLevel: spellInfo ? spellInfo.skillLevel : '',
+                    theme: curNode.theme || '',
                     name: spellInfo ? spellInfo.name : cur.formId,
                     isRoot: cur.parentFormId === null,
                     gridIdx: cur.gridIdx
@@ -454,6 +476,8 @@ var ClassicLayout = {
 
                     var childSpell = this._findSpell(childId, spells);
                     var childLevel = childSpell ? childSpell.skillLevel : '';
+                    var childNodeInfo = nodeLookup[childId];
+                    var childTheme = childNodeInfo ? childNodeInfo.theme : null;
 
                     // Defer children whose tier zone starts well beyond parent's radius
                     var childZone = this._tierZones ? this._tierZones[childLevel] : null;
@@ -462,6 +486,7 @@ var ClassicLayout = {
                             formId: childId,
                             originalParent: cur.formId,
                             skillLevel: childLevel,
+                            theme: childTheme,
                             groupIdx: curGI
                         });
                         queued[childId] = true;
@@ -471,7 +496,7 @@ var ClassicLayout = {
                     var childSlots = this._findSlots(
                         gridGraph, occupied, cur.gridIdx,
                         1, gDir.x, gDir.y, childMinR2,
-                        childLevel, cur.depth + 1
+                        childLevel, cur.depth + 1, childTheme
                     );
                     if (childSlots.length === 0) {
                         // Defer instead of silently dropping
@@ -479,6 +504,7 @@ var ClassicLayout = {
                             formId: childId,
                             originalParent: cur.formId,
                             skillLevel: childLevel,
+                            theme: childTheme,
                             groupIdx: curGI
                         });
                         queued[childId] = true;
@@ -569,6 +595,18 @@ var ClassicLayout = {
                             }
                         }
 
+                        // Theme affinity: strong preference for same-theme parent (layered mode)
+                        var defTheme = def.theme || null;
+                        if (this._useThemeScoring && defTheme && defTheme !== '_none') {
+                            var pnNodeInfo = nodeLookup[pn.formId];
+                            var pnTheme = pnNodeInfo ? pnNodeInfo.theme : null;
+                            if (pnTheme === defTheme) {
+                                dfScore += 150;
+                            } else if (pnTheme && pnTheme !== '_none') {
+                                dfScore -= 30;
+                            }
+                        }
+
                         if (dfScore > bestScore) {
                             bestScore = dfScore;
                             bestAttachGridIdx = pn.gridIdx;
@@ -585,7 +623,7 @@ var ClassicLayout = {
                     var dfSlots = this._findSlots(
                         gridGraph, occupied, bestAttachGridIdx,
                         1, dfDir.x, dfDir.y, dfChildMinR2,
-                        def.skillLevel, 0
+                        def.skillLevel, 0, def.theme
                     );
                     if (dfSlots.length === 0) { dfRemaining.push(def); continue; }
 
@@ -596,6 +634,7 @@ var ClassicLayout = {
 
                     var dfPt = gridGraph.points[dfIdx];
                     var dfSpell = this._findSpell(def.formId, spells);
+                    var dfNodeInfo = nodeLookup[def.formId];
                     positioned.push({
                         formId: def.formId,
                         x: dfPt.x,
@@ -603,23 +642,26 @@ var ClassicLayout = {
                         parentFormId: bestAttachFormId,
                         tier: 0,
                         skillLevel: dfSpell ? dfSpell.skillLevel : def.skillLevel,
+                        theme: dfNodeInfo ? dfNodeInfo.theme : (def.theme || ''),
                         name: dfSpell ? dfSpell.name : def.formId,
                         isRoot: false,
                         gridIdx: dfIdx
                     });
 
                     // Enqueue children
-                    var dfNode = nodeLookup[def.formId];
-                    if (dfNode && dfNode.children) {
-                        for (var dci = 0; dci < dfNode.children.length; dci++) {
-                            var dcId = dfNode.children[dci];
+                    if (dfNodeInfo && dfNodeInfo.children) {
+                        for (var dci = 0; dci < dfNodeInfo.children.length; dci++) {
+                            var dcId = dfNodeInfo.children[dci];
                             if (placed[dcId] || queued[dcId]) continue;
                             var dcSpell = this._findSpell(dcId, spells);
                             var dcLevel = dcSpell ? dcSpell.skillLevel : '';
+                            var dcNodeInfo = nodeLookup[dcId];
+                            var dcTheme = dcNodeInfo ? dcNodeInfo.theme : null;
                             dfRemaining.push({
                                 formId: dcId,
                                 originalParent: def.formId,
                                 skillLevel: dcLevel,
+                                theme: dcTheme,
                                 groupIdx: def.groupIdx
                             });
                             queued[dcId] = true;
@@ -667,42 +709,44 @@ var ClassicLayout = {
                 var fpId = unplacedIds[fp];
                 if (placed[fpId]) continue;
 
-                // Find a placed node to attach near (prefer original parent in tree)
+                // Find best placed node to attach near, scoring by parent match + theme
                 var fpNode = nodeLookup[fpId];
                 var fpParentId = fpNode && fpNode.prerequisites ? fpNode.prerequisites[0] : null;
+                var fpTheme = fpNode ? fpNode.theme : null;
                 var nearGridIdx = -1;
 
-                // If parent is placed, try adjacent to it first
-                if (fpParentId && placed[fpParentId]) {
-                    for (var ppi = 0; ppi < positioned.length; ppi++) {
-                        if (positioned[ppi].formId === fpParentId) {
-                            var ppAdj = gridGraph.adj[positioned[ppi].gridIdx] || [];
-                            for (var ppai = 0; ppai < ppAdj.length; ppai++) {
-                                if (!occupied[ppAdj[ppai]]) {
-                                    nearGridIdx = ppAdj[ppai];
-                                    break;
-                                }
-                            }
-                            break;
-                        }
+                var fpBestScore = -Infinity;
+                var fpBestGridIdx = -1;
+                var fpBestParent = fpParentId;
+                for (var fpi = 0; fpi < positioned.length; fpi++) {
+                    var fpCandidate = positioned[fpi];
+                    if (fpCandidate.gridIdx === undefined) continue;
+                    var fpCAdj = gridGraph.adj[fpCandidate.gridIdx] || [];
+                    var fpOpenIdx = -1;
+                    for (var fpai = 0; fpai < fpCAdj.length; fpai++) {
+                        if (!occupied[fpCAdj[fpai]]) { fpOpenIdx = fpCAdj[fpai]; break; }
+                    }
+                    if (fpOpenIdx < 0) continue;
+
+                    var fpScore = 0;
+                    // Original parent bonus
+                    if (fpCandidate.formId === fpParentId) fpScore += 200;
+                    // Theme affinity (layered mode)
+                    if (this._useThemeScoring && fpTheme && fpTheme !== '_none') {
+                        var fpCandNode = nodeLookup[fpCandidate.formId];
+                        var fpCandTheme = fpCandNode ? fpCandNode.theme : null;
+                        if (fpCandTheme === fpTheme) fpScore += 100;
+                        else if (fpCandTheme && fpCandTheme !== '_none') fpScore -= 20;
+                    }
+                    if (fpScore > fpBestScore) {
+                        fpBestScore = fpScore;
+                        fpBestGridIdx = fpOpenIdx;
+                        fpBestParent = fpCandidate.formId;
                     }
                 }
-
-                // Fallback: nearest open point to any placed node
-                if (nearGridIdx < 0) {
-                    // Use first available open point adjacent to ANY placed node
-                    for (var rpi = positioned.length - 1; rpi >= 0 && nearGridIdx < 0; rpi--) {
-                        var rpn = positioned[rpi];
-                        if (rpn.gridIdx === undefined) continue;
-                        var rpAdj = gridGraph.adj[rpn.gridIdx] || [];
-                        for (var rpai = 0; rpai < rpAdj.length; rpai++) {
-                            if (!occupied[rpAdj[rpai]]) {
-                                nearGridIdx = rpAdj[rpai];
-                                fpParentId = rpn.formId;
-                                break;
-                            }
-                        }
-                    }
+                if (fpBestGridIdx >= 0) {
+                    nearGridIdx = fpBestGridIdx;
+                    fpParentId = fpBestParent;
                 }
 
                 // Last resort: any open grid point
@@ -727,6 +771,7 @@ var ClassicLayout = {
                     parentFormId: fpParentId,
                     tier: fpNode ? fpNode.tier : 0,
                     skillLevel: fpSpell ? fpSpell.skillLevel : '',
+                    theme: fpNode ? fpNode.theme : '',
                     name: fpSpell ? fpSpell.name : fpId,
                     isRoot: false,
                     gridIdx: nearGridIdx
@@ -842,9 +887,10 @@ var ClassicLayout = {
      * @param {number} minR2 - minimum squared radius (0 = no limit)
      * @param {string} [skillLevel] - skill level for tier zone scoring
      * @param {number} [bfsDepth] - current BFS depth for tier zone scoring
+     * @param {string} [theme] - theme name for angular sector scoring
      * @returns {number[]} array of grid point indices
      */
-    _findSlots: function (gridGraph, occupied, parentIdx, count, growDirX, growDirY, minR2, skillLevel, bfsDepth) {
+    _findSlots: function (gridGraph, occupied, parentIdx, count, growDirX, growDirY, minR2, skillLevel, bfsDepth, theme) {
         if (count <= 0 || parentIdx < 0) return [];
         minR2 = minR2 || 0;
 
@@ -955,6 +1001,21 @@ var ClassicLayout = {
                             var centeredness = zoneHalf > 0 ? 1.0 - Math.abs(radiusPct - zoneMid) / zoneHalf : 1.0;
                             finalScore += 3.0 * centeredness;
                         }
+                    }
+                }
+
+                // Theme sector angular scoring: prefer grid points in this theme's sector
+                if (this._currentThemeSectors && theme) {
+                    var tSector = this._currentThemeSectors[theme];
+                    if (tSector) {
+                        var candAngle = Math.atan2(n.y, n.x);
+                        var angleDiff = candAngle - tSector.center;
+                        // Normalize to [-PI, PI]
+                        while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+                        while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+                        var absDiff = Math.abs(angleDiff);
+                        // +2.5 at sector center, 0 at ~65°, -1.0 at opposite side
+                        finalScore += 2.5 - absDiff * (3.5 / Math.PI);
                     }
                 }
 
@@ -1194,5 +1255,55 @@ var ClassicLayout = {
             hash = hash | 0;
         }
         return hash;
+    },
+
+    /**
+     * Compute angular sub-sectors for each theme within a school.
+     * Themes are proportionally sized by spell count, centered on the growth direction.
+     *
+     * @param {Array} schoolNodes - nodes from the tree data (must have .theme)
+     * @param {number} dirX - growth direction cos
+     * @param {number} dirY - growth direction sin
+     * @returns {Object|null} theme -> { center, min, max } angles, or null if no themes
+     */
+    _computeThemeSectors: function (schoolNodes, dirX, dirY) {
+        var counts = {};
+        var total = 0;
+        for (var i = 0; i < schoolNodes.length; i++) {
+            var t = schoolNodes[i].theme || '_none';
+            counts[t] = (counts[t] || 0) + 1;
+            total++;
+        }
+        if (total === 0) return null;
+
+        // Sort themes largest-first (biggest gets center position)
+        var themes = Object.keys(counts).sort(function (a, b) {
+            return counts[b] - counts[a];
+        });
+
+        var baseAngle = Math.atan2(dirY, dirX);
+        var spread = Math.PI * 0.78; // ~70° each side of growth direction
+        var startAngle = baseAngle - spread / 2;
+
+        var sectors = {};
+        var cursor = startAngle;
+        for (var ti = 0; ti < themes.length; ti++) {
+            var theme = themes[ti];
+            var proportion = counts[theme] / total;
+            var size = spread * proportion;
+            sectors[theme] = {
+                center: cursor + size / 2,
+                min: cursor,
+                max: cursor + size
+            };
+            cursor += size;
+        }
+
+        console.log('[ClassicLayout] Theme sectors (' + themes.length + ' themes): ' +
+            themes.slice(0, 5).map(function (t) {
+                return t + ':' + counts[t];
+            }).join(', '));
+
+        return sectors;
     }
 };

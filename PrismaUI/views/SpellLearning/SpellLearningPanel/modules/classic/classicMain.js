@@ -29,6 +29,7 @@ var TreeGrowthClassic = {
         spread: 50,
         radialBias: 50,
         centerMask: 3,
+        spellMatching: 'layered',
         tierZones: {
             Novice:     { min: 0,  max: 40 },
             Apprentice: { min: 10, max: 55 },
@@ -78,7 +79,7 @@ var TreeGrowthClassic = {
             onSettingChanged: function (key, value) {
                 self.settings[key] = value;
                 // Layout-affecting settings: invalidate cached layout so it recomputes
-                if (key === 'spread' || key === 'radialBias' || key === 'centerMask') {
+                if (key === 'spread' || key === 'radialBias' || key === 'centerMask' || key === 'spellMatching') {
                     if (self._treeData) {
                         self._layoutData = null; // triggers lazy re-layout on next render
                     }
