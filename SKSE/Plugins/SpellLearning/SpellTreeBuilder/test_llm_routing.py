@@ -2,11 +2,12 @@
 """Test LLM routing for ambiguous mod spells."""
 
 import json
+import os
 from pathlib import Path
 from improved_discovery import ImprovedThemeDiscovery, ImprovedTreeBuilder
 
 # API key for testing
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 SCAN_DIR = Path(r'G:\MODSTAGING\HIRCINE\overwrite\SKSE\Plugins\SpellLearning\schools')
 

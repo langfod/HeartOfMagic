@@ -2,12 +2,13 @@
 """Test LLM edge case resolution."""
 
 import json
+import os
 import requests
 from pathlib import Path
 from improved_discovery import ImprovedThemeDiscovery, ImprovedTreeBuilder
 
 # API Configuration
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 SCAN_DIR = Path(r'G:\MODSTAGING\HIRCINE\overwrite\SKSE\Plugins\SpellLearning\schools')
