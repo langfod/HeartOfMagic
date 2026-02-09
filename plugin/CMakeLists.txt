@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.21)
 # ============================================================================
 project(
     SpellLearning
-    VERSION 1.2.6
+    VERSION 2.0.0
     DESCRIPTION "AI-Generated Spell Learning Tree System"
     LANGUAGES CXX
 )

@@ -1922,7 +1922,8 @@
         getLocksForNode: getLocksForNode,
         setButtonsEnabled: setButtonsEnabled,
         updateStatus: updateStatus,
-        renderPreview: renderPreview
+        renderPreview: renderPreview,
+        updatePreviewSize: _updatePreviewSize
     };
 
 })();

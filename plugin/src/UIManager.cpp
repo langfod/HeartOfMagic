@@ -1912,63 +1912,70 @@ void UIManager::OnLoadPresets(const char* argument)
         return;
     }
 
-    auto* instance = GetSingleton();
+    // Copy argument — must defer via AddTask to avoid re-entrant JS calls.
+    // InteropCall back into JS from within a RegisterJSListener callback
+    // doesn't work in Ultralight (re-entrant), so we defer to SKSE task thread.
+    std::string argStr(argument);
 
-    try {
-        json args = json::parse(argument);
-        std::string type = args.value("type", "");
+    SKSE::GetTaskInterface()->AddTask([argStr]() {
+        auto* instance = GetSingleton();
 
-        if (type.empty()) {
-            logger::warn("UIManager: LoadPresets - missing type");
-            return;
-        }
+        try {
+            json args = json::parse(argStr);
+            std::string type = args.value("type", "");
 
-        auto dir = GetPresetsBasePath() / type;
-        json result;
-        result["type"] = type;
-        result["presets"] = json::array();
-
-        if (std::filesystem::exists(dir) && std::filesystem::is_directory(dir)) {
-            for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-                if (!entry.is_regular_file()) continue;
-                auto ext = entry.path().extension().string();
-                // Case-insensitive .json check
-                if (ext != ".json" && ext != ".JSON") continue;
-
-                try {
-                    std::ifstream file(entry.path());
-                    json presetData = json::parse(file);
-
-                    // Use the filename (without extension) as key, but prefer "name" inside the JSON
-                    std::string key = entry.path().stem().string();
-                    if (presetData.contains("name") && presetData["name"].is_string()) {
-                        key = presetData["name"].get<std::string>();
-                    }
-
-                    json presetEntry;
-                    presetEntry["key"] = key;
-                    presetEntry["data"] = presetData;
-                    result["presets"].push_back(presetEntry);
-
-                    logger::info("UIManager: LoadPresets - loaded {}/{}", type, key);
-                } catch (const std::exception& e) {
-                    logger::warn("UIManager: LoadPresets - failed to parse {}: {}", 
-                                 entry.path().string(), e.what());
-                }
+            if (type.empty()) {
+                logger::warn("UIManager: LoadPresets - missing type");
+                return;
             }
-        } else {
-            // Directory doesn't exist yet - that's fine, return empty array
-            logger::info("UIManager: LoadPresets - no presets directory for type '{}'", type);
+
+            auto dir = GetPresetsBasePath() / type;
+            json result;
+            result["type"] = type;
+            result["presets"] = json::array();
+
+            if (std::filesystem::exists(dir) && std::filesystem::is_directory(dir)) {
+                for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+                    if (!entry.is_regular_file()) continue;
+                    auto ext = entry.path().extension().string();
+                    // Case-insensitive .json check
+                    if (ext != ".json" && ext != ".JSON") continue;
+
+                    try {
+                        std::ifstream file(entry.path());
+                        json presetData = json::parse(file);
+
+                        // Use the filename (without extension) as key, but prefer "name" inside the JSON
+                        std::string key = entry.path().stem().string();
+                        if (presetData.contains("name") && presetData["name"].is_string()) {
+                            key = presetData["name"].get<std::string>();
+                        }
+
+                        json presetEntry;
+                        presetEntry["key"] = key;
+                        presetEntry["data"] = presetData;
+                        result["presets"].push_back(presetEntry);
+
+                        logger::info("UIManager: LoadPresets - loaded {}/{}", type, key);
+                    } catch (const std::exception& e) {
+                        logger::warn("UIManager: LoadPresets - failed to parse {}: {}", 
+                                     entry.path().string(), e.what());
+                    }
+                }
+            } else {
+                // Directory doesn't exist yet - that's fine, return empty array
+                logger::info("UIManager: LoadPresets - no presets directory for type '{}'", type);
+            }
+
+            std::string resultStr = result.dump();
+            logger::info("UIManager: LoadPresets - sending {} {} presets to UI", 
+                         result["presets"].size(), type);
+            instance->m_prismaUI->InteropCall(instance->m_view, "onPresetsLoaded", resultStr.c_str());
+
+        } catch (const std::exception& e) {
+            logger::error("UIManager: LoadPresets exception: {}", e.what());
         }
-
-        std::string resultStr = result.dump();
-        logger::info("UIManager: LoadPresets - sending {} {} presets to UI", 
-                     result["presets"].size(), type);
-        instance->m_prismaUI->InteropCall(instance->m_view, "onPresetsLoaded", resultStr.c_str());
-
-    } catch (const std::exception& e) {
-        logger::error("UIManager: LoadPresets exception: {}", e.what());
-    }
+    });
 }
 
 // =============================================================================

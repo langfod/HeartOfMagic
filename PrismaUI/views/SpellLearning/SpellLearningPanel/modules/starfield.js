@@ -1,14 +1,19 @@
 /**
- * Starfield Module - Twinkling star background effect
+ * Starfield Module - Parallax twinkling star background
  *
  * Supports two modes:
  * - Fixed: stars are screen-space (drift + wrap around edges)
- * - World-space: stars are deterministic based on seed + position
- *   so they remain stable as the user pans/zooms
+ * - World-space: seed-based stars that stay in place as user pans,
+ *   with multiple parallax layers for depth effect
+ *
+ * Parallax layers:
+ *   Layer 0 (far):  tiny dim stars,  move slowly  (depth 0.15)
+ *   Layer 1 (mid):  medium stars,    move moderate (depth 0.40)
+ *   Layer 2 (near): larger stars,    move fast     (depth 0.75)
  */
 
 var Starfield = {
-    // Star data
+    // Star data (fixed mode only)
     stars: null,
 
     // Configuration
@@ -25,8 +30,16 @@ var Starfield = {
     width: 0,
     height: 0,
 
-    // Twinkle phase accumulator (for world-space mode)
+    // Twinkle phase accumulator
     _twinklePhase: 0,
+
+    // Parallax layer definitions
+    // depth: 0 = fixed to screen, 1 = fixed to world
+    _layers: [
+        { depth: 0.12, sizeMin: 0.2,  sizeMax: 0.5,  opacityMin: 0.10, opacityMax: 0.30, densityMul: 0.6,  seedOffset: 0 },
+        { depth: 0.35, sizeMin: 0.3,  sizeMax: 0.9,  opacityMin: 0.20, opacityMax: 0.45, densityMul: 0.8,  seedOffset: 7919 },
+        { depth: 0.70, sizeMin: 0.5,  sizeMax: 1.0,  opacityMin: 0.30, opacityMax: 0.60, densityMul: 1.0,  seedOffset: 16381 }
+    ],
 
     /**
      * Seeded pseudo-random number generator (mulberry32)
@@ -128,75 +141,115 @@ var Starfield = {
     },
 
     /**
-     * Render stars in world-space mode (deterministic based on seed + viewport)
-     * Stars are generated per-tile so they stay fixed as user pans.
-     * @param {CanvasRenderingContext2D} ctx - Already transformed by pan/zoom
-     * @param {number} panX - Current pan X offset
-     * @param {number} panY - Current pan Y offset
+     * Render a single parallax layer as a SCREEN-SPACE tile grid.
+     *
+     * Stars are generated in screen-space tiles that scroll with parallax.
+     * Zoom has NO effect on star positions, sizes, or density — stars are
+     * infinitely far away. Only panning shifts them, and each layer shifts
+     * at a different rate (depth) for the parallax depth illusion.
+     *
+     * @param {CanvasRenderingContext2D} ctx - Screen-space context (DPR-scaled only)
+     * @param {number} camX - Camera world-space X position (-panX/zoom)
+     * @param {number} camY - Camera world-space Y position (-panY/zoom)
+     * @param {number} canvasW - Canvas logical width
+     * @param {number} canvasH - Canvas logical height
+     * @param {object} layer - Layer definition { depth, sizeMin, sizeMax, ... }
+     * @param {number} starsPerTile - Base stars per tile
+     */
+    _renderLayer: function(ctx, camX, camY, canvasW, canvasH, layer, starsPerTile) {
+        var rgb = this.color;
+        var tileSize = 500;
+        var layerStars = Math.max(1, Math.round(starsPerTile * layer.densityMul));
+
+        // Scroll offset for this layer (in screen-space tile units).
+        // Camera world position × depth gives zoom-independent parallax.
+        // Multiplied by a scale factor so the scroll rate feels natural.
+        var scrollX = camX * layer.depth;
+        var scrollY = camY * layer.depth;
+
+        // The visible screen [0, canvasW] maps to tile-space [scrollX, scrollX + canvasW]
+        var tileMinX = Math.floor(scrollX / tileSize);
+        var tileMaxX = Math.floor((scrollX + canvasW) / tileSize);
+        var tileMinY = Math.floor(scrollY / tileSize);
+        var tileMaxY = Math.floor((scrollY + canvasH) / tileSize);
+
+        // Cap to prevent explosion (shouldn't happen since tile count is canvasW/500 ≈ 4)
+        var tileCount = (tileMaxX - tileMinX + 1) * (tileMaxY - tileMinY + 1);
+        if (tileCount > 200) return;
+
+        // Scale star sizes with user's maxSize setting
+        var sizeScale = this.maxSize / 2.5;
+
+        for (var tx = tileMinX; tx <= tileMaxX; tx++) {
+            for (var ty = tileMinY; ty <= tileMaxY; ty++) {
+                // Unique deterministic seed per tile per layer
+                var tileSeed = (this.seed + layer.seedOffset) * 73856093 + tx * 19349663 + ty * 83492791;
+                var rng = this._seededRng(tileSeed);
+
+                for (var si = 0; si < layerStars; si++) {
+                    // IMPORTANT: Always consume ALL rng() calls per star, even if
+                    // the star is off-screen. Otherwise skipping a star shifts the
+                    // RNG sequence and causes subsequent stars to teleport/blink.
+                    var tsX = tx * tileSize + rng() * tileSize;
+                    var tsY = ty * tileSize + rng() * tileSize;
+                    var size = (layer.sizeMin + rng() * (layer.sizeMax - layer.sizeMin)) * sizeScale;
+                    var baseOpacity = layer.opacityMin + rng() * (layer.opacityMax - layer.opacityMin);
+                    var twinkleRate = 0.5 + rng() * 1.5;
+                    var phaseOffset = rng() * Math.PI * 2;
+
+                    // Convert tile-space → screen by subtracting the scroll offset
+                    var screenX = tsX - scrollX;
+                    var screenY = tsY - scrollY;
+
+                    // Skip drawing if off screen (rng already consumed above)
+                    if (screenX < -5 || screenX > canvasW + 5 ||
+                        screenY < -5 || screenY > canvasH + 5) continue;
+
+                    // Twinkle animation
+                    var twinkle = 0.5 + 0.5 * Math.sin(this._twinklePhase * twinkleRate + phaseOffset);
+                    var opacity = baseOpacity * twinkle;
+
+                    ctx.beginPath();
+                    ctx.arc(screenX, screenY, size, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + opacity.toFixed(2) + ')';
+                    ctx.fill();
+                }
+            }
+        }
+    },
+
+    /**
+     * Render parallax starfield layers.
+     *
+     * Stars live in screen-space tiles, completely independent of zoom.
+     * Each layer scrolls at a different rate based on the camera's world
+     * position, creating a depth illusion. Zooming changes nothing — stars
+     * are at infinity.
+     *
+     * @param {CanvasRenderingContext2D} ctx - Screen-space context (DPR-scaled only)
+     * @param {number} panX - Current pan X offset (screen pixels)
+     * @param {number} panY - Current pan Y offset (screen pixels)
      * @param {number} zoom - Current zoom level
-     * @param {number} canvasW - Canvas width in pixels
-     * @param {number} canvasH - Canvas height in pixels
+     * @param {number} canvasW - Canvas logical width
+     * @param {number} canvasH - Canvas logical height
      */
     renderWorldSpace: function(ctx, panX, panY, zoom, canvasW, canvasH) {
         if (!this.enabled) return;
 
         this._twinklePhase += this.twinkleSpeed;
 
-        var rgb = this.color;
-        // Tile size in world units - each tile gets a fixed set of stars
-        var tileSize = 400;
-        // Stars per tile (scale with density setting)
-        var starsPerTile = Math.max(2, Math.round(this.starCount / 12));
+        // Derive camera world position from pan/zoom.
+        // This is approximately zoom-independent: pure zooming barely
+        // changes the world center, so stars stay put.
+        var camX = -panX / zoom;
+        var camY = -panY / zoom;
 
-        // Calculate visible world bounds from pan/zoom
-        // Screen pixel (sx, sy) maps to world: wx = (sx - panX) / zoom
-        var worldLeft = -panX / zoom;
-        var worldTop = -panY / zoom;
-        var worldRight = (canvasW - panX) / zoom;
-        var worldBottom = (canvasH - panY) / zoom;
+        // Base stars per tile (scale with density setting)
+        var starsPerTile = Math.max(2, Math.round(this.starCount / 10));
 
-        // Add margin for stars near edges
-        var margin = tileSize;
-        worldLeft -= margin;
-        worldTop -= margin;
-        worldRight += margin;
-        worldBottom += margin;
-
-        // Tile range
-        var tileMinX = Math.floor(worldLeft / tileSize);
-        var tileMaxX = Math.floor(worldRight / tileSize);
-        var tileMinY = Math.floor(worldTop / tileSize);
-        var tileMaxY = Math.floor(worldBottom / tileSize);
-
-        // Cap to prevent too many tiles at extreme zoom-out
-        var maxTiles = 400;
-        var tileCount = (tileMaxX - tileMinX + 1) * (tileMaxY - tileMinY + 1);
-        if (tileCount > maxTiles) return;
-
-        for (var tx = tileMinX; tx <= tileMaxX; tx++) {
-            for (var ty = tileMinY; ty <= tileMaxY; ty++) {
-                // Unique seed per tile
-                var tileSeed = this.seed * 73856093 + tx * 19349663 + ty * 83492791;
-                var rng = this._seededRng(tileSeed);
-
-                for (var si = 0; si < starsPerTile; si++) {
-                    var sx = tx * tileSize + rng() * tileSize;
-                    var sy = ty * tileSize + rng() * tileSize;
-                    var size = this.minSize + rng() * (this.maxSize - this.minSize);
-                    var baseOpacity = 0.3 + rng() * 0.5;
-                    var twinkleRate = 0.5 + rng() * 1.5;
-                    var phaseOffset = rng() * Math.PI * 2;
-
-                    // Twinkle
-                    var twinkle = 0.5 + 0.5 * Math.sin(this._twinklePhase * twinkleRate + phaseOffset);
-                    var opacity = baseOpacity * twinkle;
-
-                    ctx.beginPath();
-                    ctx.arc(sx, sy, size, 0, Math.PI * 2);
-                    ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + opacity.toFixed(2) + ')';
-                    ctx.fill();
-                }
-            }
+        // Render each parallax layer (far to near)
+        for (var li = 0; li < this._layers.length; li++) {
+            this._renderLayer(ctx, camX, camY, canvasW, canvasH, this._layers[li], starsPerTile);
         }
     },
 

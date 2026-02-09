@@ -48,10 +48,10 @@ function initializeScannerPresets() {
 
     _scannerPresetsInitialized = true;
 
-    // Load presets from individual files (C++ enumerates presets/scanner/*.json)
-    if (window.callCpp) {
-        window.callCpp('LoadPresets', JSON.stringify({ type: 'scanner' }));
-    } else {
+    // NOTE: LoadPresets is NOT called here anymore.
+    // It's triggered from onUnifiedConfigLoaded (in settingsPanel.js) AFTER the active
+    // preset name is loaded from config and any legacy migration is complete.
+    if (!window.callCpp) {
         updateScannerPresetsUI();
     }
 

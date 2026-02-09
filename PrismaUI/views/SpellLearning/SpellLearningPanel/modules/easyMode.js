@@ -31,7 +31,7 @@ function initializeEasyMode() {
         });
     }
 
-    // Direct action buttons — call TreeGrowth API directly (no Complex tab relay)
+    // Relay buttons — click the Complex page equivalents
     var buildBtn = document.getElementById('easyBuildBtn');
     if (buildBtn) {
         buildBtn.addEventListener('click', function() {
@@ -41,10 +41,10 @@ function initializeEasyMode() {
                     applyScannerPreset(_easySelectedPreset);
                 }
             }
-            // Call TreeGrowth directly
-            if (typeof TreeGrowth !== 'undefined') {
-                var mod = TreeGrowth.modes[TreeGrowth.activeMode];
-                if (mod && mod.buildTree) mod.buildTree();
+            // Relay to Complex Build button
+            var tgBuild = document.getElementById('tgBuildBtn');
+            if (tgBuild && !tgBuild.disabled) {
+                tgBuild.click();
             }
         });
     }
@@ -52,9 +52,9 @@ function initializeEasyMode() {
     var applyBtn = document.getElementById('easyApplyBtn');
     if (applyBtn) {
         applyBtn.addEventListener('click', function() {
-            if (typeof TreeGrowth !== 'undefined') {
-                var mod = TreeGrowth.modes[TreeGrowth.activeMode];
-                if (mod && mod.applyTree) mod.applyTree();
+            var tgApply = document.getElementById('tgApplyBtn');
+            if (tgApply && !tgApply.disabled) {
+                tgApply.click();
             }
         });
     }
@@ -62,14 +62,14 @@ function initializeEasyMode() {
     var clearBtn = document.getElementById('easyClearBtn');
     if (clearBtn) {
         clearBtn.addEventListener('click', function() {
-            if (typeof TreeGrowth !== 'undefined') {
-                var mod = TreeGrowth.modes[TreeGrowth.activeMode];
-                if (mod && mod.clearTree) mod.clearTree();
+            var tgClear = document.getElementById('tgClearBtn');
+            if (tgClear && !tgClear.disabled) {
+                tgClear.click();
             }
         });
     }
 
-    // Mirror TreeGrowth state to Easy buttons + status
+    // Mirror Complex button states + status text
     _startEasyMirror();
 
     // Init Easy selection from persisted active scanner preset
@@ -79,6 +79,9 @@ function initializeEasyMode() {
 
     // Initial preset chip render
     updateEasyPresetChips();
+
+    // Move PRM preview to Easy placeholder on startup (it lives in hidden Complex tab)
+    _movePrmPreview('easy');
 
     console.log('[EasyMode] Initialized');
 }
@@ -288,10 +291,11 @@ function _movePrmPreview(mode) {
         }
     }
 
-    // Trigger a re-render after the DOM settles
+    // Resize + re-render after the DOM settles (element may have gone from hidden to visible)
     setTimeout(function() {
-        if (typeof PreReqMaster !== 'undefined' && PreReqMaster.renderPreview) {
-            PreReqMaster.renderPreview();
+        if (typeof PreReqMaster !== 'undefined') {
+            if (PreReqMaster.updatePreviewSize) PreReqMaster.updatePreviewSize();
+            if (PreReqMaster.renderPreview) PreReqMaster.renderPreview();
         }
     }, 100);
 }

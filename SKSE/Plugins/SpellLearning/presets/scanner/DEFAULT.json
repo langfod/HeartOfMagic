@@ -1,0 +1,151 @@
+{
+  "created": 1770600910099,
+  "name": "DEFAULT",
+  "settings": {
+    "activeMode": "sun",
+    "classicSettings": {
+      "centerMask": 3,
+      "ghostOpacity": 35,
+      "nodeRadius": 5,
+      "radialBias": 50,
+      "spellMatching": "layered",
+      "spread": 50,
+      "tierZones": {
+        "Adept": {
+          "max": 75,
+          "min": 30
+        },
+        "Apprentice": {
+          "max": 55,
+          "min": 10
+        },
+        "Expert": {
+          "max": 90,
+          "min": 50
+        },
+        "Master": {
+          "max": 100,
+          "min": 65
+        },
+        "Novice": {
+          "max": 40,
+          "min": 0
+        }
+      }
+    },
+    "flatSettings": {
+      "direction": "horizontal",
+      "invertGrowth": false,
+      "linePoints": 20,
+      "nodeSize": 8,
+      "proportional": false,
+      "rootClumping": 0,
+      "rootRandomness": 0,
+      "rootsPerSchool": 1
+    },
+    "globeRadius": 45,
+    "globeX": 0,
+    "globeY": 0,
+    "prmEnabled": true,
+    "prmSettings": {
+      "allowLockedLock": false,
+      "distance": 225,
+      "globalLockPercent": 5,
+      "higherTier": false,
+      "poolSource": "same_school",
+      "prevTier": true,
+      "proximityBias": 0.15,
+      "sameTier": true,
+      "schoolDistribution": "proportional",
+      "tierPercents": {
+        "adept": 0,
+        "apprentice": 0,
+        "expert": 0,
+        "master": 100,
+        "novice": 0
+      }
+    },
+    "sunSettings": {
+      "gridDensity": 10,
+      "gridType": "fibonacci",
+      "invertGrowth": false,
+      "nodeSize": 8,
+      "proportional": false,
+      "ringTier": 3,
+      "rootClumping": 0,
+      "rootRandomness": 0,
+      "rootsPerSchool": 1,
+      "tierDensity": 5
+    },
+    "treeGeneration": {
+      "allowSameTierLinks": true,
+      "allowSpellRepetition": false,
+      "autoBranchFallback": true,
+      "bidirectionalSoftPrereqs": true,
+      "convergenceChance": 40,
+      "convergenceEnabled": true,
+      "convergenceMinTier": 3,
+      "elementIsolation": true,
+      "elementIsolationStrict": false,
+      "elementWeight": 100,
+      "enableSmartRouting": true,
+      "linkStrategy": "thematic",
+      "linkValidationPasses": 3,
+      "llm": {
+        "branchAssignment": false,
+        "edgeCaseThreshold": 10,
+        "edgeCases": false,
+        "elementDetection": false,
+        "enabled": false,
+        "keywordClassification": false,
+        "keywordExpansion": false,
+        "parentSuggestion": false,
+        "themeDiscovery": false,
+        "themeDiscoveryModel": "auto",
+        "treeValidation": false
+      },
+      "llmBranchRouting": false,
+      "llmEdgeCaseEnabled": false,
+      "llmEdgeCaseThreshold": 10,
+      "maxChildrenPerNode": 3,
+      "maxRepetitions": 2,
+      "maxThemeSize": 80,
+      "maxThemes": 15,
+      "maxTierSkip": 2,
+      "minThemeSize": 3,
+      "modBranchMode": "mixed",
+      "prioritizeVanilla": true,
+      "repetitionMinTierGap": 2,
+      "rootCount": 1,
+      "scoring": {
+        "descriptionSimilarity": true,
+        "effectNameMatching": true,
+        "elementMatching": true,
+        "keywordMatching": true,
+        "magickaCostProximity": false,
+        "sameModSource": false,
+        "spellTypeMatching": true,
+        "themeCoherence": true,
+        "tierProgression": true
+      },
+      "shapeStyle": "organic",
+      "strictTierOrdering": true,
+      "themeDiscoveryMode": "dynamic",
+      "tierMixing": false,
+      "tierMixingAmount": 20,
+      "warnOnDistanceViolation": true,
+      "warnOnElementMismatch": true
+    },
+    "treeGrowthActiveMode": "classic",
+    "treeGrowthTreeSettings": {
+      "branchSpread": 2.5,
+      "ghostOpacity": 35,
+      "nodeRadius": 5,
+      "pctBranches": 30,
+      "pctRoot": 20,
+      "pctTrunk": 50,
+      "rootSpread": 2.5,
+      "trunkThickness": 70
+    }
+  }
+}

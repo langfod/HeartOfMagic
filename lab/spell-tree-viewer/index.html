@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spell Tree Viewer</title>
+    <style>
+        /* ================================================================
+           RESET & BASE
+           ================================================================ */
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0a0a0f;
+            color: #c8c8d0;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 13px;
+        }
+
+        /* ================================================================
+           LAYOUT: left panel + right canvas
+           ================================================================ */
+        .app-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ----------------------------------------------------------------
+           LEFT PANEL
+           ---------------------------------------------------------------- */
+        .left-panel {
+            width: 320px;
+            min-width: 320px;
+            height: 100%;
+            background: #0e0e16;
+            border-right: 1px solid #1a1a2a;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .panel-header {
+            padding: 16px 16px 12px;
+            border-bottom: 1px solid #1a1a2a;
+        }
+
+        .panel-header h1 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #e0e0e8;
+            letter-spacing: 0.5px;
+        }
+
+        .panel-header .subtitle {
+            font-size: 11px;
+            color: #6a6a7a;
+            margin-top: 2px;
+        }
+
+        /* -- Section styling -- */
+        .panel-section {
+            padding: 12px 16px;
+            border-bottom: 1px solid #1a1a2a;
+        }
+
+        .section-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #5a5a6a;
+            margin-bottom: 8px;
+        }
+
+        /* -- School Tabs -- */
+        #school-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .school-tab {
+            padding: 5px 10px;
+            border: 1px solid #2a2a3a;
+            border-radius: 4px;
+            background: #12121c;
+            color: #7a7a8a;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            user-select: none;
+        }
+
+        .school-tab:hover {
+            border-color: #3a3a5a;
+            color: #a0a0b0;
+        }
+
+        .school-tab.loaded {
+            border-color: #3a3a5a;
+            color: #b0b0c0;
+        }
+
+        .school-tab.active {
+            border-color: #5a5a8a;
+            color: #e0e0f0;
+            background: #1a1a2e;
+        }
+
+        /* Color dots on tabs */
+        .school-tab[data-school="Alteration"].active  { border-color: #22c55e; }
+        .school-tab[data-school="Conjuration"].active  { border-color: #a855f7; }
+        .school-tab[data-school="Destruction"].active   { border-color: #ef4444; }
+        .school-tab[data-school="Illusion"].active      { border-color: #38bdf8; }
+        .school-tab[data-school="Restoration"].active   { border-color: #facc15; }
+
+        /* -- Sliders -- */
+        .slider-group {
+            margin-bottom: 10px;
+        }
+
+        .slider-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+
+        .slider-label {
+            font-size: 12px;
+            color: #9090a0;
+        }
+
+        .slider-value {
+            font-size: 11px;
+            color: #6a6a7a;
+            font-variant-numeric: tabular-nums;
+            min-width: 30px;
+            text-align: right;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 4px;
+            background: #1a1a2a;
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #4a4a6a;
+            border: 2px solid #6a6a8a;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: #6a6a8a;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #4a4a6a;
+            border: 2px solid #6a6a8a;
+            cursor: pointer;
+        }
+
+        /* -- Buttons -- */
+        .button-row {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            border: 1px solid #2a2a3a;
+            border-radius: 4px;
+            background: #12121c;
+            color: #9090a0;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            user-select: none;
+        }
+
+        .btn:hover {
+            border-color: #4a4a6a;
+            color: #c0c0d0;
+            background: #1a1a2e;
+        }
+
+        .btn.active {
+            border-color: #6a6a9a;
+            color: #e0e0f0;
+            background: #22223a;
+        }
+
+        /* -- Stats Panel -- */
+        #stats-panel {
+            font-size: 12px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+            border-bottom: 1px solid #14141e;
+        }
+
+        .stat-row:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            color: #7a7a8a;
+        }
+
+        .stat-value {
+            color: #b0b0c0;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .stats-empty {
+            color: #4a4a5a;
+            font-style: italic;
+        }
+
+        /* -- Drop zone hint -- */
+        .drop-hint {
+            padding: 12px 16px;
+            text-align: center;
+            color: #3a3a4a;
+            font-size: 11px;
+            border-bottom: 1px solid #1a1a2a;
+        }
+
+        .drop-hint strong {
+            color: #5a5a6a;
+        }
+
+        /* ----------------------------------------------------------------
+           RIGHT SIDE: Canvas area
+           ---------------------------------------------------------------- */
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #tree-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* -- Drag-over state for canvas -- */
+        #tree-canvas.drag-over {
+            outline: 2px dashed #4a4a8a;
+            outline-offset: -4px;
+        }
+
+        /* -- Tooltip -- */
+        #tooltip {
+            display: none;
+            position: absolute;
+            padding: 8px 12px;
+            background: rgba(10, 10, 20, 0.92);
+            border: 1px solid #2a2a4a;
+            border-radius: 6px;
+            color: #d0d0e0;
+            font-size: 12px;
+            line-height: 1.5;
+            pointer-events: none;
+            z-index: 100;
+            max-width: 280px;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        #tooltip strong {
+            color: #f0f0ff;
+            font-size: 13px;
+        }
+
+        #tooltip small {
+            color: #7a7a8a;
+        }
+
+        /* -- Mode Indicator -- */
+        #mode-indicator {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            padding: 4px 10px;
+            background: rgba(10, 10, 20, 0.8);
+            border: 1px solid #1a1a2a;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #6a6a7a;
+            pointer-events: none;
+            z-index: 50;
+            transition: color 0.3s ease;
+        }
+
+        /* -- Zoom indicator -- */
+        .zoom-hint {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            padding: 4px 10px;
+            background: rgba(10, 10, 20, 0.8);
+            border: 1px solid #1a1a2a;
+            border-radius: 4px;
+            font-size: 10px;
+            color: #4a4a5a;
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        /* ================================================================
+           SCROLLBAR (thin, dark)
+           ================================================================ */
+        .left-panel::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .left-panel::-webkit-scrollbar-track {
+            background: #0a0a12;
+        }
+
+        .left-panel::-webkit-scrollbar-thumb {
+            background: #2a2a3a;
+            border-radius: 3px;
+        }
+
+        .left-panel::-webkit-scrollbar-thumb:hover {
+            background: #3a3a4a;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- ============================================================
+             LEFT PANEL
+             ============================================================ -->
+        <div class="left-panel">
+            <div class="panel-header">
+                <h1>Spell Tree Viewer</h1>
+                <div class="subtitle">Pre-computed dendrogram renderer</div>
+            </div>
+
+            <!-- Drop hint -->
+            <div class="drop-hint">
+                <strong>Drop spell_tree.json</strong> onto the canvas<br>
+                or click a school tab to fetch
+            </div>
+
+            <!-- School tabs -->
+            <div class="panel-section">
+                <div class="section-label">Schools</div>
+                <div id="school-tabs">
+                    <div class="school-tab" data-school="Wheel" style="width:100%;text-align:center;margin-bottom:4px">All Schools (Wheel)</div>
+                    <div class="school-tab" data-school="Alteration">Alteration</div>
+                    <div class="school-tab" data-school="Conjuration">Conjuration</div>
+                    <div class="school-tab" data-school="Destruction">Destruction</div>
+                    <div class="school-tab" data-school="Illusion">Illusion</div>
+                    <div class="school-tab" data-school="Restoration">Restoration</div>
+                </div>
+            </div>
+
+            <!-- Visual sliders -->
+            <div class="panel-section">
+                <div class="section-label">Visual Controls</div>
+
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <span class="slider-label">Node Size</span>
+                        <span class="slider-value" id="value-node-size">1.0x</span>
+                    </div>
+                    <input type="range" id="slider-node-size" min="0.3" max="3.0" step="0.1" value="1.0">
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <span class="slider-label">Line Thickness</span>
+                        <span class="slider-value" id="value-line-thickness">1.0x</span>
+                    </div>
+                    <input type="range" id="slider-line-thickness" min="0.2" max="3.0" step="0.1" value="1.0">
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="panel-section">
+                <div class="section-label">Actions</div>
+                <div class="button-row">
+                    <button class="btn" id="btn-ghost">Ghost Mode</button>
+                    <button class="btn" id="btn-reset-view">Reset View</button>
+                    <button class="btn" id="btn-export">Export JSON</button>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="panel-section">
+                <div class="section-label">Statistics</div>
+                <div id="stats-panel">
+                    <span class="stats-empty">No data loaded</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             CANVAS AREA
+             ============================================================ -->
+        <div class="canvas-container" id="drop-zone">
+            <canvas id="tree-canvas"></canvas>
+            <div id="tooltip"></div>
+            <div id="mode-indicator">Waiting for data</div>
+            <div class="zoom-hint">Scroll to zoom · Drag to pan</div>
+        </div>
+    </div>
+
+    <!-- ================================================================
+         SCRIPTS (loaded in dependency order, no bundling)
+         ================================================================ -->
+    <script src="spatial-hash.js"></script>
+    <script src="renderer.js"></script>
+    <script src="app.js"></script>
+    <script>
+        const app = new DendrogramApp();
+        app.init();
+    </script>
+</body>
+</html>

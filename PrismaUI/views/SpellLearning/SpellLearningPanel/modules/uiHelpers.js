@@ -413,7 +413,11 @@ window.onPresetsLoaded = function(resultStr) {
         var type = result.type;
         var presets = result.presets || [];
 
-        console.log('[Presets] Loaded ' + presets.length + ' ' + type + ' presets from files');
+        var logMsg = '[Presets] onPresetsLoaded: type=' + type + ', count=' + presets.length;
+        console.log(logMsg);
+        if (window.callCpp) {
+            try { window.callCpp('LogMessage', JSON.stringify({ level: 'info', message: logMsg })); } catch(e) {}
+        }
 
         if (type === 'scanner') {
             // Clear and repopulate
@@ -423,6 +427,7 @@ window.onPresetsLoaded = function(resultStr) {
             for (var i = 0; i < presets.length; i++) {
                 var entry = presets[i];
                 scannerPresets[entry.key] = entry.data;
+                console.log('[Presets] Scanner preset loaded: key=' + entry.key);
             }
             if (typeof updateScannerPresetsUI === 'function') {
                 updateScannerPresetsUI();
@@ -431,6 +436,12 @@ window.onPresetsLoaded = function(resultStr) {
             var scannerTarget = (typeof _activeScannerPreset !== 'undefined') ? _activeScannerPreset : '';
             var scannerKey = _findPresetKeyCaseInsensitive(scannerPresets, scannerTarget)
                           || _findPresetKeyCaseInsensitive(scannerPresets, 'Default');
+            var applyLog = '[Presets] Scanner apply: target=' + scannerTarget + ', found=' + scannerKey +
+                           ', applyScannerPreset=' + (typeof applyScannerPreset);
+            console.log(applyLog);
+            if (window.callCpp) {
+                try { window.callCpp('LogMessage', JSON.stringify({ level: 'info', message: applyLog })); } catch(e) {}
+            }
             if (scannerKey && typeof applyScannerPreset === 'function') {
                 console.log('[Presets] Auto-applying scanner preset: ' + scannerKey);
                 applyScannerPreset(scannerKey);
@@ -449,22 +460,8 @@ window.onPresetsLoaded = function(resultStr) {
                 var entry2 = presets[j];
                 settingsPresets[entry2.key] = entry2.data;
             }
-            // Seed built-in presets if they weren't in the files
-            if (typeof BUILT_IN_SETTINGS_PRESETS !== 'undefined') {
-                for (var biKey in BUILT_IN_SETTINGS_PRESETS) {
-                    if (BUILT_IN_SETTINGS_PRESETS.hasOwnProperty(biKey) && !settingsPresets[biKey]) {
-                        settingsPresets[biKey] = JSON.parse(JSON.stringify(BUILT_IN_SETTINGS_PRESETS[biKey]));
-                        // Auto-save the built-in to a file so it persists
-                        if (window.callCpp) {
-                            window.callCpp('SavePreset', JSON.stringify({
-                                type: 'settings',
-                                name: biKey,
-                                data: settingsPresets[biKey]
-                            }));
-                        }
-                    }
-                }
-            }
+            // Built-in seeding removed — presets come exclusively from files on disk.
+            // DEFAULT.json is bundled with the mod in the RELEASE folder.
             if (typeof updateSettingsPresetsUI === 'function') {
                 updateSettingsPresetsUI();
             }

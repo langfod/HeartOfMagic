@@ -229,11 +229,11 @@ function initializeSettingsPresets() {
 
     _settingsPresetsInitialized = true;
 
-    // Load presets from individual files (C++ enumerates presets/settings/*.json)
-    // onPresetsLoaded callback (in uiHelpers.js) will seed built-in presets if missing
-    if (window.callCpp) {
-        window.callCpp('LoadPresets', JSON.stringify({ type: 'settings' }));
-    } else {
+    // NOTE: LoadPresets is NOT called here anymore.
+    // It's triggered from onUnifiedConfigLoaded (in settingsPanel.js) AFTER the active
+    // preset name is loaded from config and any legacy migration is complete.
+    // This ensures the correct ordering: config → migrate → load files → apply.
+    if (!window.callCpp) {
         // Dev harness / no C++ — seed built-ins directly
         for (var key in BUILT_IN_SETTINGS_PRESETS) {
             if (!BUILT_IN_SETTINGS_PRESETS.hasOwnProperty(key)) continue;

@@ -1495,41 +1495,10 @@ window.onUnifiedConfigLoaded = function(dataStr) {
             _activeScannerPreset = data.activeScannerPreset;
         }
 
-        // LEGACY MIGRATION: If old embedded presets exist in config, migrate them to files
-        if (data.settingsPresets && typeof data.settingsPresets === 'object') {
-            var spKeys = Object.keys(data.settingsPresets);
-            if (spKeys.length > 0) {
-                console.log('[SpellLearning] MIGRATING ' + spKeys.length + ' legacy settings presets to files...');
-                for (var spIdx = 0; spIdx < spKeys.length; spIdx++) {
-                    var spKey = spKeys[spIdx];
-                    var spPreset = data.settingsPresets[spKey];
-                    settingsPresets[spKey] = spPreset;
-                    if (window.callCpp) {
-                        window.callCpp('SavePreset', JSON.stringify({
-                            type: 'settings', name: spKey, data: spPreset
-                        }));
-                    }
-                }
-                if (typeof updateSettingsPresetsUI === 'function') updateSettingsPresetsUI();
-            }
-        }
-        if (data.scannerPresets && typeof data.scannerPresets === 'object') {
-            var scKeys = Object.keys(data.scannerPresets);
-            if (scKeys.length > 0) {
-                console.log('[SpellLearning] MIGRATING ' + scKeys.length + ' legacy scanner presets to files...');
-                for (var scIdx = 0; scIdx < scKeys.length; scIdx++) {
-                    var scKey = scKeys[scIdx];
-                    var scPreset = data.scannerPresets[scKey];
-                    scannerPresets[scKey] = scPreset;
-                    if (window.callCpp) {
-                        window.callCpp('SavePreset', JSON.stringify({
-                            type: 'scanner', name: scKey, data: scPreset
-                        }));
-                    }
-                }
-                if (typeof updateScannerPresetsUI === 'function') updateScannerPresetsUI();
-            }
-        }
+        // LEGACY MIGRATION: Removed. Preset files are now bundled with the mod.
+        // Old embedded presets in config.json are simply ignored.
+        // If data.settingsPresets or data.scannerPresets exist, we no longer migrate them
+        // to avoid overwriting user's customized preset files on every load.
         
         // Discovery mode
         settings.discoveryMode = data.discoveryMode !== undefined ? data.discoveryMode : false;
@@ -2126,6 +2095,18 @@ window.onUnifiedConfigLoaded = function(dataStr) {
             hasApiKey: !!state.llmConfig.apiKey,
             fields: state.fields
         });
+        
+        // NOW load presets from individual files.
+        // This runs AFTER active preset names are set and legacy migration is done,
+        // ensuring correct ordering: config loaded → migrate legacy → load files → apply.
+        // Guard: only load presets once (LoadUnifiedConfig may be called from both
+        // initializeSettings and onPrismaReady, causing onUnifiedConfigLoaded to fire twice).
+        if (window.callCpp && !window._presetsLoadRequested) {
+            window._presetsLoadRequested = true;
+            console.log('[SpellLearning] Loading preset files from disk...');
+            window.callCpp('LoadPresets', JSON.stringify({ type: 'settings' }));
+            window.callCpp('LoadPresets', JSON.stringify({ type: 'scanner' }));
+        }
         
     } catch (e) {
         console.error('[SpellLearning] Failed to parse unified config:', e);

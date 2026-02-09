@@ -1,0 +1,78 @@
+{
+  "builtIn": true,
+  "name": "Default",
+  "settings": {
+    "discoveryMode": false,
+    "earlySpellLearning": {
+      "binaryEffectThreshold": 80,
+      "enabled": true,
+      "maxEffectiveness": 70,
+      "minEffectiveness": 20,
+      "modifyGameDisplay": true,
+      "powerSteps": [
+        {
+          "label": "Budding",
+          "power": 20,
+          "xp": 25
+        },
+        {
+          "label": "Developing",
+          "power": 35,
+          "xp": 40
+        },
+        {
+          "label": "Practicing",
+          "power": 50,
+          "xp": 55
+        },
+        {
+          "label": "Advancing",
+          "power": 65,
+          "xp": 70
+        },
+        {
+          "label": "Refining",
+          "power": 80,
+          "xp": 85
+        }
+      ],
+      "selfCastRequiredAt": 75,
+      "selfCastXPMultiplier": 150,
+      "unlockThreshold": 25
+    },
+    "learningMode": "perSchool",
+    "notifications": {
+      "weakenedSpellInterval": 10,
+      "weakenedSpellNotifications": true
+    },
+    "revealDescription": 50,
+    "revealEffects": 25,
+    "revealName": 10,
+    "showRootSpellNames": true,
+    "spellTomeLearning": {
+      "autoSetLearningTarget": true,
+      "enabled": true,
+      "grantXPOnRead": true,
+      "requireAllPrereqs": true,
+      "requirePrereqs": true,
+      "requireSkillLevel": false,
+      "showNotifications": true,
+      "tomeInventoryBoost": true,
+      "tomeInventoryBoostPercent": 25,
+      "useProgressionSystem": true,
+      "xpPercentToGrant": 25
+    },
+    "xpAdept": 400,
+    "xpApprentice": 200,
+    "xpCapAny": 5,
+    "xpCapDirect": 50,
+    "xpCapSchool": 15,
+    "xpExpert": 800,
+    "xpGlobalMultiplier": 1,
+    "xpMaster": 1500,
+    "xpMultiplierAny": 10,
+    "xpMultiplierDirect": 100,
+    "xpMultiplierSchool": 50,
+    "xpNovice": 100
+  }
+}
