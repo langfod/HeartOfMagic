@@ -88,6 +88,12 @@ var TreeGrowthTree = {
             return;
         }
 
+        // Show build progress modal
+        var hasPRM = typeof PreReqMaster !== 'undefined' && PreReqMaster.isEnabled && PreReqMaster.isEnabled();
+        if (typeof BuildProgress !== 'undefined') {
+            BuildProgress.start(hasPRM);
+        }
+
         TreeSettings.setStatusText('Building tree (Python)...', '#f59e0b');
         var buildBtn = document.getElementById('tgTreeBuildBtn');
         if (buildBtn) buildBtn.disabled = true;

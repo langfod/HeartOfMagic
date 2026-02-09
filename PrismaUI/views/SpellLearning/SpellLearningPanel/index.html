@@ -11,7 +11,7 @@
 </head>
 <body>
     <!-- Full-screen overlay to block clicks on SWF UI when panel has focus -->
-    <div id="focusOverlay" class="focus-overlay"></div>
+    <div id="focusOverlay" class="focus-overlay" tabindex="-1"></div>
     
     <div id="spellPanel" class="spell-panel">
         <!-- Draggable Header -->
@@ -110,24 +110,36 @@
                 <!-- EASY MODE -->
                 <!-- ============================================================ -->
                 <div class="scanner-mode-content" id="scannerEasyContent">
-                    <div class="easy-presets-section">
-                        <div class="easy-presets-label">Choose a Preset</div>
-                        <div class="easy-preset-chips" id="easyPresetChips"></div>
-                    </div>
-                    <div class="easy-actions-section">
-                        <button id="easyBuildBtn" class="btn btn-success easy-action-btn" disabled>
-                            <span class="btn-icon">[B]</span> Build Tree
-                        </button>
-                        <button id="easyApplyBtn" class="btn btn-primary easy-action-btn" disabled>
-                            <span class="btn-icon">[A]</span> Apply Tree
-                        </button>
-                        <button id="easyClearBtn" class="btn btn-danger easy-action-btn" disabled>
-                            <span class="btn-icon">[X]</span> Clear Tree
-                        </button>
-                        <span class="easy-status-wrap">Status: <span id="easyStatus">Waiting for scan...</span></span>
-                    </div>
-                    <div class="easy-preview-placeholder" id="easyPreviewPlaceholder">
-                        <!-- PRM preview canvas is moved here when Easy mode is active -->
+                    <div class="easy-panel-split">
+                        <div class="easy-panel-left">
+                            <div class="easy-presets-section">
+                                <div class="easy-presets-label">Choose a Preset</div>
+                                <div class="easy-preset-chips" id="easyPresetChips"></div>
+                            </div>
+                            <div class="easy-actions-section">
+                                <button id="easyBuildBtn" class="btn btn-success easy-action-btn" disabled>
+                                    <span class="btn-icon">[B]</span> Build Tree
+                                </button>
+                                <button id="easyApplyBtn" class="btn btn-primary easy-action-btn" disabled>
+                                    <span class="btn-icon">[A]</span> Apply Tree
+                                </button>
+                                <button id="easyClearBtn" class="btn btn-danger easy-action-btn" disabled>
+                                    <span class="btn-icon">[X]</span> Clear Tree
+                                </button>
+                                <button id="easyReplayBtn" class="btn easy-action-btn" style="display:none;">
+                                    <span class="btn-icon">[R]</span> Replay
+                                </button>
+                                <button id="easySetupPythonBtn" class="btn easy-action-btn" style="display:none;">
+                                    Setup Python
+                                </button>
+                                <span class="easy-status-wrap">Status: <span id="easyStatus">Waiting for scan...</span></span>
+                            </div>
+                        </div>
+                        <div class="easy-panel-right">
+                            <div class="easy-preview-placeholder" id="easyPreviewPlaceholder">
+                                <!-- PRM preview canvas is moved here when Easy mode is active -->
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1762,6 +1774,42 @@
         </div>
     </div>
 
+    <!-- Build Progress Modal -->
+    <div id="build-progress-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content build-progress-modal">
+            <div class="modal-header">
+                <h3 id="build-progress-title">Building Spell Tree</h3>
+            </div>
+            <div class="modal-body">
+                <div class="build-stages" id="build-stages">
+                    <div class="build-stage" data-stage="tree" id="build-stage-tree">
+                        <span class="build-stage-icon" id="build-stage-tree-icon">&#9711;</span>
+                        <span class="build-stage-label">Analyzing &amp; Building Spell Tree</span>
+                        <span class="build-stage-detail" id="build-stage-tree-detail"></span>
+                    </div>
+                    <div class="build-stage" data-stage="prereqs" id="build-stage-prereqs">
+                        <span class="build-stage-icon" id="build-stage-prereqs-icon">&#9711;</span>
+                        <span class="build-stage-label">Generating Prerequisites</span>
+                        <span class="build-stage-detail" id="build-stage-prereqs-detail"></span>
+                    </div>
+                    <div class="build-stage" data-stage="finalize" id="build-stage-finalize">
+                        <span class="build-stage-icon" id="build-stage-finalize-icon">&#9711;</span>
+                        <span class="build-stage-label">Finalizing Layout</span>
+                        <span class="build-stage-detail" id="build-stage-finalize-detail"></span>
+                    </div>
+                </div>
+                <div class="build-progress-bar">
+                    <div class="build-progress-fill" id="build-progress-fill"></div>
+                </div>
+                <div class="build-progress-status" id="build-progress-status">Preparing...</div>
+            </div>
+            <div class="modal-footer">
+                <button id="build-progress-done-btn" class="btn btn-primary hidden" onclick="BuildProgress.close()">Done</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Python Setup Modal -->
     <div id="python-setup-modal" class="modal hidden">
         <div class="modal-backdrop"></div>
@@ -1871,6 +1919,7 @@
 
     <!-- 6. Integrations and Callbacks -->
     <script src="modules/cppCallbacks.js"></script>
+    <script src="modules/buildProgress.js"></script>
     <script src="modules/pythonSetup.js"></script>
     <script src="modules/llmIntegration.js"></script>
     <script src="modules/proceduralTreeBuilder.js"></script>
@@ -1887,7 +1936,10 @@
 
     <!-- 6.6. Pre Req Master -->
     <script src="modules/prereqMaster.js"></script>
-    
+
+    <!-- 6.7. Tree Animation (build replay) -->
+    <script src="modules/treeAnimation.js"></script>
+
     <!-- 7. Main Application (init, tabs, dragging, early learning settings) -->
     <script src="script.js"></script>
 

@@ -69,6 +69,32 @@ function initializeEasyMode() {
         });
     }
 
+    var replayBtn = document.getElementById('easyReplayBtn');
+    if (replayBtn) {
+        replayBtn.addEventListener('click', function() {
+            if (typeof TreeAnimation !== 'undefined') {
+                if (TreeAnimation.hasData()) {
+                    TreeAnimation.play();
+                } else if (TreeAnimation.capture()) {
+                    TreeAnimation.play();
+                }
+            }
+        });
+    }
+
+    var setupPyBtn = document.getElementById('easySetupPythonBtn');
+    if (setupPyBtn) {
+        setupPyBtn.addEventListener('click', function() {
+            // Call startPythonSetup directly (shows modal + calls C++)
+            // Don't relay through tgSetupPythonBtn - it may not be initialized yet
+            if (typeof window.startPythonSetup === 'function') {
+                window.startPythonSetup();
+            } else if (window.callCpp) {
+                window.callCpp('SetupPython', '');
+            }
+        });
+    }
+
     // Mirror Complex button states + status text
     _startEasyMirror();
 
@@ -221,6 +247,19 @@ function _startEasyMirror() {
         })(buttonPairs[i][0], buttonPairs[i][1]);
     }
 
+    // Mirror tgSetupPythonBtn display → easySetupPythonBtn
+    var tgSetupPy = document.getElementById('tgSetupPythonBtn');
+    var easySetupPy = document.getElementById('easySetupPythonBtn');
+    if (tgSetupPy && easySetupPy) {
+        // Initial sync
+        easySetupPy.style.display = tgSetupPy.style.display;
+
+        var setupObserver = new MutationObserver(function() {
+            easySetupPy.style.display = tgSetupPy.style.display;
+        });
+        setupObserver.observe(tgSetupPy, { attributes: true, attributeFilter: ['style'] });
+    }
+
     // Mirror tgStatus text → easyStatus
     var tgStatus = document.getElementById('tgStatus');
     var easyStatus = document.getElementById('easyStatus');
@@ -248,6 +287,12 @@ function _syncEasyButtonStates() {
         var src = document.getElementById(pairs[i][0]);
         var dst = document.getElementById(pairs[i][1]);
         if (src && dst) dst.disabled = src.disabled;
+    }
+    // Sync Setup Python visibility
+    var tgSetupPy = document.getElementById('tgSetupPythonBtn');
+    var easySetupPy = document.getElementById('easySetupPythonBtn');
+    if (tgSetupPy && easySetupPy) {
+        easySetupPy.style.display = tgSetupPy.style.display;
     }
 }
 

@@ -107,6 +107,16 @@ window.onPythonSetupComplete = function(jsonStr) {
             if (setupBtn) {
                 setupBtn.classList.add('hidden');
             }
+
+            // Update TreeGrowth shared buttons + status (cascades to Easy mode via MutationObserver)
+            if (typeof TreeGrowth !== 'undefined' && TreeGrowth.updatePythonStatus) {
+                TreeGrowth.updatePythonStatus(true, true, true);
+            }
+
+            // Also trigger a C++ re-check so cppCallbacks.js gets the full status refresh
+            if (window.callCpp) {
+                window.callCpp('CheckPythonStatus', '');
+            }
         } else {
             // Failure
             var errorMsg = data.error || 'Unknown error occurred';

@@ -1357,6 +1357,10 @@ window.onProceduralPythonComplete = function(resultStr) {
         if (state._classicGrowthBuildPending) {
             state._classicGrowthBuildPending = false;
             if (result.success && result.treeData) {
+                // Advance build progress: tree done → prereqs or finalize
+                if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive()) {
+                    BuildProgress.setStage('prereqs');
+                }
                 var cgTreeData = typeof result.treeData === 'string' ? JSON.parse(result.treeData) : result.treeData;
                 if (typeof TreeGrowthClassic !== 'undefined' && TreeGrowthClassic.loadTreeData) {
                     TreeGrowthClassic.loadTreeData(cgTreeData);
@@ -1364,6 +1368,9 @@ window.onProceduralPythonComplete = function(resultStr) {
                 }
             } else {
                 console.error('[ClassicGrowth] Python build failed:', result.error);
+                if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive()) {
+                    BuildProgress.fail('Tree build failed: ' + (result.error || 'unknown'));
+                }
                 if (typeof ClassicSettings !== 'undefined') {
                     ClassicSettings.setStatusText('Build failed: ' + (result.error || 'unknown'), '#ef4444');
                 }
@@ -1378,6 +1385,10 @@ window.onProceduralPythonComplete = function(resultStr) {
         if (state._treeGrowthBuildPending) {
             state._treeGrowthBuildPending = false;
             if (result.success && result.treeData) {
+                // Advance build progress: tree done → prereqs or finalize
+                if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive()) {
+                    BuildProgress.setStage('prereqs');
+                }
                 var tgTreeData = typeof result.treeData === 'string' ? JSON.parse(result.treeData) : result.treeData;
                 if (typeof TreeGrowthTree !== 'undefined' && TreeGrowthTree.loadTreeData) {
                     TreeGrowthTree.loadTreeData(tgTreeData);
@@ -1385,6 +1396,9 @@ window.onProceduralPythonComplete = function(resultStr) {
                 }
             } else {
                 console.error('[TreeGrowthTree] Python build failed:', result.error);
+                if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive()) {
+                    BuildProgress.fail('Tree build failed: ' + (result.error || 'unknown'));
+                }
                 if (typeof TreeSettings !== 'undefined') {
                     TreeSettings.setStatusText('Build failed: ' + (result.error || 'unknown'), '#ef4444');
                 }

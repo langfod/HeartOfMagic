@@ -480,7 +480,11 @@ var TreeGrowth = {
             if (mod && mod.clearTree) mod.clearTree();
         });
         if (setupBtn) setupBtn.addEventListener('click', function() {
-            window.callCpp('SetupPython', '');
+            if (typeof window.startPythonSetup === 'function') {
+                window.startPythonSetup();
+            } else {
+                window.callCpp('SetupPython', '');
+            }
         });
     },
 
@@ -489,6 +493,7 @@ var TreeGrowth = {
     // =========================================================================
 
     setTreeBuilt: function(built, nodeCount, totalPool) {
+        var wasBuilt = this._treeBuilt;
         this._treeBuilt = built;
         this._nodeCount = nodeCount || 0;
         this._totalPool = totalPool || 0;
@@ -509,21 +514,48 @@ var TreeGrowth = {
             // Force the main tree growth preview canvas to re-render
             this._needsRender = true;
 
-            // Auto-run Pre Req Master if enabled
-            if (typeof PreReqMaster !== 'undefined' && PreReqMaster.isEnabled && PreReqMaster.isEnabled()) {
-                setTimeout(function() {
-                    PreReqMaster.autoApplyLocks();
-                }, 100); // Small delay to let tree data settle
+            // Only auto-run PRM on FIRST build (not on layout recalculations)
+            if (!wasBuilt) {
+                if (typeof PreReqMaster !== 'undefined' && PreReqMaster.isEnabled && PreReqMaster.isEnabled()) {
+                    setTimeout(function() {
+                        PreReqMaster.autoApplyLocks();
+                    }, 100); // Small delay to let tree data settle
+                } else {
+                    // No PRM → advance build progress to finalize and complete
+                    if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive()) {
+                        BuildProgress.setStage('finalize');
+                        setTimeout(function() {
+                            BuildProgress.complete();
+                        }, 300);
+                    }
+                }
             }
 
             // Update PRM preview canvas (may be in Easy mode)
             if (typeof PreReqMaster !== 'undefined' && PreReqMaster.renderPreview) {
                 setTimeout(function() { PreReqMaster.renderPreview(); }, 200);
             }
+
+            // Capture + play tree build animation on PRM preview
+            // Uses requestCapture() which retries if _builtPlacements isn't ready yet
+            if (typeof TreeAnimation !== 'undefined') {
+                TreeAnimation.requestCapture();
+            }
+
+            // Show Replay button on Easy mode
+            var replayBtn = document.getElementById('easyReplayBtn');
+            if (replayBtn) replayBtn.style.display = '';
         } else {
             if (applyBtn) applyBtn.disabled = true;
             if (clearBtn) clearBtn.disabled = true;
             this.updateBuildButton();
+
+            // Stop animation and hide Replay button
+            if (typeof TreeAnimation !== 'undefined') {
+                TreeAnimation.stop();
+            }
+            var replayBtn = document.getElementById('easyReplayBtn');
+            if (replayBtn) replayBtn.style.display = 'none';
 
             if (this._pythonInstalled) {
                 this.setStatusText('Python ready (detected)', '#22c55e');

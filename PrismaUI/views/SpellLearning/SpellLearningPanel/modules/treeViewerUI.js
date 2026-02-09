@@ -635,8 +635,8 @@ function _loadTrustedTree(data, switchToTreeTab) {
         switchTab('spellTree');
     }
 
-    // Mirror bidirectional soft prereqs before sending to C++
-    mirrorBidirectionalSoftPrereqs(nodes);
+    // Mirror bidirectional soft prereqs — DISABLED for now
+    // mirrorBidirectionalSoftPrereqs(nodes);
 
     // Send prereqs to C++ (already baked, no splitting needed)
     if (window.callCpp) {
@@ -1008,8 +1008,8 @@ function loadTreeData(jsonData, switchToTreeTab, isManualImport) {
         node.softNeeded = softNeeded;
     });
 
-    // Mirror bidirectional soft prereqs before sending to C++
-    mirrorBidirectionalSoftPrereqs(result.nodes);
+    // Mirror bidirectional soft prereqs — DISABLED for now
+    // mirrorBidirectionalSoftPrereqs(result.nodes);
 
     // Send tree prerequisites (hard/soft system) to C++ for tome learning validation
     if (window.callCpp) {
