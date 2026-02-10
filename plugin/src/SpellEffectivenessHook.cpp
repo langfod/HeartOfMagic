@@ -811,6 +811,45 @@ void SpellEffectivenessHook::GrantEarlySpell(RE::SpellItem* spell)
     }
 }
 
+void SpellEffectivenessHook::RegisterISLPendingSpell(RE::SpellItem* spell)
+{
+    if (!spell) return;
+
+    RE::FormID formId = spell->GetFormID();
+
+    // Add to early-learned tracking so effectiveness hook will nerf when ISL teaches it.
+    // Do NOT call player->AddSpell — ISL handles that after study is complete.
+    {
+        std::unique_lock<std::shared_mutex> lock(m_mutex);
+        if (m_earlyLearnedSpells.find(formId) != m_earlyLearnedSpells.end()) {
+            logger::trace("SpellEffectivenessHook: ISL pending spell {} ({:08X}) already tracked",
+                spell->GetName(), formId);
+            return;
+        }
+        m_earlyLearnedSpells.insert(formId);
+    }
+
+    logger::info("SpellEffectivenessHook: Registered ISL pending spell {} ({:08X}) for weakness tracking",
+        spell->GetName(), formId);
+
+    // Store original name NOW (before any modification) so we have it for later.
+    // Do NOT modify spell name/description yet — ISL reads akSpell.GetName() in
+    // its study notifications, and we don't want "(Learning - 20%)" showing there.
+    // Name/description modifications are applied later in OnStudyComplete.
+    {
+        std::unique_lock<std::shared_mutex> lock(m_mutex);
+        if (m_originalSpellNames.find(formId) == m_originalSpellNames.end()) {
+            m_originalSpellNames[formId] = spell->GetName();
+            logger::info("SpellEffectivenessHook: Stored original name for ISL pending spell {:08X}: '{}'",
+                formId, spell->GetName());
+        }
+    }
+
+    // Notify UI of the new tracked state (no name change yet)
+    UIManager::GetSingleton()->UpdateSpellState(
+        std::format("0x{:08X}", formId), "studying");
+}
+
 void SpellEffectivenessHook::MarkMastered(RE::FormID spellFormId)
 {
     // Restore original spell name and description BEFORE removing from tracking
@@ -1250,11 +1289,9 @@ void SpellEffectivenessHook::ApplyModifiedDescriptions(RE::FormID spellFormId)
         
         // Get original values from this specific effect item
         float magnitude = effect->GetMagnitude();
-        uint32_t duration = effect->GetDuration();
-        
-        // Calculate scaled values — only magnitude is scaled, duration stays full
+
+        // Only magnitude is scaled — duration stays full (handled by game engine)
         float scaledMag = magnitude * effectiveness;
-        float scaledDur = static_cast<float>(duration);  // Duration NOT scaled
         
         // Get original description template (read-only)
         std::string originalDesc;
@@ -1270,29 +1307,16 @@ void SpellEffectivenessHook::ApplyModifiedDescriptions(RE::FormID spellFormId)
             continue;
         }
         
-        // Create modified description by replacing <mag> and <dur> with scaled values
+        // Create modified description by replacing ONLY <mag> with scaled values.
+        // Leave <dur> and <area> tags intact so the game engine substitutes them
+        // natively (preserving its own formatting like "1 minute" etc).
         std::string modifiedDesc = originalDesc;
-        
+
         // Replace <mag> with scaled magnitude
         size_t pos = modifiedDesc.find("<mag>");
         while (pos != std::string::npos) {
             modifiedDesc.replace(pos, 5, std::to_string(static_cast<int>(scaledMag)));
             pos = modifiedDesc.find("<mag>");
-        }
-        
-        // Replace <dur> with scaled duration
-        pos = modifiedDesc.find("<dur>");
-        while (pos != std::string::npos) {
-            modifiedDesc.replace(pos, 5, std::to_string(static_cast<int>(scaledDur)));
-            pos = modifiedDesc.find("<dur>");
-        }
-        
-        // Replace <area> (not scaled, just substitute)
-        uint32_t area = effect->GetArea();
-        pos = modifiedDesc.find("<area>");
-        while (pos != std::string::npos) {
-            modifiedDesc.replace(pos, 6, std::to_string(area));
-            pos = modifiedDesc.find("<area>");
         }
         
         // Prepend power indicator
@@ -1516,33 +1540,17 @@ std::string SpellEffectivenessHook::GetScaledSpellDescription(RE::SpellItem* spe
         }
         
         if (!effectDesc.empty()) {
-            // Substitute <mag>, <dur>, <area> with actual values
+            // Substitute only <mag> — leave <dur> and <area> for the game engine
             float magnitude = effect->GetMagnitude();
-            uint32_t duration = effect->GetDuration();
-            uint32_t area = effect->GetArea();
-            
+
             // Scale magnitude for display
             float displayMag = isWeakened ? magnitude * effectiveness : magnitude;
-            
+
             // Replace <mag> with scaled value
             size_t magPos = effectDesc.find("<mag>");
             while (magPos != std::string::npos) {
                 effectDesc.replace(magPos, 5, std::to_string(static_cast<int>(displayMag)));
                 magPos = effectDesc.find("<mag>");
-            }
-            
-            // Replace <dur> with duration (NOT scaled)
-            size_t durPos = effectDesc.find("<dur>");
-            while (durPos != std::string::npos) {
-                effectDesc.replace(durPos, 5, std::to_string(duration));
-                durPos = effectDesc.find("<dur>");
-            }
-            
-            // Replace <area> with area (NOT scaled)
-            size_t areaPos = effectDesc.find("<area>");
-            while (areaPos != std::string::npos) {
-                effectDesc.replace(areaPos, 6, std::to_string(area));
-                areaPos = effectDesc.find("<area>");
             }
             
             if (i > 0) {

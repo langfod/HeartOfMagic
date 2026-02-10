@@ -609,23 +609,47 @@
         var spellTier = getTierIndex(spellNode);
         var spellId = spellNode.id || spellNode.formId;
 
-        // Pre-compute descendants of this spell to prevent deadlocks
+        // Pre-compute descendants of this spell (single BFS)
         var spellDescendants = _getDescendants(spellId, allNodes);
 
+        // Pre-compute reachability WITHOUT this spell (single BFS replaces N per-candidate calls)
+        var reachableWithoutSpell = {};
+        var roots = [];
+        allNodes.forEach(function(node, nid) {
+            if (node.isRoot) roots.push(nid);
+        });
+        var bfsQueue = roots.slice();
+        while (bfsQueue.length > 0) {
+            var curId = bfsQueue.shift();
+            if (curId === spellId) continue;
+            if (reachableWithoutSpell[curId]) continue;
+            reachableWithoutSpell[curId] = true;
+            var curNode = allNodes.get(curId);
+            if (curNode && curNode.children) {
+                for (var ci = 0; ci < curNode.children.length; ci++) {
+                    bfsQueue.push(curNode.children[ci]);
+                }
+            }
+        }
+
         allNodes.forEach(function(candidate, id) {
-            // Can't lock yourself
+            // --- Cheap checks first ---
             if (id === spellId) return;
-
-            // CRITICAL: Can't lock to a descendant (creates deadlock)
-            if (spellDescendants[id]) return;
-
-            // CRITICAL: Can't lock to a node that is ONLY reachable through spellId
-            // (if you remove spellId from the graph and candidate becomes unreachable,
-            // the player can never learn the candidate to unlock spellId)
-            if (_isOnlyReachableThrough(spellId, id, allNodes)) return;
-
-            // Can't pick a root node as a lock (roots are always available)
             if (candidate.isRoot) return;
+
+            // Pool source filter (school/distance) — fast rejection
+            if (settings.poolSource === 'same_school') {
+                if (candidate.school !== spellNode.school) return;
+            } else if (settings.poolSource === 'nearby') {
+                var dist = gridDistance(spellNode, candidate);
+                if (dist > settings.distance) return;
+            }
+
+            // Tier constraint filter
+            var candTier = getTierIndex(candidate);
+            if (candTier === spellTier && !settings.sameTier) return;
+            if (candTier < spellTier && !settings.prevTier) return;
+            if (candTier > spellTier && !settings.higherTier) return;
 
             // Don't let locked nodes lock each other (unless toggle is on)
             if (!settings.allowLockedLock) {
@@ -645,23 +669,30 @@
                 if (alreadyLocked) return;
             }
 
-            // Pool source filter
-            if (settings.poolSource === 'same_school') {
-                if (candidate.school !== spellNode.school) return;
-            } else if (settings.poolSource === 'nearby') {
-                var dist = gridDistance(spellNode, candidate);
-                if (dist > settings.distance) return;
-            }
-            // 'any_school' has no school filter
-
-            // Tier constraint filter
-            var candTier = getTierIndex(candidate);
-            if (candTier === spellTier && !settings.sameTier) return;
-            if (candTier < spellTier && !settings.prevTier) return;
-            if (candTier > spellTier && !settings.higherTier) return;
+            // --- Pre-computed graph checks (O(1) lookups) ---
+            // Can't lock to a descendant (creates deadlock)
+            if (spellDescendants[id]) return;
+            // Can't lock to a node only reachable through spellId (deadlock)
+            if (!reachableWithoutSpell[id]) return;
 
             candidates.push(candidate);
         });
+
+        // Cap pool size to prevent massive payloads
+        var MAX_CANDIDATES = 50;
+        if (candidates.length > MAX_CANDIDATES) {
+            if (settings.poolSource === 'nearby') {
+                // Nearby: keep closest by distance
+                candidates.sort(function(a, b) {
+                    return gridDistance(spellNode, a) - gridDistance(spellNode, b);
+                });
+                candidates = candidates.slice(0, MAX_CANDIDATES);
+            } else {
+                // Same school / any school: random sample
+                _fisherYatesShuffle(candidates);
+                candidates = candidates.slice(0, MAX_CANDIDATES);
+            }
+        }
 
         return candidates;
     }
@@ -1081,6 +1112,9 @@
                     var count = applyLocksWithJSScorer(request);
                     updateStatus(count + ' locks applied (JS fallback)');
                     onLocksChanged();
+                    if (typeof TreeAnimation !== 'undefined' && TreeAnimation.notifyLocksApplied) {
+                        TreeAnimation.notifyLocksApplied();
+                    }
                 } else {
                     updateStatus('No eligible spells for locks');
                 }
@@ -1180,6 +1214,11 @@
             updateStatus(lockCount + ' locks applied (Python NLP)');
             onLocksChanged();
 
+            // Notify animation to start chain phase
+            if (typeof TreeAnimation !== 'undefined' && TreeAnimation.notifyLocksApplied) {
+                TreeAnimation.notifyLocksApplied();
+            }
+
             // Advance build progress: prereqs done → finalize → complete
             if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive()) {
                 BuildProgress.setDetail(lockCount + ' prerequisite locks applied');
@@ -1196,6 +1235,9 @@
                 var fbCount = applyLocksWithJSScorer(fbRequest);
                 updateStatus(fbCount + ' locks applied (JS fallback)');
                 onLocksChanged();
+                if (typeof TreeAnimation !== 'undefined' && TreeAnimation.notifyLocksApplied) {
+                    TreeAnimation.notifyLocksApplied();
+                }
 
                 // Advance build progress after JS fallback
                 if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive()) {

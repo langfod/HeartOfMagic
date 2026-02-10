@@ -101,7 +101,7 @@ RE::BSEventNotifyControl SpellCastHandler::ProcessEvent(
 
     // Grant XP to learning targets in this school
     ProgressionManager::GetSingleton()->OnSpellCast(schoolName, spell->GetFormID(), xpGain);
-    
+
     // =========================================================================
     // THROTTLED WEAKENED SPELL NOTIFICATION
     // Show "Weakened spell at X% effectiveness" at configurable interval when casting early-learned spells

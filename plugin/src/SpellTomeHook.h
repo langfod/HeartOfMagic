@@ -76,6 +76,10 @@ private:
     // Returns false to let vanilla proceed
     static void OnSpellTomeRead(RE::TESObjectBOOK* a_book, RE::SpellItem* a_spell);
 
+    // Check prereqs + skill level — returns true if player can learn, false if blocked
+    // Shows notification if blocked. Used by both ISL and non-ISL paths.
+    static bool CheckLearningRequirements(RE::SpellItem* a_spell, RE::FormID spellFormId);
+
     // Get the container the book is in (if reading from container)
     static RE::TESObjectREFR* GetBookContainer();
 

@@ -100,6 +100,7 @@ var TreeGrowthTree = {
         }
 
         TreeSettings.setStatusText('Building tree (Python)...', '#f59e0b');
+        if (typeof updateScanStatus === 'function') updateScanStatus(t('status.buildingTree'), 'working');
         var buildBtn = document.getElementById('tgTreeBuildBtn');
         if (buildBtn) buildBtn.disabled = true;
 
@@ -367,6 +368,7 @@ var TreeGrowthTree = {
 
         var schoolCount = Object.keys(output.schools).length;
         TreeSettings.setStatusText('Tree applied (' + schoolCount + ' schools)', '#22c55e');
+        if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeApplied', {schools: schoolCount}), 'success');
 
         // Switch to the Spell Tree tab after a brief delay
         if (typeof switchTab === 'function') {
@@ -390,6 +392,7 @@ var TreeGrowthTree = {
         this._builtLayoutKey = '';
         this._cache = null;
         TreeSettings.setTreeBuilt(false);
+        if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeCleared'));
         this._markDirty();
     },
 

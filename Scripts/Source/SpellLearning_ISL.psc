@@ -16,3 +16,10 @@ float Function GetTomeBonus() global native
 
 ; Enable or disable ISL integration
 Function SetEnabled(bool enabled) global native
+
+; Called from patched ISL script after each study session
+; Grants proportional XP based on hours studied vs total hours to master
+Function OnStudyProgress(Spell akSpell, int hoursStudied, float totalStudied, float hoursToMaster) global native
+
+; Called from patched ISL script when study is complete and spell is learned
+Function OnStudyComplete(Spell akSpell) global native

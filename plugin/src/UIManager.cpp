@@ -2637,6 +2637,11 @@ void UIManager::OnProceduralPythonGenerate(const char* argument)
 
         logger::info("UIManager: Sending build_tree to PythonBridge ({} spells)", payload["spells"].size());
 
+        // Signal JS whether Python is already running (so UI can skip startup stage)
+        bool pythonAlreadyReady = PythonBridge::GetSingleton()->IsReady();
+        std::string statusJson = pythonAlreadyReady ? R"({"ready":true})" : R"({"ready":false})";
+        instance->m_prismaUI->InteropCall(instance->m_view, "onPythonBridgeStatus", statusJson.c_str());
+
         PythonBridge::GetSingleton()->SendCommand("build_tree", payload.dump(),
             [instance, startTime](bool success, const std::string& result) {
                 auto endTime = std::chrono::high_resolution_clock::now();

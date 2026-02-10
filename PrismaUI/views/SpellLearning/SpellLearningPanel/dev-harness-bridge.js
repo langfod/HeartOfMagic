@@ -232,37 +232,6 @@ window.callCpp = function(method, data) {
             })();
             break;
 
-        case 'PreReqMasterScore':
-            // Pre Req Master NLP scoring - try Python dev server, fall back to JS
-            (function() {
-                console.log('[Bridge] PreReqMasterScore: sending to Python dev server');
-
-                fetch('http://localhost:5556/score', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: data
-                }).then(function(resp) {
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    return resp.json();
-                }).then(function(result) {
-                    console.log('[Bridge] Python NLP scoring complete: ' + (result.count || 0) + ' scored');
-                    logCppCall('in', 'onPreReqMasterComplete', 'Python NLP: ' + (result.success ? 'OK' : 'FAIL'));
-                    if (typeof window.onPreReqMasterComplete === 'function') {
-                        window.onPreReqMasterComplete(JSON.stringify(result));
-                    }
-                }).catch(function(err) {
-                    console.log('[Bridge] Python server not available (' + err.message + '), signaling JS fallback');
-                    logCppCall('in', 'onPreReqMasterComplete', 'FAIL (server offline)');
-                    if (typeof window.onPreReqMasterComplete === 'function') {
-                        window.onPreReqMasterComplete(JSON.stringify({
-                            success: false,
-                            error: 'Python dev server not available: ' + err.message
-                        }));
-                    }
-                });
-            })();
-            break;
-
         case 'ClassicGrowthBuild':
             // Mock: use JS ProceduralTreeBuilder if available, otherwise build minimal mock
             setTimeout(function() {

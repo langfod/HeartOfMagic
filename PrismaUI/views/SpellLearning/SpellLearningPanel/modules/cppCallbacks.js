@@ -97,55 +97,29 @@ window.onPythonAddonStatus = function(statusStr) {
     state.pythonScriptFound = hasScript;
     console.log('[SpellLearning] Python addon status:', JSON.stringify(status));
 
-    var buildTreeBtn = document.getElementById('visualFirstBtn');
-    var setupPythonBtn = document.getElementById('setupPythonBtn');
-
-    if (buildTreeBtn) {
-        if (!installed) {
-            // Gray out Complex Build button if Python addon not installed
-            buildTreeBtn.disabled = true;
-            if (hasScript && !hasPython) {
-                buildTreeBtn.title = t('treeGrowth.pythonTooltipNotInstalled');
-            } else if (!hasScript) {
-                buildTreeBtn.title = t('treeGrowth.pythonTooltipScriptsNotFound');
-            }
-        }
-        // Note: Button stays disabled until spells are scanned even if addon is installed
-        // The scan callback handles enabling it when both conditions are met
-    }
-
-    // Show/hide Setup Python button
-    if (setupPythonBtn) {
-        if (hasScript && !hasPython) {
-            // Scripts exist but no Python - show setup button
-            setupPythonBtn.classList.remove('hidden');
-        } else {
-            // Either fully installed or scripts missing entirely
-            setupPythonBtn.classList.add('hidden');
-        }
-    }
-
-    // Update the description text to show addon status
-    var genModeRow = buildTreeBtn ? buildTreeBtn.closest('.gen-mode-row') : null;
-    if (genModeRow) {
-        var consSpan = genModeRow.querySelector('.gen-mode-cons');
-        if (consSpan) {
-            if (installed) {
-                consSpan.textContent = t('treeGrowth.pythonReadySource', {source: status.pythonSource || 'detected'});
-                consSpan.style.color = '#22c55e';  // Green
-            } else if (hasScript && !hasPython) {
-                consSpan.textContent = t('treeGrowth.pythonNotInstalledSetup');
-                consSpan.style.color = '#f59e0b';  // Amber
-            } else {
-                consSpan.textContent = t('treeGrowth.builderNotFound');
-                consSpan.style.color = '#ef4444';  // Red
-            }
-        }
-    }
-
-    // Update shared growth mode buttons
+    // Update shared growth mode buttons + status (handles tgBuildBtn, tgSetupPythonBtn, tgStatus)
     if (typeof TreeGrowth !== 'undefined') {
         TreeGrowth.updatePythonStatus(installed, hasScript, hasPython);
+    }
+};
+
+/**
+ * Called by C++ before SendCommand to signal whether PythonBridge is already running.
+ * If ready, skip the "Starting Python Server" build progress stage.
+ */
+window.onPythonBridgeStatus = function(str) {
+    try {
+        var data = typeof str === 'string' ? JSON.parse(str) : str;
+        if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive()) {
+            if (data.ready) {
+                // Python already running — skip past python stage
+                if (BuildProgress.getCurrentStage() === 'python') {
+                    BuildProgress.setStage('tree');
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('[PythonBridgeStatus] Parse error:', e);
     }
 };
 
@@ -164,6 +138,14 @@ window.updateSpellData = function(jsonStr) {
                 });
             }
             if (typeof updatePrimedCount === 'function') updatePrimedCount();
+            // Restore scan status after background tome scan (C++ overwrites with "Scanning spell tomes...")
+            if (state.lastSpellData && state.lastSpellData.spellCount) {
+                var schoolSet = {};
+                if (state.lastSpellData.spells) state.lastSpellData.spells.forEach(function(s) { if (s.school) schoolSet[s.school] = true; });
+                if (typeof updateScanStatus === 'function') {
+                    updateScanStatus(t('status.scannedSpellsSchools', {count: state.lastSpellData.spellCount, schools: Object.keys(schoolSet).length}), 'success');
+                }
+            }
             return;
         }
     } catch (e) { /* continue to normal processing */ }
@@ -212,19 +194,6 @@ window.updateSpellData = function(jsonStr) {
                 schoolData[school].push(spell);
             });
             showSchoolControlPanels(schoolData);
-        }
-        
-        // Enable BUILD TREE buttons after successful scan
-        // Complex Build (visualFirstBtn) only enabled if Python addon is installed
-        var buildTreeBtn = document.getElementById('visualFirstBtn');
-        if (buildTreeBtn && data.spells && data.spells.length > 0) {
-            if (state.pythonAddonInstalled) {
-                buildTreeBtn.disabled = false;
-            } else {
-                // Keep disabled and update tooltip
-                buildTreeBtn.disabled = true;
-                buildTreeBtn.title = t('treeGrowth.pythonTooltipRequiresAddon');
-            }
         }
         
         // Build button managed by TreeGrowth.updateScanStatus / updateBuildButton

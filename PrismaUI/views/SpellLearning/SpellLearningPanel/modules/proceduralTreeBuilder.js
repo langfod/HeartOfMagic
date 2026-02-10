@@ -1353,6 +1353,11 @@ window.onProceduralPythonComplete = function(resultStr) {
     try {
         var result = typeof resultStr === 'string' ? JSON.parse(resultStr) : resultStr;
 
+        // If python stage is still active (first spawn), advance past it now that Python responded
+        if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive() && BuildProgress.getCurrentStage() === 'python') {
+            BuildProgress.setStage('tree');
+        }
+
         // Route to Classic Growth mode if it triggered this build
         if (state._classicGrowthBuildPending) {
             state._classicGrowthBuildPending = false;
@@ -1366,6 +1371,11 @@ window.onProceduralPythonComplete = function(resultStr) {
                     TreeGrowthClassic.loadTreeData(cgTreeData);
                     if (typeof TreeGrowth !== 'undefined') TreeGrowth._markDirty();
                 }
+                // Update notification bar with build result
+                var cgSchools = cgTreeData && cgTreeData.schools ? Object.keys(cgTreeData.schools).length : 0;
+                var cgSpells = 0;
+                if (cgTreeData && cgTreeData.schools) { for (var s in cgTreeData.schools) { cgSpells += (cgTreeData.schools[s].nodes || []).length; } }
+                if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeBuildComplete', {schools: cgSchools, spells: cgSpells}), 'success');
             } else {
                 console.error('[ClassicGrowth] Python build failed:', result.error);
                 if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive()) {
@@ -1374,6 +1384,7 @@ window.onProceduralPythonComplete = function(resultStr) {
                 if (typeof ClassicSettings !== 'undefined') {
                     ClassicSettings.setStatusText('Build failed: ' + (result.error || 'unknown'), '#ef4444');
                 }
+                if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeBuildFailed', {error: result.error || 'unknown'}), 'error');
                 var cgBtn = document.getElementById('tgClassicBuildBtn');
                 if (cgBtn) cgBtn.disabled = false;
             }
@@ -1394,6 +1405,11 @@ window.onProceduralPythonComplete = function(resultStr) {
                     TreeGrowthTree.loadTreeData(tgTreeData);
                     if (typeof TreeGrowth !== 'undefined') TreeGrowth._markDirty();
                 }
+                // Update notification bar with build result
+                var tgSchools = tgTreeData && tgTreeData.schools ? Object.keys(tgTreeData.schools).length : 0;
+                var tgSpells = 0;
+                if (tgTreeData && tgTreeData.schools) { for (var s in tgTreeData.schools) { tgSpells += (tgTreeData.schools[s].nodes || []).length; } }
+                if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeBuildComplete', {schools: tgSchools, spells: tgSpells}), 'success');
             } else {
                 console.error('[TreeGrowthTree] Python build failed:', result.error);
                 if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive()) {
@@ -1402,6 +1418,7 @@ window.onProceduralPythonComplete = function(resultStr) {
                 if (typeof TreeSettings !== 'undefined') {
                     TreeSettings.setStatusText('Build failed: ' + (result.error || 'unknown'), '#ef4444');
                 }
+                if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeBuildFailed', {error: result.error || 'unknown'}), 'error');
                 var tgBtn = document.getElementById('tgTreeBuildBtn');
                 if (tgBtn) tgBtn.disabled = false;
             }
@@ -1585,7 +1602,7 @@ function startVisualFirstGenerate() {
     console.log('[VisualFirst] Button clicked');
     
     // Disable button while generating
-    var btn = document.getElementById('visualFirstBtn');
+    var btn = document.getElementById('tgBuildBtn');
     if (btn) {
         btn.disabled = true;
         btn.innerHTML = '<span class="btn-icon">...</span> Generating...';
@@ -1874,10 +1891,10 @@ function startVisualFirstPythonConfig() {
 }
 
 function resetVisualFirstButton() {
-    var btn = document.getElementById('visualFirstBtn');
+    var btn = document.getElementById('tgBuildBtn');
     if (btn) {
         btn.disabled = false;
-        btn.innerHTML = '<span class="btn-icon">[T]</span> BUILD TREE (Complex)';
+        btn.innerHTML = '<span class="btn-icon">[B]</span> Build Tree';
     }
 }
 

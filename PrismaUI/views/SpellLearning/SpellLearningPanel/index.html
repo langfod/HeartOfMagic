@@ -1792,6 +1792,11 @@
             </div>
             <div class="modal-body">
                 <div class="build-stages" id="build-stages">
+                    <div class="build-stage" data-stage="python" id="build-stage-python">
+                        <span class="build-stage-icon" id="build-stage-python-icon">&#9711;</span>
+                        <span class="build-stage-label" data-i18n="modals.buildProgress.stagePython">Starting Python Server</span>
+                        <span class="build-stage-detail" id="build-stage-python-detail"></span>
+                    </div>
                     <div class="build-stage" data-stage="tree" id="build-stage-tree">
                         <span class="build-stage-icon" id="build-stage-tree-icon">&#9711;</span>
                         <span class="build-stage-label" data-i18n="modals.buildProgress.stageTree">Analyzing &amp; Building Spell Tree</span>
@@ -1799,7 +1804,7 @@
                     </div>
                     <div class="build-stage" data-stage="prereqs" id="build-stage-prereqs">
                         <span class="build-stage-icon" id="build-stage-prereqs-icon">&#9711;</span>
-                        <span class="build-stage-label" data-i18n="modals.buildProgress.stagePrereqs">Generating Prerequisites</span>
+                        <span class="build-stage-label" data-i18n="modals.buildProgress.stagePrereqs">Running Pre Req Master</span>
                         <span class="build-stage-detail" id="build-stage-prereqs-detail"></span>
                     </div>
                     <div class="build-stage" data-stage="finalize" id="build-stage-finalize">

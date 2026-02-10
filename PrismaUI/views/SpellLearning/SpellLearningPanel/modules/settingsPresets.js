@@ -821,6 +821,7 @@ function clearTree() {
     if (typeof setTreeStatus === 'function') {
         setTreeStatus('Tree cleared - ready for new generation');
     }
+    if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeCleared'));
 }
 
 window.clearTree = clearTree;

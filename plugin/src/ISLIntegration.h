@@ -94,6 +94,12 @@ namespace DESTIntegration {
     bool RegisterPapyrusFunctions(RE::BSScript::IVirtualMachine* vm);
 
     // -------------------------------------------------------------------------
+    // Auto-registration (fix existing saves where alias registrations were
+    // stored in the real DontEatSpellTomes.dll's co-save, not ours)
+    // -------------------------------------------------------------------------
+    void AutoRegisterISLAliases();
+
+    // -------------------------------------------------------------------------
     // Serialization  (persist registered aliases across save/load)
     // -------------------------------------------------------------------------
     void OnGameSaved(SKSE::SerializationInterface* a_intfc);

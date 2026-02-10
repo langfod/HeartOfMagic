@@ -89,6 +89,11 @@ public:
     // Grant spell to player when unlock threshold reached
     static void GrantEarlySpell(RE::SpellItem* spell);
     
+    // Register spell for ISL compatibility (early-learned tracking + display, but NO AddSpell)
+    // Called when ISL is about to handle study — so when ISL eventually teaches the spell,
+    // our effectiveness hook will apply weakness scaling.
+    void RegisterISLPendingSpell(RE::SpellItem* spell);
+    
     // Remove early spell from player (when switching learning target)
     static void RemoveEarlySpellFromPlayer(RE::FormID spellFormId);
     

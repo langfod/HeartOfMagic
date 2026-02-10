@@ -55,19 +55,19 @@ var Globe3D = {
             // Random spherical distribution (uniform on sphere surface)
             var theta = Math.random() * 2 * Math.PI;           // Random [0, 2PI]
             var phi = Math.acos((Math.random() * 2) - 1);      // Random [-1, 1] -> uniform on sphere
-            
+
             // Calculate 3D coordinates
             var x = radius * Math.sin(phi) * Math.cos(theta);
             var y = radius * Math.sin(phi) * Math.sin(theta);
             var z = (radius * Math.cos(phi)) + centerZ;
-            
+
             // Random size within range
             var particleSize = sizeMin + Math.random() * sizeRange;
-            
+
             this.particles.push({
                 // Base 3D position (before rotation)
                 baseX: x,
-                baseY: y, 
+                baseY: y,
                 baseZ: z,
                 // Current 3D position (after rotation)
                 x: x,
@@ -79,7 +79,21 @@ var Globe3D = {
                 projScale: 1,
                 // Visual properties
                 size: particleSize,
-                alpha: 0.7 + Math.random() * 0.3
+                currentSize: particleSize,
+                alpha: 0.7 + Math.random() * 0.3,
+                // Lifecycle
+                phase: 'hold',
+                phaseTimer: Math.floor(Math.random() * 120),
+                holdDuration: 60 + Math.floor(Math.random() * 100),
+                baseAlpha: 0.6 + Math.random() * 0.4,
+                // Surface drift
+                driftTheta: 0,
+                driftPhi: 0,
+                driftSpeedTheta: (Math.random() - 0.5) * 0.002,
+                driftSpeedPhi: (Math.random() - 0.5) * 0.002,
+                // Heartbeat scatter
+                scatterOffset: 0,
+                scatterVelocity: 0
             });
         }
         
@@ -109,30 +123,52 @@ var Globe3D = {
      */
     project: function() {
         if (!this.particles) return;
-        
+
         var fov = this.fieldOfView;
         var centerZ = this.globeCenterZ;
         var sin = Math.sin(this.rotation);
         var cos = Math.cos(this.rotation);
-        
+        var minScale = Infinity;
+        var maxScale = -Infinity;
+
         for (var i = 0; i < this.particles.length; i++) {
             var p = this.particles[i];
-            
+
+            // Apply drift + scatter to get effective position
+            var effectiveRadius = this.radius + p.scatterOffset;
+            var origR = Math.sqrt(p.baseX * p.baseX + p.baseY * p.baseY);
+            var origTheta = Math.atan2(p.baseY, p.baseX);
+            var origPhi = Math.atan2(origR, p.baseZ - centerZ);
+
+            var theta = origTheta + p.driftTheta;
+            var phi = origPhi + p.driftPhi;
+
+            var driftX = effectiveRadius * Math.sin(phi) * Math.cos(theta);
+            var driftY = effectiveRadius * Math.sin(phi) * Math.sin(theta);
+            var driftZ = (effectiveRadius * Math.cos(phi)) + centerZ;
+
             // Rotate around Y axis (relative to globe center)
-            var rotX = cos * p.baseX + sin * (p.baseZ - centerZ);
-            var rotZ = -sin * p.baseX + cos * (p.baseZ - centerZ) + centerZ;
-            
+            var rotX = cos * driftX + sin * (driftZ - centerZ);
+            var rotZ = -sin * driftX + cos * (driftZ - centerZ) + centerZ;
+
             // Perspective projection with field of view
             var scale = fov / (fov - rotZ);
-            
+
             p.x = rotX;
-            p.y = p.baseY;
+            p.y = driftY;
             p.z = rotZ;
             p.projX = rotX * scale;
-            p.projY = p.baseY * scale;
+            p.projY = driftY * scale;
             p.projScale = scale;
+
+            if (scale < minScale) minScale = scale;
+            if (scale > maxScale) maxScale = scale;
         }
-        
+
+        // Store for depth-based rendering
+        this._minScale = minScale;
+        this._maxScale = maxScale;
+
         // Depth sort (back to front)
         this.particles.sort(function(a, b) {
             return a.z - b.z;
@@ -144,14 +180,82 @@ var Globe3D = {
      */
     update: function() {
         this.rotation += this.rotationSpeed;
-        
+
+        // Update particle lifecycles (attack/hold/decay/dead + drift + scatter)
+        this._updateLifecycles();
+
         // Update orbiting stars
         this._updateOrbitingStars();
-        
+
         // Update detached particles
         this._updateDetachedParticles();
     },
     
+    /**
+     * Update particle lifecycles (attack/hold/decay/dead phases)
+     */
+    _updateLifecycles: function() {
+        if (!this.particles) return;
+
+        for (var i = 0; i < this.particles.length; i++) {
+            var p = this.particles[i];
+            if (p.regenerating) continue;
+
+            p.phaseTimer++;
+
+            // Drift: slowly wander on sphere surface
+            p.driftTheta += p.driftSpeedTheta;
+            p.driftPhi += p.driftSpeedPhi;
+
+            // Heartbeat scatter: decay back to sphere
+            if (p.scatterOffset > 0.1) {
+                p.scatterOffset += p.scatterVelocity;
+                p.scatterVelocity *= 0.92;
+                p.scatterOffset *= 0.95;
+            } else {
+                p.scatterOffset = 0;
+                p.scatterVelocity = 0;
+            }
+
+            switch (p.phase) {
+                case 'attack':
+                    var tA = Math.min(1, p.phaseTimer / 20);
+                    p.alpha = p.baseAlpha * tA;
+                    p.currentSize = p.size * tA;
+                    if (tA >= 1) { p.phase = 'hold'; p.phaseTimer = 0; }
+                    break;
+
+                case 'hold':
+                    p.alpha = p.baseAlpha * (0.9 + 0.1 * Math.sin(p.phaseTimer * 0.15));
+                    p.currentSize = p.size;
+                    if (p.phaseTimer >= p.holdDuration) { p.phase = 'decay'; p.phaseTimer = 0; }
+                    break;
+
+                case 'decay':
+                    var tD = Math.min(1, p.phaseTimer / 30);
+                    p.alpha = p.baseAlpha * (1 - tD);
+                    p.currentSize = p.size * (1 - tD * 0.5);
+                    if (tD >= 1) { p.phase = 'dead'; }
+                    break;
+
+                case 'dead':
+                    var theta = Math.random() * 2 * Math.PI;
+                    var phi = Math.acos((Math.random() * 2) - 1);
+                    p.baseX = this.radius * Math.sin(phi) * Math.cos(theta);
+                    p.baseY = this.radius * Math.sin(phi) * Math.sin(theta);
+                    p.baseZ = (this.radius * Math.cos(phi)) + this.globeCenterZ;
+                    p.holdDuration = 60 + Math.floor(Math.random() * 100);
+                    p.driftTheta = 0;
+                    p.driftPhi = 0;
+                    p.driftSpeedTheta = (Math.random() - 0.5) * 0.002;
+                    p.driftSpeedPhi = (Math.random() - 0.5) * 0.002;
+                    p.phase = 'attack';
+                    p.phaseTimer = 0;
+                    break;
+            }
+        }
+    },
+
     /**
      * Spawn a new orbiting star
      */

@@ -3,17 +3,19 @@
  * Shows a staged progress popup when building the spell tree + generating prerequisites.
  *
  * Stages:
- *   1. "tree"      – Python NLP spell tree analysis & building
- *   2. "prereqs"   – Pre Req Master Python NLP scoring (if PRM enabled)
- *   3. "finalize"  – Layout finalization & render
+ *   1. "python"    – Starting/connecting to Python server (skipped if already ready)
+ *   2. "tree"      – Python NLP spell tree analysis & building
+ *   3. "prereqs"   – Pre Req Master Python NLP scoring (if PRM enabled)
+ *   4. "finalize"  – Layout finalization & render
  *
  * Usage:
- *   BuildProgress.start(hasPRM)   – open modal, set whether PRM stage is active
- *   BuildProgress.setStage(name)  – advance to named stage
- *   BuildProgress.setDetail(text) – update sub-detail for current stage
- *   BuildProgress.complete()      – mark all done, show Done button
- *   BuildProgress.fail(error)     – mark current stage as failed
- *   BuildProgress.close()         – hide modal
+ *   BuildProgress.start(hasPRM, pythonReady)  – open modal, set stages
+ *   BuildProgress.setStage(name)              – advance to named stage
+ *   BuildProgress.setDetail(text)             – update sub-detail for current stage
+ *   BuildProgress.complete()                  – mark all done, show Done button
+ *   BuildProgress.fail(error)                 – mark current stage as failed
+ *   BuildProgress.close()                     – hide modal
+ *   BuildProgress.getCurrentStage()           – get current stage name
  *
  * Depends on: prereqMaster.js (PreReqMaster.isEnabled)
  */
@@ -23,7 +25,7 @@ var BuildProgress = (function() {
     var _active = false;
     var _hasPRM = false;
     var _currentStage = null;
-    var _stages = ['tree', 'prereqs', 'finalize'];
+    var _stages = ['python', 'tree', 'prereqs', 'finalize'];
     var _stageStartTime = 0;
     var _totalStartTime = 0;
 
@@ -41,8 +43,9 @@ var BuildProgress = (function() {
     /**
      * Start the build progress modal.
      * @param {boolean} hasPRM - Whether Pre Req Master stage is expected
+     * @param {boolean} [pythonReady] - If true, skip the python startup stage
      */
-    function start(hasPRM) {
+    function start(hasPRM, pythonReady) {
         _active = true;
         _hasPRM = hasPRM;
         _currentStage = null;
@@ -58,6 +61,13 @@ var BuildProgress = (function() {
             _setStageDetail(stage, '');
         });
 
+        // If python already ready, mark python stage as skipped
+        if (pythonReady) {
+            _setStageIcon('python', ICON_DONE);
+            _setStageState('python', 'done');
+            _setStageDetail('python', t('buildProgress.pythonServerReady'));
+        }
+
         // If PRM not enabled, mark prereqs as skipped
         if (!hasPRM) {
             _setStageIcon('prereqs', ICON_SKIPPED);
@@ -72,8 +82,8 @@ var BuildProgress = (function() {
         _setProgressBar(0);
         _setStatus(t('modals.buildProgress.preparing'));
 
-        // Immediately start tree stage
-        setStage('tree');
+        // Start at python stage or tree if python already ready
+        setStage(pythonReady ? 'tree' : 'python');
     }
 
     /**
@@ -104,13 +114,14 @@ var BuildProgress = (function() {
 
         // Update progress bar based on stage
         var stageLabels = {
+            python: t('buildProgress.startingPythonServer'),
             tree: t('buildProgress.analyzingSpellRelationships'),
             prereqs: t('buildProgress.scoringPrereqCandidates'),
             finalize: t('buildProgress.finalizingLayout')
         };
         _setStatus(stageLabels[stageName] || stageName);
 
-        var progressMap = { tree: 15, prereqs: 55, finalize: 85 };
+        var progressMap = { python: 5, tree: 20, prereqs: 55, finalize: 85 };
         _setProgressBar(progressMap[stageName] || 0);
 
         // Start a timer to animate progress within the stage
@@ -207,6 +218,13 @@ var BuildProgress = (function() {
         return _active;
     }
 
+    /**
+     * Get the current stage name.
+     */
+    function getCurrentStage() {
+        return _currentStage;
+    }
+
     // =========================================================================
     // INTERNAL HELPERS
     // =========================================================================
@@ -249,7 +267,7 @@ var BuildProgress = (function() {
     function _animateStageProgress(stageName, startPercent) {
         if (_animTimer) clearInterval(_animTimer);
 
-        var nextStagePercent = { tree: 50, prereqs: 80, finalize: 95 };
+        var nextStagePercent = { python: 15, tree: 50, prereqs: 80, finalize: 95 };
         var target = nextStagePercent[stageName] || 95;
         var current = startPercent;
 
@@ -275,7 +293,8 @@ var BuildProgress = (function() {
         complete: complete,
         fail: fail,
         close: close,
-        isActive: isActive
+        isActive: isActive,
+        getCurrentStage: getCurrentStage
     };
 
 })();

@@ -85,29 +85,6 @@ window.onPythonSetupComplete = function(jsonStr) {
             // Update state
             state.pythonAddonInstalled = true;
 
-            // Update the Complex Build button status
-            var buildTreeBtn = document.getElementById('visualFirstBtn');
-            if (buildTreeBtn) {
-                buildTreeBtn.title = 'Generate spell trees using the grid-based growth system';
-                // Don't enable yet - needs spells scanned first
-            }
-
-            // Update status text
-            var genModeRow = buildTreeBtn ? buildTreeBtn.closest('.gen-mode-row') : null;
-            if (genModeRow) {
-                var consSpan = genModeRow.querySelector('.gen-mode-cons');
-                if (consSpan) {
-                    consSpan.textContent = 'Python ready (embedded)';
-                    consSpan.style.color = '#22c55e';
-                }
-            }
-
-            // Hide the setup button
-            var setupBtn = document.getElementById('setupPythonBtn');
-            if (setupBtn) {
-                setupBtn.classList.add('hidden');
-            }
-
             // Update TreeGrowth shared buttons + status (cascades to Easy mode via MutationObserver)
             if (typeof TreeGrowth !== 'undefined' && TreeGrowth.updatePythonStatus) {
                 TreeGrowth.updatePythonStatus(true, true, true);

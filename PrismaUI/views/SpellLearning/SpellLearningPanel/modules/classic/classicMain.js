@@ -572,7 +572,9 @@ var TreeGrowthClassic = {
             loadTreeData(output);
         }
 
+        var appliedSchoolCount = Object.keys(output.schools).length;
         ClassicSettings.setStatusText('Tree applied (' + posCount + ' positioned)', '#22c55e');
+        if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeApplied', {schools: appliedSchoolCount}), 'success');
 
         // Switch to the Spell Tree tab after a brief delay
         if (typeof switchTab === 'function') {
@@ -609,6 +611,7 @@ var TreeGrowthClassic = {
         this._layoutData = null;
 
         ClassicSettings.setTreeBuilt(false);
+        if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeCleared'));
 
         TreeGrowth._markDirty();
     },

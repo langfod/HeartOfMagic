@@ -29,6 +29,7 @@
                 </dependencies>
                 <files>
                     <folder source="optional\ISLPatch\SKSE" destination="SKSE" priority="1"/>
+                    <folder source="optional\ISLPatch\Scripts" destination="Scripts" priority="1"/>
                 </files>
             </pattern>
         </patterns>
@@ -48,6 +49,8 @@ Replaces DontEatSpellTomes.dll with an inert shim so Heart of Magic's spell tome
 
 ISL's study system (menus, animations, time passage) continues to work. Spell tomes grant XP through Heart of Magic's progression system.
 
+IMPORTANT: In your mod manager, make sure Heart of Magic overwrites (loads after) Immersive Spell Learning so the patched scripts take priority.
+
 This is auto-selected if ISL or DEST was detected. If you don't use ISL, leave this unchecked.
                             </description>
                             <conditionFlags>
@@ -55,6 +58,7 @@ This is auto-selected if ISL or DEST was detected. If you don't use ISL, leave t
                             </conditionFlags>
                             <files>
                                 <folder source="optional\ISLPatch\SKSE" destination="SKSE" priority="1"/>
+                    <folder source="optional\ISLPatch\Scripts" destination="Scripts" priority="1"/>
                             </files>
                             <typeDescriptor>
                                 <dependencyType>

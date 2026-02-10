@@ -276,6 +276,83 @@ namespace DESTIntegration {
         {
             return IsActive();
         }
+
+        // =====================================================================
+        // ISL Study Callbacks — called from patched DEST_ISL_PlayerSpellLearningScript
+        // =====================================================================
+
+        void OnStudyProgress(RE::StaticFunctionTag*,
+                             RE::SpellItem* a_spell,
+                             int a_hoursStudied,
+                             float a_totalStudied,
+                             float a_hoursToMaster)
+        {
+            if (!a_spell || a_hoursToMaster <= 0.0f) return;
+
+            RE::FormID formId = a_spell->GetFormID();
+            char formIdStr[32];
+            snprintf(formIdStr, sizeof(formIdStr), "0x%08X", formId);
+
+            auto* pm = ProgressionManager::GetSingleton();
+            auto* effectHook = SpellEffectivenessHook::GetSingleton();
+            if (!pm || !effectHook) return;
+
+            // Calculate proportional XP: this study session's fraction of the
+            // total unlock-threshold XP (25% of required by default).
+            float reqXP = pm->GetRequiredXP(formIdStr);
+            if (reqXP <= 0) reqXP = pm->GetXPForTier("novice");
+
+            float threshold = effectHook->GetSettings().unlockThreshold / 100.0f;
+            float totalStudyXP = reqXP * threshold;  // Total XP across all study
+            float sessionXP = (static_cast<float>(a_hoursStudied) / a_hoursToMaster) * totalStudyXP;
+
+            pm->AddXPNoGrant(formIdStr, sessionXP);
+
+            logger::info("DESTIntegration: OnStudyProgress — {} studied {} hrs ({:.0f}/{:.0f}), "
+                         "granted {:.1f} XP ({:.0f}% of {:.0f} total study XP)",
+                         a_spell->GetName(), a_hoursStudied,
+                         a_totalStudied, a_hoursToMaster,
+                         sessionXP, (sessionXP / totalStudyXP) * 100.0f, totalStudyXP);
+
+            // Do NOT call CheckAndUpdatePowerStep here — the player doesn't have
+            // the spell yet, so we shouldn't modify its name/description during study.
+            // Name modifications happen in OnStudyComplete after ISL grants the spell.
+
+            // Notify UI
+            UIManager::GetSingleton()->NotifyProgressUpdate(formIdStr);
+        }
+
+        void OnStudyComplete(RE::StaticFunctionTag*, RE::SpellItem* a_spell)
+        {
+            if (!a_spell) return;
+
+            RE::FormID formId = a_spell->GetFormID();
+            char formIdStr[32];
+            snprintf(formIdStr, sizeof(formIdStr), "0x%08X", formId);
+
+            auto* effectHook = SpellEffectivenessHook::GetSingleton();
+            if (!effectHook) return;
+
+            // Ensure spell is in early-learned tracking (should already be from
+            // RegisterISLPendingSpell, but belt-and-suspenders)
+            if (!effectHook->IsEarlyLearnedSpell(formId)) {
+                effectHook->RegisterISLPendingSpell(a_spell);
+            }
+
+            // NOW apply the modified name/description — ISL has granted the spell,
+            // so it's safe to rename. During study we deliberately left the name
+            // untouched so ISL's notifications showed the clean spell name.
+            effectHook->UpdateSpellDisplayCache(formId, a_spell);
+            effectHook->ApplyModifiedSpellName(formId);
+            effectHook->ApplyModifiedDescriptions(formId);
+
+            logger::info("DESTIntegration: OnStudyComplete — {} ({:08X}) learned via ISL, "
+                         "now at weakened power, name/description modified",
+                         a_spell->GetName(), formId);
+
+            // Notify UI
+            UIManager::GetSingleton()->NotifyProgressUpdate(formIdStr);
+        }
     }
 
     bool RegisterPapyrusFunctions(RE::BSScript::IVirtualMachine* vm)
@@ -286,9 +363,79 @@ namespace DESTIntegration {
         vm->RegisterFunction("IsIntegrationActive",  "SpellLearning_DEST", Papyrus::IsIntegrationActive);
         vm->RegisterFunction("OnTomeRead",          "SpellLearning_ISL",  Papyrus::OnTomeRead);
         vm->RegisterFunction("IsIntegrationActive",  "SpellLearning_ISL",  Papyrus::IsIntegrationActive);
+        vm->RegisterFunction("OnStudyProgress",     "SpellLearning_ISL",  Papyrus::OnStudyProgress);
+        vm->RegisterFunction("OnStudyComplete",     "SpellLearning_ISL",  Papyrus::OnStudyComplete);
 
         logger::info("DESTIntegration: Registered SpellLearning_DEST/ISL Papyrus functions");
         return true;
+    }
+
+    // =========================================================================
+    // Auto-registration for existing saves
+    // =========================================================================
+    // ISL's DEST_ISL_PlayerSpellLearningScript registers for OnSpellTomeRead
+    // in OnInit() only (no OnPlayerLoadGame). On existing saves, those
+    // registrations were stored in the REAL DontEatSpellTomes.dll's co-save.
+    // Our dummy replacement means our RegistrationSet starts empty.
+    // Fix: scan DEST_ISL.esp quests on game load and register player aliases.
+    // =========================================================================
+
+    void AutoRegisterISLAliases()
+    {
+        if (!g_destInstalled) return;
+
+        auto* dh = RE::TESDataHandler::GetSingleton();
+        if (!dh) return;
+
+        const auto* destMod = dh->LookupModByName(g_detectedPluginName);
+        if (!destMod) return;
+
+        uint8_t compileIndex = destMod->compileIndex;
+        uint16_t smallFileCompileIndex = destMod->smallFileCompileIndex;
+
+        int registered = 0;
+
+        for (auto& quest : dh->GetFormArray<RE::TESQuest>()) {
+            if (!quest || !quest->IsRunning()) continue;
+
+            RE::FormID formId = quest->GetFormID();
+            uint8_t modIdx = (formId >> 24) & 0xFF;
+
+            // Check if quest belongs to the DEST_ISL plugin
+            bool fromMod = false;
+            if (modIdx == 0xFE) {
+                // Light plugin (ESL)
+                uint16_t lightIdx = (formId >> 12) & 0xFFF;
+                fromMod = (compileIndex == 0xFE && lightIdx == smallFileCompileIndex);
+            } else {
+                fromMod = (modIdx == compileIndex);
+            }
+            if (!fromMod) continue;
+
+            // Scan aliases for player reference aliases
+            for (uint32_t i = 0; i < quest->aliases.size(); i++) {
+                auto* alias = quest->aliases[i];
+                if (!alias) continue;
+
+                auto* refAlias = skyrim_cast<RE::BGSRefAlias*>(alias);
+                if (!refAlias) continue;
+
+                auto* ref = refAlias->GetReference();
+                if (ref && ref->IsPlayerRef()) {
+                    if (g_spellTomeEventRegs.Register(alias)) {
+                        registered++;
+                        logger::info("DESTIntegration: Auto-registered player alias '{}' from quest {:08X}",
+                            alias->aliasName.c_str(), quest->GetFormID());
+                    }
+                }
+            }
+        }
+
+        if (registered > 0) {
+            logger::info("DESTIntegration: Auto-registered {} ISL alias(es) for existing save compatibility", registered);
+        } else if (g_islInstalled) {
+            logger::warn("DESTIntegration: ISL detected but no player aliases found — ISL study popup may not appear");
+        }
     }
 
     // =========================================================================
@@ -305,6 +452,10 @@ namespace DESTIntegration {
     {
         g_spellTomeEventRegs.Load(a_intfc);
         logger::info("DESTIntegration: Loaded DEST event registrations");
+
+        // Auto-register ISL aliases — fixes existing saves where the real
+        // DontEatSpellTomes.dll's registrations were lost
+        AutoRegisterISLAliases();
     }
 
     void OnRevert(SKSE::SerializationInterface* a_intfc)

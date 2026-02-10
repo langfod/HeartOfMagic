@@ -484,7 +484,6 @@ var TreeGrowth = {
         var buildBtn = document.getElementById('tgBuildBtn');
         var applyBtn = document.getElementById('tgApplyBtn');
         var clearBtn = document.getElementById('tgClearBtn');
-        var setupBtn = document.getElementById('tgSetupPythonBtn');
 
         if (buildBtn) buildBtn.addEventListener('click', function() {
             var mod = self.modes[self.activeMode];
@@ -498,13 +497,8 @@ var TreeGrowth = {
             var mod = self.modes[self.activeMode];
             if (mod && mod.clearTree) mod.clearTree();
         });
-        if (setupBtn) setupBtn.addEventListener('click', function() {
-            if (typeof window.startPythonSetup === 'function') {
-                window.startPythonSetup();
-            } else {
-                window.callCpp('SetupPython', '');
-            }
-        });
+        // Note: tgSetupPythonBtn is bound eagerly at script load time (below)
+        // because it may be shown before TreeGrowth.init() runs.
     },
 
     // =========================================================================
@@ -635,3 +629,18 @@ if (typeof TreeGrowthTree !== 'undefined') {
 
 // Placeholder tabs for upcoming modes
 TreeGrowth.registerPlaceholder('life');
+
+// Eagerly bind Setup Python button — it lives in static HTML and may be shown
+// by onPythonAddonStatus before TreeGrowth.init() runs (which requires a scan).
+(function() {
+    var setupBtn = document.getElementById('tgSetupPythonBtn');
+    if (setupBtn) {
+        setupBtn.addEventListener('click', function() {
+            if (typeof window.startPythonSetup === 'function') {
+                window.startPythonSetup();
+            } else {
+                window.callCpp('SetupPython', '');
+            }
+        });
+    }
+})();

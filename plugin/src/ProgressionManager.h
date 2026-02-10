@@ -61,6 +61,7 @@ public:
     void OnSpellCast(const std::string& school, RE::FormID castSpellId, float baseXP);
     void AddXP(RE::FormID targetSpellId, float amount);
     void AddXP(const std::string& formIdStr, float amount);  // String overload for DEST integration
+    void AddXPNoGrant(const std::string& formIdStr, float amount);  // Record XP without early spell grant (ISL compat)
     SpellProgress GetProgress(RE::FormID formId) const;
     void SetRequiredXP(RE::FormID formId, float required);
     

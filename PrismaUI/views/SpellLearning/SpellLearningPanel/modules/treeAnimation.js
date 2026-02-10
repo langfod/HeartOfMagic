@@ -24,7 +24,7 @@ var TreeAnimation = {
     _mode: '',           // 'classic' or 'tree'
 
     // Phase tracking
-    _phase: 'idle',      // 'idle' | 'nodes' | 'chains' | 'done'
+    _phase: 'idle',      // 'idle' | 'nodes' | 'waiting_chains' | 'chains' | 'done'
 
     // Phase 1: Node playback state
     _currentIdx: 0,
@@ -44,6 +44,7 @@ var TreeAnimation = {
     _pendingCapture: false,
     _retryCount: 0,
     _retryTimerId: null,
+    _chainWaitTimer: null,
 
     // =========================================================================
     // CAPTURE
@@ -348,12 +349,26 @@ var TreeAnimation = {
                 console.log('[TreeAnimation] Phase 1 (nodes) complete');
 
                 // Transition to Phase 2: chains
+                // Re-capture chains in case PRM finished while Phase 1 was playing
+                if (!self._chains || self._chains.length === 0) {
+                    self._captureChains();
+                }
                 if (self._chains && self._chains.length > 0) {
                     self._startChainPhase();
                 } else {
+                    // PRM may still be processing — wait for it (timeout after 30s)
+                    self._phase = 'waiting_chains';
                     self._playing = false;
-                    self._phase = 'done';
-                    console.log('[TreeAnimation] Replay complete (no chains)');
+                    console.log('[TreeAnimation] Phase 1 done, waiting for PRM locks...');
+                    self._chainWaitTimer = setTimeout(function() {
+                        if (self._phase === 'waiting_chains') {
+                            self._phase = 'done';
+                            console.log('[TreeAnimation] Chain wait timed out, finishing');
+                            if (typeof PreReqMaster !== 'undefined' && PreReqMaster.renderPreview) {
+                                PreReqMaster.renderPreview();
+                            }
+                        }
+                    }, 30000);
                 }
             }
 
@@ -421,6 +436,10 @@ var TreeAnimation = {
             clearTimeout(this._retryTimerId);
             this._retryTimerId = null;
         }
+        if (this._chainWaitTimer) {
+            clearTimeout(this._chainWaitTimer);
+            this._chainWaitTimer = null;
+        }
         this._playing = false;
         this._phase = 'idle';
         if (this._nodes) {
@@ -436,11 +455,35 @@ var TreeAnimation = {
     },
 
     isPlaying: function() {
-        return this._playing;
+        return this._playing || this._phase === 'waiting_chains';
     },
 
     hasData: function() {
         return this._nodes && this._nodes.length > 0;
+    },
+
+    /**
+     * Called by PreReqMaster after locks have been applied.
+     * If we're waiting for chains, capture and start Phase 2.
+     */
+    notifyLocksApplied: function() {
+        if (this._phase !== 'waiting_chains') return;
+
+        if (this._chainWaitTimer) {
+            clearTimeout(this._chainWaitTimer);
+            this._chainWaitTimer = null;
+        }
+
+        this._captureChains();
+        if (this._chains && this._chains.length > 0) {
+            console.log('[TreeAnimation] Locks arrived, starting Phase 2 with ' + this._chains.length + ' chains');
+            this._playing = true;
+            this._startChainPhase();
+        } else {
+            this._playing = false;
+            this._phase = 'done';
+            console.log('[TreeAnimation] Locks applied but no chain edges to animate');
+        }
     },
 
     // =========================================================================

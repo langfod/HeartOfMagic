@@ -130,7 +130,9 @@ void OnGameSaved(SKSE::SerializationInterface* a_intfc)
     logger::info("SKSE Serialization: Game saved");
     ProgressionManager::GetSingleton()->OnGameSaved(a_intfc);
     SpellEffectivenessHook::GetSingleton()->OnGameSaved(a_intfc);
-    DESTIntegration::OnGameSaved(a_intfc);
+    // NOTE: DEST registrations are NOT serialized to co-save.
+    // They are re-established on each load via AutoRegisterISLAliases()
+    // in OnPostLoadGame, since OnInit() only fires once per save creation.
 }
 
 void OnGameLoaded(SKSE::SerializationInterface* a_intfc)
@@ -138,7 +140,8 @@ void OnGameLoaded(SKSE::SerializationInterface* a_intfc)
     logger::info("SKSE Serialization: Game loaded");
     ProgressionManager::GetSingleton()->OnGameLoaded(a_intfc);
     SpellEffectivenessHook::GetSingleton()->OnGameLoaded(a_intfc);
-    DESTIntegration::OnGameLoaded(a_intfc);
+    // NOTE: DEST registrations are handled via AutoRegisterISLAliases()
+    // in OnPostLoadGame, not through serialization.
 }
 
 void OnRevert(SKSE::SerializationInterface* a_intfc)
@@ -146,7 +149,10 @@ void OnRevert(SKSE::SerializationInterface* a_intfc)
     logger::info("SKSE Serialization: Reverting (new game or loading different save)");
     ProgressionManager::GetSingleton()->OnRevert(a_intfc);
     SpellEffectivenessHook::GetSingleton()->OnRevert(a_intfc);
-    DESTIntegration::OnRevert(a_intfc);
+    // NOTE: Do NOT revert DEST registrations here.
+    // AutoRegisterISLAliases() in OnPostLoadGame will re-establish them.
+    // Reverting would clear them, and since OnInit() only fires once per
+    // save creation, they'd never come back until the next load.
 }
 
 // =============================================================================
@@ -205,6 +211,13 @@ void OnPostLoadGame()
     if (UIManager::GetSingleton()->IsInitialized()) {
         UIManager::GetSingleton()->EnsureFocusReleased();
     }
+
+    // Re-register ISL aliases every save load.
+    // OnInit() only fires once per save creation (not on load), so on fresh
+    // game launch → existing save, g_spellTomeEventRegs is empty.
+    // AutoRegisterISLAliases scans DEST_ISL quests for player aliases and
+    // registers them so spell tome read events dispatch correctly.
+    DESTIntegration::AutoRegisterISLAliases();
 
     // Notify UI to refresh - this will:
     // 1. Reset tree states to locked/available

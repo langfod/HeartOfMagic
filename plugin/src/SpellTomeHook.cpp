@@ -127,14 +127,19 @@ void SpellTomeHook::OnSpellTomeRead(RE::TESObjectBOOK* a_book, RE::SpellItem* a_
     // =========================================================================
     // ISL INTEGRATION — Immersive Spell Learning compatibility
     // =========================================================================
-    // When ISL is active we delegate the user-facing experience (study menus,
-    // animations, time passage) to ISL's Papyrus scripts.  We still grant our
-    // XP on first read so the spell's effectiveness scales through our system.
-    // ISL's AddSpell at the end of study gives the player the spell, and our
-    // SpellEffectivenessHook applies power scaling based on earned XP.
+    // When ISL is active we:
+    //   1. Check prerequisites + skill level (block if not met)
+    //   2. Set spell as learning target
+    //   3. Register in early-learned tracking (so effectiveness hook nerfs it)
+    //   4. Delegate to ISL for study UX (menus, animations, time)
+    //   5. Do NOT grant XP — player earns XP by casting the weakened spell
+    //
+    // When ISL finishes studying and calls AddSpell, our
+    // SpellEffectivenessHook applies power scaling. Player then gains
+    // mastery through the normal spell-casting XP system.
     // =========================================================================
     if (DESTIntegration::IsActive()) {
-        logger::info("SpellTomeHook: ISL/DEST active — delegating to ISL");
+        logger::info("SpellTomeHook: ISL/DEST active — checking requirements before delegation");
 
         RE::FormID spellFormId = a_spell->GetFormID();
         char formIdStr[32];
@@ -142,31 +147,36 @@ void SpellTomeHook::OnSpellTomeRead(RE::TESObjectBOOK* a_book, RE::SpellItem* a_
 
         auto* pm = ProgressionManager::GetSingleton();
 
-        // Grant our XP on FIRST read only (anti-exploit)
-        if (pm && !hook->HasGrantedTomeXP(spellFormId)) {
-            float requiredXP = pm->GetRequiredXP(formIdStr);
-            if (requiredXP <= 0) requiredXP = 100.0f;
-
-            float xpToGrant = requiredXP * (hook->m_settings.xpPercentToGrant / 100.0f);
-            pm->AddXP(formIdStr, xpToGrant);
-            hook->MarkTomeXPGranted(spellFormId);
-
-            if (hook->m_settings.autoSetLearningTarget) {
-                pm->SetLearningTargetFromTome(formIdStr, a_spell);
-            }
-
-            logger::info("SpellTomeHook: [ISL] Granted {:.1f} XP ({:.0f}%) for '{}'",
-                         xpToGrant, hook->m_settings.xpPercentToGrant, a_spell->GetName());
-
-            // Notify UI so the tree updates
-            UIManager::GetSingleton()->NotifyProgressUpdate(formIdStr);
+        // --- Check prerequisites + skill level (same checks as non-ISL path) ---
+        if (!CheckLearningRequirements(a_spell, spellFormId)) {
+            return;  // Blocked — notification already shown, tome kept
         }
 
-        // Dispatch the event to ISL's Papyrus alias.
-        // ISL handles: study menu, animations, time, and eventually AddSpell.
-        // If player already knows the spell, ISL shows its own "already known"
-        // or "forget" dialog.
-        DESTIntegration::DispatchSpellTomeRead(a_book, a_spell, nullptr);
+        // --- Set as learning target ---
+        if (hook->m_settings.autoSetLearningTarget && pm) {
+            pm->SetLearningTargetFromTome(formIdStr, a_spell);
+            logger::info("SpellTomeHook: [ISL] Set '{}' as learning target", a_spell->GetName());
+        }
+
+        // --- Register for weakness tracking (NO XP grant, NO AddSpell) ---
+        // When ISL finishes study and calls AddSpell, our effectiveness hook
+        // will recognize this spell and apply weakened power scaling.
+        auto* effectHook = SpellEffectivenessHook::GetSingleton();
+        if (effectHook) {
+            effectHook->RegisterISLPendingSpell(a_spell);
+        }
+
+        // --- Dispatch to ISL for study UX ---
+        DESTIntegration::DispatchSpellTomeRead(a_book, a_spell, player->AsReference());
+
+        if (hook->m_settings.showNotifications) {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "You begin to study %s...", a_spell->GetName());
+            RE::SendHUDMessage::ShowHUDMessage(msg);
+        }
+
+        // Notify UI so the tree updates
+        UIManager::GetSingleton()->NotifyProgressUpdate(formIdStr);
         return;
     }
 
@@ -174,184 +184,59 @@ void SpellTomeHook::OnSpellTomeRead(RE::TESObjectBOOK* a_book, RE::SpellItem* a_
     // NON-ISL PATH — our built-in spell tome handling
     // =========================================================================
 
-    // Check if player already knows this spell
-    if (player->HasSpell(a_spell)) {
-        if (hook->m_settings.showNotifications) {
-            RE::SendHUDMessage::ShowHUDMessage("You already know this spell.");
-        }
-        logger::info("SpellTomeHook: Player already knows '{}', keeping tome", a_spell->GetName());
-        return;
-    }
-    
     // =========================================================================
     // VANILLA MODE - Instant learn, consume book (like normal Skyrim)
     // =========================================================================
     if (!hook->m_settings.enabled || !hook->m_settings.useProgressionSystem) {
+        // Still check if player already knows the spell
+        if (player->HasSpell(a_spell)) {
+            if (hook->m_settings.showNotifications) {
+                RE::SendHUDMessage::ShowHUDMessage("You already know this spell.");
+            }
+            return;
+        }
+
         logger::info("SpellTomeHook: Using VANILLA mode - teaching spell instantly");
-        
-        // Teach the spell
+
         player->AddSpell(a_spell);
-        
-        // Remove book from inventory (vanilla behavior)
+
         auto* container = GetBookContainer();
         RE::TESObjectREFR* removeFrom = container ? container : player->AsReference();
         if (removeFrom) {
             removeFrom->RemoveItem(a_book, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
         }
-        
+
         if (hook->m_settings.showNotifications) {
             char msg[256];
             snprintf(msg, sizeof(msg), "Learned %s", a_spell->GetName());
             RE::SendHUDMessage::ShowHUDMessage(msg);
         }
-        
+
         logger::info("SpellTomeHook: Vanilla mode - taught '{}', consumed tome", a_spell->GetName());
         return;
     }
-    
+
     // =========================================================================
     // PROGRESSION MODE - XP gain, weakened spell system
     // =========================================================================
     logger::info("SpellTomeHook: Using PROGRESSION mode for spell '{}'", a_spell->GetName());
-    
-    // Convert FormID to string format for ProgressionManager
+
     char formIdStr[32];
     snprintf(formIdStr, sizeof(formIdStr), "0x%08X", a_spell->GetFormID());
-    
+
     auto* pm = ProgressionManager::GetSingleton();
     if (!pm) {
         logger::error("SpellTomeHook: ProgressionManager not available");
         return;
     }
-    
+
     RE::FormID spellFormId = a_spell->GetFormID();
-    
-    // =========================================================================
-    // TREE PREREQUISITE CHECK - Hard/Soft prerequisite system
-    // Hard prereqs: Must have ALL mastered
-    // Soft prereqs: Must have at least softNeeded mastered
-    // =========================================================================
-    logger::info("SpellTomeHook: Checking prerequisites for spell {:08X} '{}' - requirePrereqs={}", 
-        spellFormId, a_spell->GetName(), hook->m_settings.requirePrereqs);
-    
-    if (hook->m_settings.requirePrereqs) {
-        auto reqs = pm->GetPrereqRequirements(spellFormId);
-        bool hasAnyPrereqs = !reqs.hardPrereqs.empty() || !reqs.softPrereqs.empty();
-        
-        logger::info("SpellTomeHook: Prereqs for {:08X}: {} hard, {} soft (need {})", 
-            spellFormId, reqs.hardPrereqs.size(), reqs.softPrereqs.size(), reqs.softNeeded);
-        
-        if (hasAnyPrereqs) {
-            // Check hard prerequisites - ALL must be mastered
-            std::vector<RE::FormID> unmetHard;
-            for (RE::FormID prereqId : reqs.hardPrereqs) {
-                bool mastered = pm->IsSpellMastered(prereqId);
-                auto* prereqSpell = RE::TESForm::LookupByID<RE::SpellItem>(prereqId);
-                logger::info("SpellTomeHook:   - HARD {:08X} '{}' mastered={}", 
-                    prereqId, prereqSpell ? prereqSpell->GetName() : "UNKNOWN", mastered);
-                if (!mastered) {
-                    unmetHard.push_back(prereqId);
-                }
-            }
-            
-            // Check soft prerequisites - need at least softNeeded mastered
-            int softMastered = 0;
-            std::vector<RE::FormID> unmetSoft;
-            for (RE::FormID prereqId : reqs.softPrereqs) {
-                bool mastered = pm->IsSpellMastered(prereqId);
-                auto* prereqSpell = RE::TESForm::LookupByID<RE::SpellItem>(prereqId);
-                logger::info("SpellTomeHook:   - SOFT {:08X} '{}' mastered={}", 
-                    prereqId, prereqSpell ? prereqSpell->GetName() : "UNKNOWN", mastered);
-                if (mastered) {
-                    softMastered++;
-                } else {
-                    unmetSoft.push_back(prereqId);
-                }
-            }
-            
-            int softNeeded = reqs.softNeeded;
-            bool hardMet = unmetHard.empty();
-            bool softMet = (softNeeded <= 0) || (softMastered >= softNeeded);
-            
-            logger::info("SpellTomeHook: hardMet={}, softMet={} ({}/{})", 
-                hardMet, softMet, softMastered, softNeeded);
-            
-            if (!hardMet || !softMet) {
-                // Build notification message
-                if (hook->m_settings.showNotifications) {
-                    std::string msg;
-                    
-                    if (!hardMet) {
-                        // List required hard prereqs
-                        std::vector<std::string> spellNames;
-                        for (RE::FormID prereqId : unmetHard) {
-                            auto* prereqSpell = RE::TESForm::LookupByID<RE::SpellItem>(prereqId);
-                            if (prereqSpell) {
-                                spellNames.push_back(prereqSpell->GetName());
-                            }
-                        }
-                        
-                        msg = "You must first master ";
-                        for (size_t i = 0; i < spellNames.size(); i++) {
-                            if (i == 0) msg += spellNames[i];
-                            else if (i == spellNames.size() - 1) msg += " and " + spellNames[i];
-                            else msg += ", " + spellNames[i];
-                        }
-                    } else if (!softMet) {
-                        // Explain soft prereq requirement
-                        int stillNeeded = softNeeded - softMastered;
-                        msg = "You need to master " + std::to_string(stillNeeded) + " more related spell";
-                        if (stillNeeded > 1) msg += "s";
-                    }
-                    
-                    msg += " to grasp this tome";
-                    RE::SendHUDMessage::ShowHUDMessage(msg.c_str());
-                }
-                
-                logger::info("SpellTomeHook: Player missing prerequisites for '{}' (hardMet={}, softMet={})", 
-                    a_spell->GetName(), hardMet, softMet);
-                return;  // Don't learn, keep the tome
-            }
-        }
+
+    // --- Shared prereq + skill checks ---
+    if (!CheckLearningRequirements(a_spell, spellFormId)) {
+        return;  // Blocked — notification already shown
     }
-    
-    // =========================================================================
-    // SKILL LEVEL CHECK - Must meet minimum skill requirement (if enabled)
-    // =========================================================================
-    if (hook->m_settings.requireSkillLevel) {
-        auto* spellEffect = a_spell->GetCostliestEffectItem();
-        if (spellEffect && spellEffect->baseEffect) {
-            int minimumSkill = static_cast<int>(spellEffect->baseEffect->data.minimumSkill);
-            auto school = spellEffect->baseEffect->GetMagickSkill();
-            
-            if (minimumSkill > 0) {
-                float playerSkill = player->AsActorValueOwner()->GetActorValue(school);
-                
-                if (playerSkill < minimumSkill) {
-                    if (hook->m_settings.showNotifications) {
-                        char msg[256];
-                        const char* schoolName = "";
-                        switch (school) {
-                            case RE::ActorValue::kAlteration:  schoolName = "Alteration"; break;
-                            case RE::ActorValue::kConjuration: schoolName = "Conjuration"; break;
-                            case RE::ActorValue::kDestruction: schoolName = "Destruction"; break;
-                            case RE::ActorValue::kIllusion:    schoolName = "Illusion"; break;
-                            case RE::ActorValue::kRestoration: schoolName = "Restoration"; break;
-                            default: schoolName = "magic"; break;
-                        }
-                        snprintf(msg, sizeof(msg), 
-                            "You lack the %s skill to learn this spell. (%s: %.0f/%d)",
-                            schoolName, schoolName, playerSkill, minimumSkill);
-                        RE::SendHUDMessage::ShowHUDMessage(msg);
-                    }
-                    logger::info("SpellTomeHook: Player lacks skill for '{}' (needs {}, has {:.0f})", 
-                        a_spell->GetName(), minimumSkill, player->AsActorValueOwner()->GetActorValue(school));
-                    return;  // Don't learn, keep the tome
-                }
-            }
-        }
-    }
-    
+
     // =========================================================================
     // CHECK IF TOME XP ALREADY GRANTED - Prevent exploit
     // =========================================================================
@@ -401,6 +286,150 @@ void SpellTomeHook::OnSpellTomeRead(RE::TESObjectBOOK* a_book, RE::SpellItem* a_
     
     // Book is NOT consumed, NOT removed from inventory
     logger::info("SpellTomeHook: Tome '{}' kept in inventory", a_book->GetName());
+}
+
+// =============================================================================
+// Check Learning Requirements (prereqs + skill level)
+// =============================================================================
+
+bool SpellTomeHook::CheckLearningRequirements(RE::SpellItem* a_spell, RE::FormID spellFormId)
+{
+    auto* hook = GetSingleton();
+    auto* pm = ProgressionManager::GetSingleton();
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    if (!pm || !player) return true;  // Can't check, allow
+
+    // Already knows this spell
+    if (player->HasSpell(a_spell)) {
+        if (hook->m_settings.showNotifications) {
+            RE::SendHUDMessage::ShowHUDMessage("You already know this spell.");
+        }
+        logger::info("SpellTomeHook: Player already knows '{}', keeping tome", a_spell->GetName());
+        return false;
+    }
+
+    // =========================================================================
+    // TREE PREREQUISITE CHECK
+    // =========================================================================
+    logger::info("SpellTomeHook: Checking prerequisites for spell {:08X} '{}' - requirePrereqs={}",
+        spellFormId, a_spell->GetName(), hook->m_settings.requirePrereqs);
+
+    if (hook->m_settings.requirePrereqs) {
+        auto reqs = pm->GetPrereqRequirements(spellFormId);
+        bool hasAnyPrereqs = !reqs.hardPrereqs.empty() || !reqs.softPrereqs.empty();
+
+        logger::info("SpellTomeHook: Prereqs for {:08X}: {} hard, {} soft (need {})",
+            spellFormId, reqs.hardPrereqs.size(), reqs.softPrereqs.size(), reqs.softNeeded);
+
+        if (hasAnyPrereqs) {
+            // Check hard prerequisites - ALL must be mastered
+            std::vector<RE::FormID> unmetHard;
+            for (RE::FormID prereqId : reqs.hardPrereqs) {
+                bool mastered = pm->IsSpellMastered(prereqId);
+                auto* prereqSpell = RE::TESForm::LookupByID<RE::SpellItem>(prereqId);
+                logger::info("SpellTomeHook:   - HARD {:08X} '{}' mastered={}",
+                    prereqId, prereqSpell ? prereqSpell->GetName() : "UNKNOWN", mastered);
+                if (!mastered) {
+                    unmetHard.push_back(prereqId);
+                }
+            }
+
+            // Check soft prerequisites - need at least softNeeded mastered
+            int softMastered = 0;
+            std::vector<RE::FormID> unmetSoft;
+            for (RE::FormID prereqId : reqs.softPrereqs) {
+                bool mastered = pm->IsSpellMastered(prereqId);
+                auto* prereqSpell = RE::TESForm::LookupByID<RE::SpellItem>(prereqId);
+                logger::info("SpellTomeHook:   - SOFT {:08X} '{}' mastered={}",
+                    prereqId, prereqSpell ? prereqSpell->GetName() : "UNKNOWN", mastered);
+                if (mastered) {
+                    softMastered++;
+                } else {
+                    unmetSoft.push_back(prereqId);
+                }
+            }
+
+            int softNeeded = reqs.softNeeded;
+            bool hardMet = unmetHard.empty();
+            bool softMet = (softNeeded <= 0) || (softMastered >= softNeeded);
+
+            logger::info("SpellTomeHook: hardMet={}, softMet={} ({}/{})",
+                hardMet, softMet, softMastered, softNeeded);
+
+            if (!hardMet || !softMet) {
+                if (hook->m_settings.showNotifications) {
+                    std::string msg;
+
+                    if (!hardMet) {
+                        std::vector<std::string> spellNames;
+                        for (RE::FormID prereqId : unmetHard) {
+                            auto* prereqSpell = RE::TESForm::LookupByID<RE::SpellItem>(prereqId);
+                            if (prereqSpell) {
+                                spellNames.push_back(prereqSpell->GetName());
+                            }
+                        }
+
+                        msg = "You must first master ";
+                        for (size_t i = 0; i < spellNames.size(); i++) {
+                            if (i == 0) msg += spellNames[i];
+                            else if (i == spellNames.size() - 1) msg += " and " + spellNames[i];
+                            else msg += ", " + spellNames[i];
+                        }
+                    } else if (!softMet) {
+                        int stillNeeded = softNeeded - softMastered;
+                        msg = "You need to master " + std::to_string(stillNeeded) + " more related spell";
+                        if (stillNeeded > 1) msg += "s";
+                    }
+
+                    msg += " to grasp this tome";
+                    RE::SendHUDMessage::ShowHUDMessage(msg.c_str());
+                }
+
+                logger::info("SpellTomeHook: Player missing prerequisites for '{}' (hardMet={}, softMet={})",
+                    a_spell->GetName(), hardMet, softMet);
+                return false;  // Blocked
+            }
+        }
+    }
+
+    // =========================================================================
+    // SKILL LEVEL CHECK
+    // =========================================================================
+    if (hook->m_settings.requireSkillLevel) {
+        auto* spellEffect = a_spell->GetCostliestEffectItem();
+        if (spellEffect && spellEffect->baseEffect) {
+            int minimumSkill = static_cast<int>(spellEffect->baseEffect->data.minimumSkill);
+            auto school = spellEffect->baseEffect->GetMagickSkill();
+
+            if (minimumSkill > 0) {
+                float playerSkill = player->AsActorValueOwner()->GetActorValue(school);
+
+                if (playerSkill < minimumSkill) {
+                    if (hook->m_settings.showNotifications) {
+                        char msg[256];
+                        const char* schoolName = "";
+                        switch (school) {
+                            case RE::ActorValue::kAlteration:  schoolName = "Alteration"; break;
+                            case RE::ActorValue::kConjuration: schoolName = "Conjuration"; break;
+                            case RE::ActorValue::kDestruction: schoolName = "Destruction"; break;
+                            case RE::ActorValue::kIllusion:    schoolName = "Illusion"; break;
+                            case RE::ActorValue::kRestoration: schoolName = "Restoration"; break;
+                            default: schoolName = "magic"; break;
+                        }
+                        snprintf(msg, sizeof(msg),
+                            "You lack the %s skill to learn this spell. (%s: %.0f/%d)",
+                            schoolName, schoolName, playerSkill, minimumSkill);
+                        RE::SendHUDMessage::ShowHUDMessage(msg);
+                    }
+                    logger::info("SpellTomeHook: Player lacks skill for '{}' (needs {}, has {:.0f})",
+                        a_spell->GetName(), minimumSkill, player->AsActorValueOwner()->GetActorValue(school));
+                    return false;  // Blocked
+                }
+            }
+        }
+    }
+
+    return true;  // All checks passed
 }
 
 // =============================================================================

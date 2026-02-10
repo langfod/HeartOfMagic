@@ -633,6 +633,40 @@ void ProgressionManager::AddXP(const std::string& formIdStr, float amount)
     AddXP(formId, amount);
 }
 
+void ProgressionManager::AddXPNoGrant(const std::string& formIdStr, float amount)
+{
+    // ISL compatibility: Record XP progress without triggering early spell grant.
+    // ISL's scripts call AddSpell when study is complete — we must not AddSpell
+    // before that or ISL thinks the player already knows the spell.
+    RE::FormID formId = 0;
+    try {
+        formId = std::stoul(formIdStr, nullptr, 16);
+    } catch (const std::exception& e) {
+        logger::error("ProgressionManager: Failed to parse formId '{}': {}", formIdStr, e.what());
+        return;
+    }
+
+    auto& progress = m_spellProgress[formId];
+
+    if (progress.unlocked && progress.progressPercent >= 1.0f) {
+        return;
+    }
+
+    float oldXP = progress.GetCurrentXP();
+    float newXP = (std::min)(oldXP + amount, progress.requiredXP);
+
+    progress.progressPercent = progress.requiredXP > 0 ? (newXP / progress.requiredXP) : 1.0f;
+    progress.progressPercent = (std::min)(progress.progressPercent, 1.0f);
+    m_dirty = true;
+
+    logger::info("ProgressionManager: [ISL-NoGrant] Spell {:08X} XP: {:.1f} -> {:.1f} / {:.1f} ({:.1f}%)",
+        formId, oldXP, newXP, progress.requiredXP, progress.progressPercent * 100.0f);
+
+    // NOTE: Deliberately skipping GrantEarlySpell and power step updates.
+    // ISL will call AddSpell when study completes, at which point our
+    // SpellEffectivenessHook will apply the appropriate power scaling.
+}
+
 float ProgressionManager::GetRequiredXP(const std::string& formIdStr) const
 {
     // Parse hex string to FormID (supports "0x" prefix)

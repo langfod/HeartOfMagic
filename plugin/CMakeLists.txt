@@ -10,7 +10,7 @@ project(
     LANGUAGES CXX
 )
 
-set(PLUGIN_AUTHOR "Spooky")
+set(PLUGIN_AUTHOR "DinkelZombie")
 
 # ============================================================================
 # CommonLib Fork Selection
@@ -102,9 +102,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     xbyak::xbyak
 )
 
-# Output name must match project name exactly
+# Unity build - combines .cpp files to reduce redundant header parsing
+# Applied only to our target, NOT globally (CommonLib breaks with unity build)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     OUTPUT_NAME "${PROJECT_NAME}"
+    UNITY_BUILD ON
+    UNITY_BUILD_BATCH_SIZE 4
 )
 
 # Generate fomod/info.xml from template with current version
