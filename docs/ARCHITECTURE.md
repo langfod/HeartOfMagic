@@ -365,7 +365,7 @@ Python → C++:  {"id":"req_1","success":true,"result":{...}}\n
 Ready signal:  {"id":"__ready__","success":true,"result":{"pid":1234}}\n
 ```
 
-**Commands:** `build_tree`, `prm_score`, `ping`, `shutdown`
+**Commands:** `build_tree`, `build_tree_classic`, `prm_score`, `ping`, `shutdown`
 
 **Key Functions:**
 - `SendCommand(command, payload, callback)` — Async, callback fires on SKSE main thread
@@ -517,26 +517,71 @@ SpellLearning.GetVersion()    ; Version string
 
 ---
 
-## Python Tree Builder (`SKSE/Plugins/SpellLearning/SpellTreeBuilder/`)
+## Python Tree Builder System
 
-**Purpose:** NLP-based spell tree generation using TF-IDF theme discovery, fuzzy matching, optional LLM auto-configuration, and optional LLM keyword classification. Runs as a persistent subprocess managed by PythonBridge (C++), communicating via stdin/stdout JSON-line protocol.
+**Purpose:** Modular Python tree generation with per-growth-mode builders. Each growth module bundles its own Python builder alongside its JS files. Shared modules (NLP, validation, node model) live in `SpellTreeBuilder/`. Runs as a persistent subprocess managed by PythonBridge (C++), communicating via stdin/stdout JSON-line protocol.
+
+### Architecture: Modular Builders
+
+```
+PrismaUI/views/SpellLearning/SpellLearningPanel/
+├── modules/
+│   ├── classic/python/
+│   │   └── classic_build_tree.py      ← Classic Growth: tier-first builder
+│   └── tree/python/
+│       └── tree_build_tree.py         ← Tree Growth: NLP-based builder
+
+SKSE/Plugins/SpellLearning/SpellTreeBuilder/
+├── server.py              ← Orchestrator: routes commands to module builders
+├── build_tree.py          ← Fallback copy of NLP builder (backward compat)
+├── tree_builder.py        ← Shared: core tree construction engine
+├── theme_discovery.py     ← Shared: NLP theme extraction
+├── core/node.py           ← Shared: TreeNode data model
+├── config.py              ← Shared: config parsing
+└── validator.py           ← Shared: tree validation
+```
+
+**Command routing:**
+```
+Classic JS → callCpp('ProceduralPythonGenerate', {command:'build_tree_classic',...})
+               └→ server.py → classic_build_tree_from_data()  [classic/python/]
+
+Tree JS    → callCpp('ProceduralPythonGenerate', {command:'build_tree',...})
+               └→ server.py → build_tree_from_data()          [tree/python/]
+```
+
+UIManager.cpp reads the `command` field from the JS request and passes it to PythonBridge (no longer hardcoded).
 
 ### Server Architecture
 
 `server.py` is the persistent entry point spawned by PythonBridge. It:
-1. Pre-imports all heavy modules once at startup (sklearn, numpy, tree_builder, etc.)
-2. Sends `__ready__` signal to C++ via stdout
-3. Reads JSON-line commands from stdin, routes to appropriate handler
-4. Returns JSON-line responses via stdout. Debug/logging goes to `server.log` (never stdout).
+1. Adds PrismaUI module python dirs (`classic/python`, `tree/python`) to `sys.path`
+2. Pre-imports all heavy modules once at startup (sklearn, numpy, both builders, etc.)
+3. Sends `__ready__` signal to C++ via stdout
+4. Reads JSON-line commands from stdin, routes to appropriate handler
+5. Returns JSON-line responses via stdout. Debug/logging goes to `server.log` (never stdout).
 
-`build_tree.py` exposes `build_tree_from_data(spells, config_dict)` — the core tree-building function used by both `server.py` (persistent mode) and the CLI (`_main_impl()` wrapper).
+### Classic Growth Builder (`classic_build_tree.py`)
+
+Tier-first tree builder where `node.depth` strictly follows spell difficulty tier:
+- Novice (depth 0) → Apprentice (depth 1) → Adept (depth 2) → Expert (depth 3) → Master (depth 4)
+- Parents must be from a lower tier (hard constraint)
+- NLP word-overlap similarity guides within-tier parent selection (fire Apprentice → fire Novice)
+- Does NOT require sklearn — uses simple Jaccard word overlap
+- Reuses shared modules: `core.node.TreeNode`, `theme_discovery`, `validator`
+
+### Tree Growth Builder (`tree_build_tree.py`)
+
+NLP-based builder (moved from `build_tree.py`) using TF-IDF theme discovery, fuzzy matching, optional LLM auto-configuration. Tree structure driven by thematic similarity, not tier ordering.
 
 ### Core Modules
 
 | Module | Purpose |
 |--------|---------|
-| `server.py` | Persistent stdin/stdout REPL. Routes `build_tree`, `prm_score`, `ping`, `shutdown` commands. Pre-imports heavy modules once |
-| `build_tree.py` | `build_tree_from_data()` core function + CLI wrapper. Orchestrates config, LLM features, theme discovery, tree building |
+| `server.py` | Persistent stdin/stdout REPL. Routes `build_tree`, `build_tree_classic`, `prm_score`, `ping`, `shutdown`. Adds module python dirs to sys.path |
+| `build_tree.py` | Fallback NLP builder (backward compat). Primary copy now in `modules/tree/python/tree_build_tree.py` |
+| `classic/python/classic_build_tree.py` | Tier-first builder for Classic Growth. `classic_build_tree_from_data()` |
+| `tree/python/tree_build_tree.py` | NLP builder for Tree Growth. `build_tree_from_data()` + CLI wrapper |
 | `tree_builder.py` | `SpellTreeBuilder` class. Per-school tree construction, theme assignment, node linking. Defines `SCHOOL_DEFAULT_SHAPES` |
 | `spell_grouper.py` | `group_spells_best_fit()` — Groups spells into themes using fuzzy score. Honors `llm_keyword` for reclassification |
 | `theme_discovery.py` | TF-IDF theme discovery per school. Extracts keyword themes from spell names/descriptions/effects |
@@ -851,6 +896,10 @@ HeartOfMagic/
 │       ├── script.js                ✅ Main app logic
 │       ├── themes/                  ✅ Theme definitions (default, skyrim)
 │       └── modules/                 ✅ 39 JavaScript modules
+│           ├── classic/python/      ✅ Classic Growth Python builder
+│           │   └── classic_build_tree.py
+│           └── tree/python/         ✅ Tree Growth Python builder
+│               └── tree_build_tree.py
 ├── SKSE/Plugins/SpellLearning/
 │   ├── custom_prompts/              ✅ LLM prompt templates
 │   └── SpellTreeBuilder/            ✅ Python tree generation tools
@@ -894,6 +943,10 @@ MO2/mods/HeartOfMagic_RELEASE/
 │               ├── styles-skyrim.css
 │               ├── themes/
 │               └── modules/            # 39 JavaScript modules
+│                   ├── classic/python/ # Classic Growth tier-first builder
+│                   │   └── classic_build_tree.py
+│                   └── tree/python/    # Tree Growth NLP builder
+│                       └── tree_build_tree.py
 ├── Scripts/
 │   ├── *.pex                           # Compiled Papyrus
 │   └── Source/
@@ -966,6 +1019,17 @@ MO2/mods/HeartOfMagic_RELEASE/
 - Additional XP sources
 
 ### ✅ Recently Completed (Feb 9, 2026)
+
+#### Modular Python Tree Builders
+- **Per-mode Python builders** — Each growth module bundles its own Python tree builder in a `python/` subfolder
+- **`classic_build_tree.py`** — Tier-first builder for Classic Growth. Novice=depth 0, Master=depth 4. NLP similarity guides within-tier parent selection. No sklearn dependency.
+- **`tree_build_tree.py`** — NLP-based builder for Tree Growth (moved from `build_tree.py`). Unchanged behavior.
+- **`server.py` updated** — Adds module python dirs to `sys.path`, routes `build_tree_classic` command to classic builder
+- **`UIManager.cpp` updated** — Reads `command` field from JS request (no longer hardcoded `"build_tree"`)
+- **Shared error handler** — `_handleBuildFailure()` in `proceduralTreeBuilder.js` replaces duplicate error handlers for Classic/Tree modes
+- **Classic `buildTree()` sends** `command: 'build_tree_classic'` + `tier_zones` config
+- **Tree `buildTree()` sends** `command: 'build_tree'` explicitly
+- **Fixes Classic tier zone controls** — Tier zone sliders now work because tree structure matches tier ordering (Novice near roots, Master at edges)
 
 #### PythonBridge Persistent Subprocess
 - **`PythonBridge.cpp/h`** — Singleton managing persistent Python process via Win32 `CreateProcess` + anonymous pipes

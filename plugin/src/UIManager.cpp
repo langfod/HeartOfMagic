@@ -2631,19 +2631,29 @@ void UIManager::OnProceduralPythonGenerate(const char* argument)
     try {
         nlohmann::json request = nlohmann::json::parse(argument);
 
+        // Read command from JS request — defaults to "build_tree" (Tree Growth mode)
+        // Classic Growth sends "build_tree_classic" for tier-first ordering
+        std::string pythonCommand = "build_tree";
+        if (request.contains("command") && request["command"].is_string()) {
+            pythonCommand = request["command"].get<std::string>();
+        }
+
         nlohmann::json payload;
         payload["spells"] = request.value("spells", nlohmann::json::array());
         payload["config"] = request.value("config", nlohmann::json::object());
+        if (request.contains("fallback") && request["fallback"].is_boolean()) {
+            payload["fallback"] = request["fallback"];
+        }
 
-        logger::info("UIManager: Sending build_tree to PythonBridge ({} spells)", payload["spells"].size());
+        logger::info("UIManager: Sending {} to PythonBridge ({} spells)", pythonCommand, payload["spells"].size());
 
         // Signal JS whether Python is already running (so UI can skip startup stage)
         bool pythonAlreadyReady = PythonBridge::GetSingleton()->IsReady();
         std::string statusJson = pythonAlreadyReady ? R"({"ready":true})" : R"({"ready":false})";
         instance->m_prismaUI->InteropCall(instance->m_view, "onPythonBridgeStatus", statusJson.c_str());
 
-        PythonBridge::GetSingleton()->SendCommand("build_tree", payload.dump(),
-            [instance, startTime](bool success, const std::string& result) {
+        PythonBridge::GetSingleton()->SendCommand(pythonCommand, payload.dump(),
+            [instance, startTime, pythonCommand](bool success, const std::string& result) {
                 auto endTime = std::chrono::high_resolution_clock::now();
                 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() / 1000.0;
 
@@ -2652,11 +2662,11 @@ void UIManager::OnProceduralPythonGenerate(const char* argument)
                     response["success"] = true;
                     response["treeData"] = result;  // Already JSON string from PythonBridge
                     response["elapsed"] = elapsed;
-                    logger::info("UIManager: build_tree completed in {:.2f}s", elapsed);
+                    logger::info("UIManager: {} completed in {:.2f}s", pythonCommand, elapsed);
                 } else {
                     response["success"] = false;
                     response["error"] = result;
-                    logger::error("UIManager: build_tree failed: {}", result);
+                    logger::error("UIManager: {} failed: {}", pythonCommand, result);
                 }
 
                 instance->m_prismaUI->InteropCall(instance->m_view, "onProceduralPythonComplete", response.dump().c_str());

@@ -1345,6 +1345,45 @@ function onProceduralPlusClick() {
 }
 
 /**
+ * Shared error handler for Python tree build failures.
+ * Used by both Classic and Tree growth mode routing.
+ *
+ * @param {string} error - Error string from Python/C++
+ * @param {string} pendingKey - State key to set for retry (e.g. '_classicGrowthBuildPending')
+ * @param {Object|null} settingsModule - ClassicSettings or TreeSettings (has .setStatusText)
+ * @param {Object} retryConfig - Config to pass on retry {command, config}
+ * @param {string} buildBtnId - DOM id of the build button to re-enable
+ * @param {string} logPrefix - Console log prefix e.g. '[ClassicGrowth]'
+ */
+function _handleBuildFailure(error, pendingKey, settingsModule, retryConfig, buildBtnId, logPrefix) {
+    console.error(logPrefix + ' Python build failed:', error);
+    var errorMsg = 'Tree build failed: ' + error + '\nPlease report this error on the mod page.';
+    var retryFn = function() {
+        if (state.lastSpellData && state.lastSpellData.spells && window.callCpp) {
+            state[pendingKey] = true;
+            var hasPRM = typeof PreReqMaster !== 'undefined' && PreReqMaster.isEnabled && PreReqMaster.isEnabled();
+            if (typeof BuildProgress !== 'undefined') BuildProgress.start(hasPRM);
+            if (settingsModule) settingsModule.setStatusText('Retrying with fallback...', '#f59e0b');
+            window.callCpp('ProceduralPythonGenerate', JSON.stringify({
+                command: retryConfig.command || 'build_tree',
+                spells: state.lastSpellData.spells,
+                config: retryConfig.config || {},
+                fallback: true
+            }));
+        }
+    };
+    if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive()) {
+        BuildProgress.fail(errorMsg, retryFn);
+    }
+    if (settingsModule) {
+        settingsModule.setStatusText('Build failed: ' + error, '#ef4444');
+    }
+    if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeBuildFailed', {error: error}), 'error');
+    var btn = document.getElementById(buildBtnId);
+    if (btn) btn.disabled = false;
+}
+
+/**
  * Callback from C++ when Python procedural generation completes
  */
 window.onProceduralPythonComplete = function(resultStr) {
@@ -1377,16 +1416,14 @@ window.onProceduralPythonComplete = function(resultStr) {
                 if (cgTreeData && cgTreeData.schools) { for (var s in cgTreeData.schools) { cgSpells += (cgTreeData.schools[s].nodes || []).length; } }
                 if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeBuildComplete', {schools: cgSchools, spells: cgSpells}), 'success');
             } else {
-                console.error('[ClassicGrowth] Python build failed:', result.error);
-                if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive()) {
-                    BuildProgress.fail('Tree build failed: ' + (result.error || 'unknown'));
-                }
-                if (typeof ClassicSettings !== 'undefined') {
-                    ClassicSettings.setStatusText('Build failed: ' + (result.error || 'unknown'), '#ef4444');
-                }
-                if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeBuildFailed', {error: result.error || 'unknown'}), 'error');
-                var cgBtn = document.getElementById('tgClassicBuildBtn');
-                if (cgBtn) cgBtn.disabled = false;
+                _handleBuildFailure(
+                    result.error || 'unknown',
+                    '_classicGrowthBuildPending',
+                    typeof ClassicSettings !== 'undefined' ? ClassicSettings : null,
+                    { command: 'build_tree_classic', config: { shape: 'organic', density: 0.6, symmetry: 0.3, max_children_per_node: 3, top_themes_per_school: 8, convergence_chance: 0.4, prefer_vanilla_roots: true } },
+                    'tgClassicBuildBtn',
+                    '[ClassicGrowth]'
+                );
             }
             resetProceduralPlusButton();
             return;
@@ -1411,16 +1448,14 @@ window.onProceduralPythonComplete = function(resultStr) {
                 if (tgTreeData && tgTreeData.schools) { for (var s in tgTreeData.schools) { tgSpells += (tgTreeData.schools[s].nodes || []).length; } }
                 if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeBuildComplete', {schools: tgSchools, spells: tgSpells}), 'success');
             } else {
-                console.error('[TreeGrowthTree] Python build failed:', result.error);
-                if (typeof BuildProgress !== 'undefined' && BuildProgress.isActive()) {
-                    BuildProgress.fail('Tree build failed: ' + (result.error || 'unknown'));
-                }
-                if (typeof TreeSettings !== 'undefined') {
-                    TreeSettings.setStatusText('Build failed: ' + (result.error || 'unknown'), '#ef4444');
-                }
-                if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeBuildFailed', {error: result.error || 'unknown'}), 'error');
-                var tgBtn = document.getElementById('tgTreeBuildBtn');
-                if (tgBtn) tgBtn.disabled = false;
+                _handleBuildFailure(
+                    result.error || 'unknown',
+                    '_treeGrowthBuildPending',
+                    typeof TreeSettings !== 'undefined' ? TreeSettings : null,
+                    { command: 'build_tree', config: state._lastTreeGrowthConfig || {} },
+                    'tgTreeBuildBtn',
+                    '[TreeGrowthTree]'
+                );
             }
             resetProceduralPlusButton();
             return;

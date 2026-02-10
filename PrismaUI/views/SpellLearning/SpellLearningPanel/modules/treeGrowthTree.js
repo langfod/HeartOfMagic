@@ -145,6 +145,7 @@ var TreeGrowthTree = {
         };
 
         window.callCpp('ProceduralPythonGenerate', JSON.stringify({
+            command: 'build_tree',
             spells: spellsToProcess,
             config: config
         }));
@@ -406,7 +407,7 @@ var TreeGrowthTree = {
             ctx.fillStyle = 'rgba(184, 168, 120, 0.4)';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('Scan spells to see preview', w / 2, h / 2);
+            ctx.fillText(t('preview.scanToPreview'), w / 2, h / 2);
             return;
         }
 

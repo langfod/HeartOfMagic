@@ -8,10 +8,16 @@ This identifies words that are unique and meaningful to each school,
 like "fire", "frost", "flesh", "paralyze" etc.
 """
 
-from sklearn.feature_extraction.text import TfidfVectorizer
-import numpy as np
 import re
 from typing import List, Dict, Any, Optional
+
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    import numpy as np
+    HAS_SKLEARN = True
+except ImportError as _sklearn_err:
+    HAS_SKLEARN = False
+    _SKLEARN_ERROR = str(_sklearn_err)
 
 
 # Common words to exclude beyond sklearn's english stop words
@@ -75,31 +81,41 @@ def discover_themes(
     top_n: int = 8,
     min_df: int = 1,
     max_df: float = 0.8,
-    ngram_range: tuple = (1, 2)
+    ngram_range: tuple = (1, 2),
+    fallback: bool = False
 ) -> List[str]:
     """
     Discover the most significant themes/keywords in a set of spells
     using TF-IDF analysis.
-    
+
     Args:
         spells: List of spell dictionaries
         top_n: Number of top themes to extract
         min_df: Minimum document frequency (spells containing the term)
         max_df: Maximum document frequency ratio (ignore terms in >80% of spells)
         ngram_range: Range of n-grams to consider (1,2) = unigrams and bigrams
-        
+        fallback: If True, use word frequency counting instead of TF-IDF
+
     Returns:
         List of theme keywords, sorted by importance
     """
     if not spells:
         return []
-    
+
+    if not HAS_SKLEARN:
+        if fallback:
+            return _fallback_keyword_extraction(spells, top_n)
+        raise ImportError(
+            f"sklearn is required for theme discovery but is not installed: {_SKLEARN_ERROR}. "
+            f"Install the Python Addon from the mod page, or click 'Retry with Fallback' to use basic word-frequency analysis."
+        )
+
     # Build corpus from spell texts
     corpus = [extract_spell_text(spell) for spell in spells]
-    
+
     # Filter out empty texts
     corpus = [text for text in corpus if text.strip()]
-    
+
     if len(corpus) < 2:
         # Not enough data for TF-IDF
         return _fallback_keyword_extraction(spells, top_n)
@@ -171,7 +187,8 @@ def _fallback_keyword_extraction(spells: List[Dict[str, Any]], top_n: int) -> Li
 
 def discover_themes_per_school(
     spells: List[Dict[str, Any]],
-    top_n: int = 8
+    top_n: int = 8,
+    fallback: bool = False
 ) -> Dict[str, List[str]]:
     """
     Discover themes for each magic school separately.
@@ -196,7 +213,7 @@ def discover_themes_per_school(
     # Discover themes for each school
     school_themes = {}
     for school_name, school_spells in schools.items():
-        themes = discover_themes(school_spells, top_n=top_n)
+        themes = discover_themes(school_spells, top_n=top_n, fallback=fallback)
         school_themes[school_name] = themes
         print(f"[ThemeDiscovery] {school_name}: {len(school_spells)} spells -> themes: {themes}")
     

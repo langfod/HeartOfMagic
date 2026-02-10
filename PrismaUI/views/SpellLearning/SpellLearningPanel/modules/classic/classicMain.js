@@ -114,7 +114,7 @@ var TreeGrowthClassic = {
             ctx.fillStyle = 'rgba(184, 168, 120, 0.5)';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('Scan spells to see preview', w / 2, h / 2);
+            ctx.fillText(t('preview.scanToPreview'), w / 2, h / 2);
             ctx.restore();
             return;
         }
@@ -339,10 +339,12 @@ var TreeGrowthClassic = {
             max_children_per_node: 3,
             top_themes_per_school: 8,
             convergence_chance: 0.4,
-            prefer_vanilla_roots: true
+            prefer_vanilla_roots: true,
+            tier_zones: self.settings.tierZones
         };
 
         window.callCpp('ProceduralPythonGenerate', JSON.stringify({
+            command: 'build_tree_classic',
             spells: spellsToProcess,
             config: config
         }));

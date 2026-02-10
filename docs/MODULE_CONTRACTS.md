@@ -454,6 +454,102 @@ if (typeof TreePreviewSun !== 'undefined') {
 - [ ] Script tag added to `index.html` before the orchestrator
 - [ ] Orchestrator EOF section has a check for your global
 
+## Python Builder Contract
+
+Growth modules can bundle a Python tree builder in a `python/` subfolder. `server.py` auto-discovers these dirs at startup and adds them to `sys.path`.
+
+### File Layout
+
+```
+modules/mymode/
+├── mymodeMain.js
+├── mymodeSettings.js
+└── python/
+    └── mymode_build_tree.py    ← Python builder for this mode
+```
+
+### Builder Interface
+
+Each builder must export a function matching this signature:
+
+```python
+def mymode_build_tree_from_data(spells: list, config: dict) -> dict:
+    """Build spell trees for MyMode.
+
+    Args:
+        spells: List of spell dicts with formId, name, school, skillLevel, etc.
+        config: Configuration dict from JS (mode-specific settings).
+
+    Returns:
+        dict: Tree data in standard format:
+            {
+                'version': '1.0',
+                'schools': {
+                    'SchoolName': {
+                        'root': 'formId',
+                        'nodes': [{ formId, name, children, prerequisites, tier, ... }],
+                        'layoutStyle': 'my_style'
+                    }
+                },
+                'seed': 12345,
+                'validation': { 'all_valid': True, ... }
+            }
+    """
+```
+
+Output JSON must match the standard tree format so JS layout, apply, and PRM systems work unchanged.
+
+### Shared Modules
+
+Builders reuse shared modules from `SpellTreeBuilder/` (already on `sys.path`):
+
+| Module | Import | Purpose |
+|--------|--------|---------|
+| `core.node` | `from core.node import TreeNode, link_nodes` | Node data model |
+| `theme_discovery` | `from theme_discovery import discover_themes_per_school` | NLP theme extraction |
+| `validator` | `from validator import validate_tree, fix_unreachable_nodes` | Tree validation |
+| `config` | `from config import TreeBuilderConfig` | Config parsing |
+
+### Command Routing
+
+1. JS sends `command: 'build_tree_mymode'` in the `ProceduralPythonGenerate` request
+2. `UIManager.cpp` reads the `command` field and passes it to PythonBridge
+3. `server.py` routes the command to the correct builder function
+
+To add a new command, update `server.py`:
+
+```python
+# Import
+from mymode_build_tree import mymode_build_tree_from_data
+
+# In command routing:
+elif command == "build_tree_mymode":
+    result = mymode_build_tree_from_data(spells, config)
+    send_response(request_id, True, result)
+```
+
+### Error Handling
+
+Use `_handleBuildFailure()` in `proceduralTreeBuilder.js` for shared error + retry UI:
+
+```javascript
+_handleBuildFailure(
+    error,                    // Error string
+    '_myModeBuildPending',    // State key for retry routing
+    MyModeSettings,           // Settings module (has .setStatusText)
+    { command: 'build_tree_mymode', config: retryConfig },
+    'myModeBuildBtn',         // Button ID to re-enable
+    '[MyMode]'                // Log prefix
+);
+```
+
+### Existing Builders
+
+| Builder | Command | Algorithm |
+|---------|---------|-----------|
+| `classic_build_tree.py` | `build_tree_classic` | Tier-first: depth = tier index. NLP within-tier parent selection. No sklearn. |
+| `tree_build_tree.py` | `build_tree` | NLP thematic: TF-IDF similarity drives parent→child links. Requires sklearn. |
+
 ## File Reference
 
 | File | Role |
@@ -464,5 +560,8 @@ if (typeof TreePreviewSun !== 'undefined') {
 | `modules/treePreviewUtils.js` | Shared UI helpers (drag inputs) |
 | `modules/treeGrowth.js` | Tree growth orchestrator |
 | `modules/classic/classicMain.js` | CLASSIC growth module |
+| `modules/classic/python/classic_build_tree.py` | CLASSIC Python builder (tier-first) |
 | `modules/treeGrowthTree.js` | TREE growth module |
+| `modules/tree/python/tree_build_tree.py` | TREE Python builder (NLP) |
+| `modules/proceduralTreeBuilder.js` | Shared callback routing + error handler |
 | `modules/sunGrid*.js` | SUN grid sub-modules |

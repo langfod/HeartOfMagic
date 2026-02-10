@@ -10,10 +10,11 @@ Protocol:
     Python -> C++ (stdout): {"id":"req_1","success":true,"result":{...}}\n
 
 Commands:
-    build_tree  - Build spell tree from spell data + config
-    prm_score   - Score spell-candidate pairs using TF-IDF similarity
-    ping        - Health check
-    shutdown    - Graceful exit
+    build_tree          - Build spell tree (Tree Growth mode, NLP-based)
+    build_tree_classic  - Build spell tree (Classic Growth mode, tier-first)
+    prm_score           - Score spell-candidate pairs using TF-IDF similarity
+    ping                - Health check
+    shutdown            - Graceful exit
 """
 
 import json
@@ -27,6 +28,17 @@ from pathlib import Path
 _script_dir = str(Path(__file__).resolve().parent)
 if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
+
+# Add PrismaUI module python dirs to sys.path so each growth mode's
+# bundled Python builder can be imported (modularity: each module
+# bundles its own builder alongside its JS files).
+_prisma_modules = Path(__file__).resolve().parent.parent.parent.parent.parent / \
+    "PrismaUI" / "views" / "SpellLearning" / "SpellLearningPanel" / "modules"
+
+for _subdir in ['classic/python', 'tree/python']:
+    _mod_path = str(_prisma_modules / _subdir)
+    if _mod_path not in sys.path:
+        sys.path.insert(0, _mod_path)
 
 # Log file for debug output (NOT stdout)
 LOG_FILE = Path(__file__).parent / "server.log"
@@ -68,18 +80,39 @@ def main():
 
     # Heavy imports happen ONCE at startup — this is the whole point of the
     # persistent process. sklearn, numpy, etc. stay loaded between calls.
+
+    # Tree Growth builder (NLP-based) — try module folder first, fallback to local
+    _build_tree_import_error = None
     try:
-        from build_tree import build_tree_from_data
-        log("Imported build_tree_from_data")
-    except ImportError as e:
-        log(f"WARNING: Could not import build_tree_from_data: {e}")
-        build_tree_from_data = None
+        from tree_build_tree import build_tree_from_data
+        log("Imported build_tree_from_data from tree module")
+    except Exception:
+        try:
+            from build_tree import build_tree_from_data
+            log("Imported build_tree_from_data from local fallback")
+        except Exception as e:
+            _build_tree_import_error = f"{type(e).__name__}: {e}"
+            log(f"WARNING: Could not import build_tree_from_data: {_build_tree_import_error}")
+            log(f"Traceback:\n{traceback.format_exc()}")
+            build_tree_from_data = None
+
+    # Classic Growth builder (tier-first)
+    _classic_build_import_error = None
+    try:
+        from classic_build_tree import classic_build_tree_from_data
+        log("Imported classic_build_tree_from_data from classic module")
+    except Exception as e:
+        _classic_build_import_error = f"{type(e).__name__}: {e}"
+        log(f"WARNING: Could not import classic_build_tree_from_data: {_classic_build_import_error}")
+        log(f"Traceback:\n{traceback.format_exc()}")
+        classic_build_tree_from_data = None
 
     try:
         from prereq_master_scorer import process_request as prm_process
         log("Imported prereq_master_scorer.process_request")
-    except ImportError as e:
+    except Exception as e:
         log(f"WARNING: Could not import prereq_master_scorer: {e}")
+        log(f"Traceback:\n{traceback.format_exc()}")
         prm_process = None
 
     # Pre-import sklearn so first build_tree call doesn't pay the cost
@@ -119,11 +152,19 @@ def main():
 
             elif command == "build_tree":
                 if build_tree_from_data is None:
-                    send_response(request_id, False, error="build_tree module not available")
+                    error_msg = "build_tree module failed to load"
+                    if _build_tree_import_error:
+                        error_msg += f": {_build_tree_import_error}"
+                    error_msg += ". Please report this error on the mod page."
+                    send_response(request_id, False, error=error_msg)
                     continue
 
                 spells = data.get("spells", [])
                 config = data.get("config", {})
+
+                # Pass fallback flag from request into config for theme discovery
+                if data.get("fallback"):
+                    config["fallback"] = True
 
                 log(f"build_tree: {len(spells)} spells, config keys: {list(config.keys())}")
                 start = datetime.now()
@@ -132,6 +173,31 @@ def main():
 
                 elapsed = (datetime.now() - start).total_seconds()
                 log(f"build_tree completed in {elapsed:.2f}s")
+
+                send_response(request_id, True, result)
+
+            elif command == "build_tree_classic":
+                if classic_build_tree_from_data is None:
+                    error_msg = "classic_build_tree module failed to load"
+                    if _classic_build_import_error:
+                        error_msg += f": {_classic_build_import_error}"
+                    error_msg += ". Please report this error on the mod page."
+                    send_response(request_id, False, error=error_msg)
+                    continue
+
+                spells = data.get("spells", [])
+                config = data.get("config", {})
+
+                if data.get("fallback"):
+                    config["fallback"] = True
+
+                log(f"build_tree_classic: {len(spells)} spells, config keys: {list(config.keys())}")
+                start = datetime.now()
+
+                result = classic_build_tree_from_data(spells, config)
+
+                elapsed = (datetime.now() - start).total_seconds()
+                log(f"build_tree_classic completed in {elapsed:.2f}s")
 
                 send_response(request_id, True, result)
 
