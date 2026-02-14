@@ -166,8 +166,9 @@ void OnExternalPluginMessage(SKSE::MessagingInterface::Message* a_msg)
 void SetupLog()
 {
     logger::init();
-
-    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
+   // pattern: [2024-01-01 12:00:00.000] [info] [1234] [sourcefile.cpp:123] Log message
+    spdlog::set_pattern("[%Y-%m-%d %T.%e] [%l] [%t] [%s:%#] %v");
+    spdlog::set_level(spdlog::level::info);
 }
 
 // =============================================================================
