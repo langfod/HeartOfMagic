@@ -2,6 +2,7 @@
 
 #include "PCH.h"
 #include "PrismaUI_API.h"
+#include "TreeBuilder.h"
 
 class UIManager
 {
@@ -123,15 +124,11 @@ private:
     static void OnSaveLLMConfig(const char* argument);
     static void OnLogMessage(const char* argument);
     
-    // Procedural tree generation (Python)
+    // Procedural tree generation (C++ native)
     static void OnProceduralPythonGenerate(const char* argument);
 
-    // Pre Req Master NLP scoring (Python)
+    // Pre Req Master NLP scoring (C++ native)
     static void OnPreReqMasterScore(const char* argument);
-
-    // Python setup callbacks
-    static void OnSetupPython(const char* argument);
-    static void OnCancelPythonSetup(const char* argument);
 
     // Panel control callbacks
     static void OnHidePanel(const char* argument);
@@ -157,9 +154,6 @@ private:
     std::chrono::steady_clock::time_point m_lastConfigSaveTime{};
     static constexpr int kConfigSaveDebounceMs = 500;  // Ignore saves within 500ms of each other
 
-    // Check if Python addon (SpellTreeBuilder) is installed
-    void CheckPythonAddonStatus();
-    
 public:
     // Settings
     void SetPauseGameOnFocus(bool pause) { m_pauseGameOnFocus = pause; }

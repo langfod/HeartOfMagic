@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
+add_definitions(-D_WIN32_WINNT=0x0A00)
 
 if(POLICY CMP0135)
     cmake_policy(SET CMP0135 NEW)
@@ -9,7 +10,7 @@ endif()
 # ============================================================================
 project(
     SpellLearning
-    VERSION 2.2.0
+    VERSION 2.3.0
     DESCRIPTION "AI-Generated Spell Learning Tree System"
     LANGUAGES CXX
 )
@@ -63,8 +64,14 @@ add_commonlibsse_plugin(${PROJECT_NAME}
         src/SpellEffectivenessHook.cpp
         src/SpellTomeHook.cpp
         src/PapyrusAPI.cpp
-        src/PythonInstaller.cpp
-        src/PythonBridge.cpp
+        src/TreeNLP.cpp
+        src/TreeBuilderCore.cpp
+        src/TreeBuilderThemes.cpp
+        src/TreeBuilderClassic.cpp
+        src/TreeBuilderTree.cpp
+        src/TreeBuilderThematic.cpp
+        src/TreeBuilderGraph.cpp
+        src/TreeBuilderOracle.cpp
 )
 
 # Include directories

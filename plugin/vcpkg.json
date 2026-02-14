@@ -9,6 +9,6 @@
         "xbyak",
         "directxmath",
         "directxtk",
-        "miniz"
-    ]
+        "miniz",
+        "rapidfuzz-cpp"    ]
 }

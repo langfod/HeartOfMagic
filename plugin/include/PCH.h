@@ -9,11 +9,6 @@
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
 
-// WinSock2 for TCP socket IPC (PythonBridge Wine/Proton support)
-// Safe after CommonLib because we suppressed winsock v1 above
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
 // Windows API for encoding conversion (MultiByteToWideChar, WideCharToMultiByte)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -31,11 +26,17 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <mutex>
+#include <numeric>
+#include <queue>
+#include <random>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 using namespace std::literals;

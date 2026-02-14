@@ -8,9 +8,8 @@
 #include "SpellTomeHook.h"
 #include "SpellCastHandler.h"
 #include "PapyrusAPI.h"
-#include "PythonInstaller.h"
-#include "PythonBridge.h"
-#include "WineDetect.h"
+#include "TreeBuilder.h"
+#include "TreeNLP.h"
 #include "PassiveLearningSource.h"
 
 // =============================================================================
@@ -135,15 +134,11 @@ bool UIManager::Initialize()
     m_prismaUI->RegisterJSListener(m_view, "SaveLLMConfig", OnSaveLLMConfig);
     m_prismaUI->RegisterJSListener(m_view, "LogMessage", OnLogMessage);
     
-    // Register JS callbacks - Procedural tree generation (Python)
+    // Register JS callbacks - Procedural tree generation (C++ native)
     m_prismaUI->RegisterJSListener(m_view, "ProceduralPythonGenerate", OnProceduralPythonGenerate);
 
-    // Register JS callbacks - Pre Req Master NLP scoring (Python)
+    // Register JS callbacks - Pre Req Master NLP scoring (C++ native)
     m_prismaUI->RegisterJSListener(m_view, "PreReqMasterScore", OnPreReqMasterScore);
-
-    // Register JS callbacks - Python setup
-    m_prismaUI->RegisterJSListener(m_view, "SetupPython", OnSetupPython);
-    m_prismaUI->RegisterJSListener(m_view, "CancelPythonSetup", OnCancelPythonSetup);
 
     // Register JS callbacks - Preset file I/O
     m_prismaUI->RegisterJSListener(m_view, "SavePreset", OnSavePreset);
@@ -199,9 +194,6 @@ void UIManager::ShowPanel()
     m_hasFocus = true;
 
     logger::info("UIManager: Show + Focus applied (hasFocus={})", m_prismaUI->HasFocus(m_view));
-
-    // Check if Python addon (SpellTreeBuilder) is available
-    CheckPythonAddonStatus();
 
     // Notify JS that panel is now visible - triggers refresh of known spells
     m_prismaUI->InteropCall(m_view, "onPanelShowing", "");
@@ -393,10 +385,6 @@ void UIManager::OnDomReady(PrismaView view)
 
     // Notify JS that we're ready
     instance->m_prismaUI->InteropCall(view, "onPrismaReady", "");
-
-    // Send Python status now that DOM is ready
-    // (ShowPanel may fire before DOM is ready on first launch, missing the elements)
-    instance->CheckPythonAddonStatus();
 }
 
 // =============================================================================
@@ -2740,65 +2728,70 @@ void UIManager::OnLogMessage(const char* argument)
 }
 
 // =============================================================================
-// PYTHON PATH FIX FOR MO2 USVFS
-// =============================================================================
-
-// =============================================================================
-// PROCEDURAL PYTHON GENERATION (via persistent PythonBridge)
+// PROCEDURAL TREE GENERATION (C++ native)
 // =============================================================================
 
 void UIManager::OnProceduralPythonGenerate(const char* argument)
 {
-    logger::info("UIManager: ProceduralPythonGenerate callback triggered");
+    logger::info("UIManager: ProceduralPythonGenerate callback triggered (C++ native)");
 
     auto* instance = GetSingleton();
     if (!instance || !instance->m_prismaUI) return;
 
-    auto startTime = std::chrono::high_resolution_clock::now();
-
     try {
         nlohmann::json request = nlohmann::json::parse(argument);
 
-        // Read command from JS request — defaults to "build_tree" (Tree Growth mode)
-        // Classic Growth sends "build_tree_classic" for tier-first ordering
-        std::string pythonCommand = "build_tree";
+        std::string command = "build_tree";
         if (request.contains("command") && request["command"].is_string()) {
-            pythonCommand = request["command"].get<std::string>();
+            command = request["command"].get<std::string>();
         }
 
-        nlohmann::json payload;
-        payload["spells"] = request.value("spells", nlohmann::json::array());
-        payload["config"] = request.value("config", nlohmann::json::object());
-        if (request.contains("fallback") && request["fallback"].is_boolean()) {
-            payload["fallback"] = request["fallback"];
+        auto spellsJson = request.value("spells", nlohmann::json::array());
+        auto configJson = request.value("config", nlohmann::json::object());
+
+        // Convert spells array
+        std::vector<json> spells;
+        for (const auto& s : spellsJson) {
+            spells.push_back(s);
         }
 
-        logger::info("UIManager: Sending {} to PythonBridge ({} spells)", pythonCommand, payload["spells"].size());
+        logger::info("UIManager: Building tree via C++ ({} command, {} spells)", command, spells.size());
 
-        // Signal JS whether Python is already running (so UI can skip startup stage)
-        bool pythonAlreadyReady = PythonBridge::GetSingleton()->IsReady();
-        std::string statusJson = pythonAlreadyReady ? R"({"ready":true})" : R"({"ready":false})";
-        instance->m_prismaUI->InteropCall(instance->m_view, "onPythonBridgeStatus", statusJson.c_str());
-
-        PythonBridge::GetSingleton()->SendCommand(pythonCommand, payload.dump(),
-            [instance, startTime, pythonCommand](bool success, const std::string& result) {
-                auto endTime = std::chrono::high_resolution_clock::now();
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() / 1000.0;
+        // Run tree build on SKSE task thread to avoid blocking UI
+        auto* taskInterface = SKSE::GetTaskInterface();
+        if (taskInterface) {
+            taskInterface->AddTask([instance, command, spells = std::move(spells), configJson]() {
+                auto result = TreeBuilder::Build(command, spells, configJson);
 
                 nlohmann::json response;
-                if (success) {
+                if (result.success) {
                     response["success"] = true;
-                    response["treeData"] = result;  // Already JSON string from PythonBridge
-                    response["elapsed"] = elapsed;
-                    logger::info("UIManager: {} completed in {:.2f}s", pythonCommand, elapsed);
+                    response["treeData"] = result.treeData.dump();
+                    response["elapsed"] = result.elapsedMs / 1000.0;
+                    logger::info("UIManager: {} completed in {:.2f}s (C++ native)", command, result.elapsedMs / 1000.0);
                 } else {
                     response["success"] = false;
-                    response["error"] = result;
-                    logger::error("UIManager: {} failed: {}", pythonCommand, result);
+                    response["error"] = result.error;
+                    logger::error("UIManager: {} failed: {}", command, result.error);
                 }
 
                 instance->m_prismaUI->InteropCall(instance->m_view, "onProceduralPythonComplete", response.dump().c_str());
             });
+        } else {
+            // Fallback: run synchronously
+            auto result = TreeBuilder::Build(command, spells, configJson);
+
+            nlohmann::json response;
+            if (result.success) {
+                response["success"] = true;
+                response["treeData"] = result.treeData.dump();
+                response["elapsed"] = result.elapsedMs / 1000.0;
+            } else {
+                response["success"] = false;
+                response["error"] = result.error;
+            }
+            instance->m_prismaUI->InteropCall(instance->m_view, "onProceduralPythonComplete", response.dump().c_str());
+        }
 
     } catch (const std::exception& e) {
         logger::error("UIManager: ProceduralPythonGenerate failed: {}", e.what());
@@ -2811,12 +2804,12 @@ void UIManager::OnProceduralPythonGenerate(const char* argument)
 }
 
 // =============================================================================
-// PRE REQ MASTER NLP SCORING (PYTHON)
+// PRE REQ MASTER NLP SCORING (C++ native)
 // =============================================================================
 
 void UIManager::OnPreReqMasterScore(const char* argument)
 {
-    logger::info("UIManager: PreReqMasterScore callback triggered");
+    logger::info("UIManager: PreReqMasterScore callback triggered (C++ native)");
 
     auto* instance = GetSingleton();
     if (!instance || !instance->m_prismaUI) return;
@@ -2824,28 +2817,17 @@ void UIManager::OnPreReqMasterScore(const char* argument)
     auto startTime = std::chrono::high_resolution_clock::now();
 
     try {
-        // argument is already the JSON payload for PRM scoring
-        logger::info("UIManager: Sending prm_score to PythonBridge");
+        nlohmann::json request = nlohmann::json::parse(argument);
 
-        std::string payload(argument);
+        // Process PRM scoring directly in C++
+        auto result = TreeNLP::ProcessPRMRequest(request);
 
-        PythonBridge::GetSingleton()->SendCommand("prm_score", payload,
-            [instance, startTime](bool success, const std::string& result) {
-                auto endTime = std::chrono::high_resolution_clock::now();
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() / 1000.0;
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() / 1000.0;
 
-                logger::info("UIManager: prm_score completed in {:.2f}s (success: {})", elapsed, success);
+        logger::info("UIManager: prm_score completed in {:.2f}s (C++ native)", elapsed);
 
-                if (success) {
-                    // result is already valid JSON from the scorer
-                    instance->m_prismaUI->InteropCall(instance->m_view, "onPreReqMasterComplete", result.c_str());
-                } else {
-                    nlohmann::json response;
-                    response["success"] = false;
-                    response["error"] = result;
-                    instance->m_prismaUI->InteropCall(instance->m_view, "onPreReqMasterComplete", response.dump().c_str());
-                }
-            });
+        instance->m_prismaUI->InteropCall(instance->m_view, "onPreReqMasterComplete", result.dump().c_str());
 
     } catch (const std::exception& e) {
         logger::error("UIManager: PRM scoring failed: {}", e.what());
@@ -2964,114 +2946,4 @@ void UIManager::NotifyISLDetectionStatus()
 
     logger::info("UIManager: Notifying UI of DEST detection status: {}", detected ? "Detected" : "Not Detected");
     m_prismaUI->InteropCall(m_view, "onDESTDetectionUpdate", js.c_str());
-}
-
-// =============================================================================
-// PYTHON ADDON STATUS CHECK
-// =============================================================================
-
-void UIManager::CheckPythonAddonStatus()
-{
-    if (!m_prismaUI || !m_prismaUI->IsValid(m_view)) {
-        return;
-    }
-
-    // Check if build_tree.py exists in known locations
-    std::string toolDir = "Data/SKSE/Plugins/SpellLearning/SpellTreeBuilder";
-    std::string pythonScript = toolDir + "/build_tree.py";
-
-    if (!std::filesystem::exists(pythonScript)) {
-        toolDir = "SpellTreeBuilder";
-        pythonScript = toolDir + "/build_tree.py";
-    }
-
-    bool hasScript = std::filesystem::exists(pythonScript);
-    bool hasPython = false;
-    std::string pythonSource = "none";
-
-    if (hasScript) {
-        // Check for Python: venv > embedded > system (but don't assume system)
-        // For embedded, also verify install completed (marker file) to catch partial installs
-        std::string venvPython = toolDir + "/.venv/Scripts/python.exe";
-        std::string venvPythonLinux = toolDir + "/.venv/bin/python";       // Linux venv
-        std::string venvPythonLinux3 = toolDir + "/.venv/bin/python3";     // Linux venv
-        std::string embeddedPython = toolDir + "/python/python.exe";
-        std::string embeddedMarker = toolDir + "/python/.install_complete";
-
-        // Also check absolute paths - USVFS may write marker to Overwrite
-        // which is only visible via absolute path resolution
-        auto absMarker = std::filesystem::absolute(std::filesystem::path(embeddedMarker));
-
-        // On Wine, Linux-native Python (ELF binary) can't be used by CreateProcess.
-        // Only report Windows .exe Python as usable.
-        bool wineMode = IsRunningUnderWine();
-
-        if (std::filesystem::exists(venvPython)) {
-            hasPython = true;
-            pythonSource = "venv";
-            logger::info("UIManager: Python addon check - Windows venv Python found");
-        } else if (!wineMode && (std::filesystem::exists(venvPythonLinux) ||
-                                  std::filesystem::exists(venvPythonLinux3))) {
-            hasPython = true;
-            pythonSource = "venv";
-            logger::info("UIManager: Python addon check - Linux venv Python found");
-        } else if (wineMode && (std::filesystem::exists(venvPythonLinux) ||
-                                 std::filesystem::exists(venvPythonLinux3))) {
-            // Linux Python exists but can't be used with CreateProcess on Wine
-            hasPython = false;
-            pythonSource = "none";
-            logger::warn("UIManager: Python addon check - Linux venv found but not usable on Wine/Proton. "
-                "Use Auto-Setup to install Windows Python.");
-        } else if (std::filesystem::exists(embeddedPython) &&
-                   (std::filesystem::exists(embeddedMarker) || std::filesystem::exists(absMarker))) {
-            hasPython = true;
-            pythonSource = "embedded";
-            logger::info("UIManager: Python addon check - embedded Python found (verified)");
-        } else if (std::filesystem::exists(embeddedPython)) {
-            // python.exe exists but no completion marker = partial/failed install
-            hasPython = false;
-            pythonSource = "none";
-            logger::warn("UIManager: Python addon check - embedded python.exe found but install incomplete (no marker). "
-                "Checked: {} and {}", embeddedMarker, absMarker.string());
-        } else {
-            // No local Python found - offer auto-setup
-            hasPython = false;
-            pythonSource = "none";
-            logger::info("UIManager: Python addon check - no Python found (setup available)");
-        }
-    }
-
-    bool installed = hasScript && hasPython;
-
-    // Return JSON so JS can distinguish hasScript vs hasPython
-    nlohmann::json status;
-    status["installed"] = installed;
-    status["hasScript"] = hasScript;
-    status["hasPython"] = hasPython;
-    status["pythonSource"] = pythonSource;
-
-    logger::info("UIManager: Python addon status: installed={}, hasScript={}, hasPython={}, source={}",
-        installed, hasScript, hasPython, pythonSource);
-
-    m_prismaUI->InteropCall(m_view, "onPythonAddonStatus", status.dump().c_str());
-}
-
-// =============================================================================
-// PYTHON SETUP CALLBACKS
-// =============================================================================
-
-void UIManager::OnSetupPython([[maybe_unused]] const char* argument)
-{
-    logger::info("UIManager: SetupPython callback triggered");
-
-    auto* instance = GetSingleton();
-    if (!instance || !instance->m_prismaUI) return;
-
-    PythonInstaller::GetSingleton()->StartInstall(instance->m_prismaUI, instance->m_view);
-}
-
-void UIManager::OnCancelPythonSetup([[maybe_unused]] const char* argument)
-{
-    logger::info("UIManager: CancelPythonSetup callback triggered");
-    PythonInstaller::GetSingleton()->Cancel();
 }
