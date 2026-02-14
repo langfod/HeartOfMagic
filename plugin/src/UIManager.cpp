@@ -527,7 +527,7 @@ void UIManager::OnSaveOutputBySchool(const char* argument)
     }
 }
 
-void UIManager::OnLoadPrompt(const char* argument)
+void UIManager::OnLoadPrompt([[maybe_unused]] const char* argument)
 {
     logger::info("UIManager: LoadPrompt callback triggered");
 
@@ -597,7 +597,7 @@ void UIManager::OnSavePrompt(const char* argument)
 // TREE TAB CALLBACKS
 // =============================================================================
 
-void UIManager::OnLoadSpellTree(const char* argument)
+void UIManager::OnLoadSpellTree([[maybe_unused]] const char* argument)
 {
     logger::info("UIManager: LoadSpellTree callback triggered");
 
@@ -947,7 +947,7 @@ void UIManager::OnUnlockSpell(const char* argument)
     }
 }
 
-void UIManager::OnGetProgress(const char* argument)
+void UIManager::OnGetProgress([[maybe_unused]] const char* argument)
 {
     logger::info("UIManager: GetProgress requested");
     
@@ -956,7 +956,7 @@ void UIManager::OnGetProgress(const char* argument)
     instance->SendProgressData(progressJson);
 }
 
-void UIManager::OnGetPlayerKnownSpells(const char* argument)
+void UIManager::OnGetPlayerKnownSpells([[maybe_unused]] const char* argument)
 {
     logger::info("UIManager: GetPlayerKnownSpells requested");
     
@@ -1442,7 +1442,7 @@ void MergeJsonNonNull(json& dst, const json& src) {
     }
 }
 
-void UIManager::OnLoadUnifiedConfig(const char* argument)
+void UIManager::OnLoadUnifiedConfig([[maybe_unused]] const char* argument)
 {
     logger::info("UIManager: LoadUnifiedConfig requested");
     
@@ -1527,20 +1527,20 @@ void UIManager::OnLoadUnifiedConfig(const char* argument)
     // All fields are guaranteed to exist from defaults, but use SafeJsonValue for extra safety
     ProgressionManager::XPSettings xpSettings;
     xpSettings.learningMode = SafeJsonValue<std::string>(unifiedConfig, "learningMode", "perSchool");
-    xpSettings.globalMultiplier = static_cast<float>(SafeJsonValue<int>(unifiedConfig, "xpGlobalMultiplier", 1));
-    xpSettings.multiplierDirect = SafeJsonValue<int>(unifiedConfig, "xpMultiplierDirect", 100) / 100.0f;
-    xpSettings.multiplierSchool = SafeJsonValue<int>(unifiedConfig, "xpMultiplierSchool", 50) / 100.0f;
-    xpSettings.multiplierAny = SafeJsonValue<int>(unifiedConfig, "xpMultiplierAny", 10) / 100.0f;
+    xpSettings.globalMultiplier = SafeJsonValue<float>(unifiedConfig, "xpGlobalMultiplier", 1.0f);
+    xpSettings.multiplierDirect = SafeJsonValue<float>(unifiedConfig, "xpMultiplierDirect", 100.0f) / 100.0f;
+    xpSettings.multiplierSchool = SafeJsonValue<float>(unifiedConfig, "xpMultiplierSchool", 50.0f) / 100.0f;
+    xpSettings.multiplierAny = SafeJsonValue<float>(unifiedConfig, "xpMultiplierAny", 10.0f) / 100.0f;
     // XP caps (max contribution from each source)
-    xpSettings.capAny = static_cast<float>(SafeJsonValue<int>(unifiedConfig, "xpCapAny", 5));
-    xpSettings.capSchool = static_cast<float>(SafeJsonValue<int>(unifiedConfig, "xpCapSchool", 15));
-    xpSettings.capDirect = static_cast<float>(SafeJsonValue<int>(unifiedConfig, "xpCapDirect", 50));
+    xpSettings.capAny = SafeJsonValue<float>(unifiedConfig, "xpCapAny", 5.0f);
+    xpSettings.capSchool = SafeJsonValue<float>(unifiedConfig, "xpCapSchool", 15.0f);
+    xpSettings.capDirect = SafeJsonValue<float>(unifiedConfig, "xpCapDirect", 50.0f);
     // Tier XP requirements
-    xpSettings.xpNovice = SafeJsonValue<int>(unifiedConfig, "xpNovice", 100);
-    xpSettings.xpApprentice = SafeJsonValue<int>(unifiedConfig, "xpApprentice", 200);
-    xpSettings.xpAdept = SafeJsonValue<int>(unifiedConfig, "xpAdept", 400);
-    xpSettings.xpExpert = SafeJsonValue<int>(unifiedConfig, "xpExpert", 800);
-    xpSettings.xpMaster = SafeJsonValue<int>(unifiedConfig, "xpMaster", 1500);
+    xpSettings.xpNovice = SafeJsonValue<float>(unifiedConfig, "xpNovice", 100.0f);
+    xpSettings.xpApprentice = SafeJsonValue<float>(unifiedConfig, "xpApprentice", 200.0f);
+    xpSettings.xpAdept = SafeJsonValue<float>(unifiedConfig, "xpAdept", 400.0f);
+    xpSettings.xpExpert = SafeJsonValue<float>(unifiedConfig, "xpExpert", 800.0f);
+    xpSettings.xpMaster = SafeJsonValue<float>(unifiedConfig, "xpMaster", 1500.0f);
     // Preserve modded sources registered by API consumers before config loaded
     xpSettings.moddedSources = ProgressionManager::GetSingleton()->GetXPSettings().moddedSources;
     ProgressionManager::GetSingleton()->SetXPSettings(xpSettings);
@@ -1763,20 +1763,20 @@ void UIManager::DoSaveUnifiedConfig(const std::string& configData)
         // Update XP settings in ProgressionManager if changed
         ProgressionManager::XPSettings xpSettings;
         xpSettings.learningMode = SafeJsonValue<std::string>(newConfig, "learningMode", "perSchool");
-        xpSettings.globalMultiplier = static_cast<float>(SafeJsonValue<int>(newConfig, "xpGlobalMultiplier", 1));
-        xpSettings.multiplierDirect = SafeJsonValue<int>(newConfig, "xpMultiplierDirect", 100) / 100.0f;
-        xpSettings.multiplierSchool = SafeJsonValue<int>(newConfig, "xpMultiplierSchool", 50) / 100.0f;
-        xpSettings.multiplierAny = SafeJsonValue<int>(newConfig, "xpMultiplierAny", 10) / 100.0f;
+        xpSettings.globalMultiplier = SafeJsonValue<float>(newConfig, "xpGlobalMultiplier", 1.0f);
+        xpSettings.multiplierDirect = SafeJsonValue<float>(newConfig, "xpMultiplierDirect", 100.0f) / 100.0f;
+        xpSettings.multiplierSchool = SafeJsonValue<float>(newConfig, "xpMultiplierSchool", 50.0f) / 100.0f;
+        xpSettings.multiplierAny = SafeJsonValue<float>(newConfig, "xpMultiplierAny", 10.0f) / 100.0f;
         // XP caps (max contribution from each source)
-        xpSettings.capAny = static_cast<float>(SafeJsonValue<int>(newConfig, "xpCapAny", 5));
-        xpSettings.capSchool = static_cast<float>(SafeJsonValue<int>(newConfig, "xpCapSchool", 15));
-        xpSettings.capDirect = static_cast<float>(SafeJsonValue<int>(newConfig, "xpCapDirect", 50));
+        xpSettings.capAny = SafeJsonValue<float>(newConfig, "xpCapAny", 5.0f);
+        xpSettings.capSchool = SafeJsonValue<float>(newConfig, "xpCapSchool", 15.0f);
+        xpSettings.capDirect = SafeJsonValue<float>(newConfig, "xpCapDirect", 50.0f);
         // Tier XP requirements
-        xpSettings.xpNovice = SafeJsonValue<int>(newConfig, "xpNovice", 100);
-        xpSettings.xpApprentice = SafeJsonValue<int>(newConfig, "xpApprentice", 200);
-        xpSettings.xpAdept = SafeJsonValue<int>(newConfig, "xpAdept", 400);
-        xpSettings.xpExpert = SafeJsonValue<int>(newConfig, "xpExpert", 800);
-        xpSettings.xpMaster = SafeJsonValue<int>(newConfig, "xpMaster", 1500);
+        xpSettings.xpNovice = SafeJsonValue<float>(newConfig, "xpNovice", 100.0f);
+        xpSettings.xpApprentice = SafeJsonValue<float>(newConfig, "xpApprentice", 200.0f);
+        xpSettings.xpAdept = SafeJsonValue<float>(newConfig, "xpAdept", 400.0f);
+        xpSettings.xpExpert = SafeJsonValue<float>(newConfig, "xpExpert", 800.0f);
+        xpSettings.xpMaster = SafeJsonValue<float>(newConfig, "xpMaster", 1500.0f);
 
         // Load modded XP source settings from config
         if (newConfig.contains("moddedXPSources") && newConfig["moddedXPSources"].is_object()) {
@@ -2343,7 +2343,7 @@ void UIManager::OnCopyToClipboard(const char* argument)
     instance->NotifyCopyComplete(success);
 }
 
-void UIManager::OnGetClipboard(const char* argument)
+void UIManager::OnGetClipboard([[maybe_unused]] const char* argument)
 {
     logger::info("UIManager: GetClipboard callback triggered");
 
@@ -2380,7 +2380,7 @@ void UIManager::OnGetClipboard(const char* argument)
 // SKYRIMNET INTEGRATION
 // =============================================================================
 
-void UIManager::OnCheckLLM(const char* argument)
+void UIManager::OnCheckLLM([[maybe_unused]] const char* argument)
 {
     logger::info("UIManager: CheckLLM callback triggered (OpenRouter mode)");
     
@@ -2403,7 +2403,7 @@ void UIManager::OnCheckLLM(const char* argument)
     instance->m_prismaUI->InteropCall(instance->m_view, "onLLMStatus", result.dump().c_str());
 }
 
-void UIManager::OnLLMGenerate(const char* argument)
+void UIManager::OnLLMGenerate([[maybe_unused]] const char* argument)
 {
     logger::info("UIManager: LLM Generate callback triggered (OpenRouter mode)");
     
@@ -2598,7 +2598,7 @@ You have more freedom in tree design:
     }
 }
 
-void UIManager::OnPollLLMResponse(const char* argument)
+void UIManager::OnPollLLMResponse([[maybe_unused]] const char* argument)
 {
     auto* instance = GetSingleton();
     
@@ -2658,7 +2658,7 @@ void UIManager::OnPollLLMResponse(const char* argument)
 // LLM CONFIG (OpenRouter)
 // =============================================================================
 
-void UIManager::OnLoadLLMConfig(const char* argument)
+void UIManager::OnLoadLLMConfig([[maybe_unused]] const char* argument)
 {
     logger::info("UIManager: LoadLLMConfig callback triggered");
     
@@ -2861,7 +2861,7 @@ void UIManager::OnPreReqMasterScore(const char* argument)
 // PANEL CONTROL CALLBACKS
 // =============================================================================
 
-void UIManager::OnHidePanel(const char* argument)
+void UIManager::OnHidePanel([[maybe_unused]] const char* argument)
 {
     logger::info("UIManager: HidePanel callback triggered from JS");
     GetSingleton()->HidePanel();
@@ -2871,7 +2871,7 @@ void UIManager::OnHidePanel(const char* argument)
 // AUTO-TEST CALLBACKS
 // =============================================================================
 
-void UIManager::OnLoadTestConfig(const char* argument)
+void UIManager::OnLoadTestConfig([[maybe_unused]] const char* argument)
 {
     logger::info("UIManager: LoadTestConfig callback triggered");
 
@@ -3060,7 +3060,7 @@ void UIManager::CheckPythonAddonStatus()
 // PYTHON SETUP CALLBACKS
 // =============================================================================
 
-void UIManager::OnSetupPython(const char* argument)
+void UIManager::OnSetupPython([[maybe_unused]] const char* argument)
 {
     logger::info("UIManager: SetupPython callback triggered");
 
@@ -3070,7 +3070,7 @@ void UIManager::OnSetupPython(const char* argument)
     PythonInstaller::GetSingleton()->StartInstall(instance->m_prismaUI, instance->m_view);
 }
 
-void UIManager::OnCancelPythonSetup(const char* argument)
+void UIManager::OnCancelPythonSetup([[maybe_unused]] const char* argument)
 {
     logger::info("UIManager: CancelPythonSetup callback triggered");
     PythonInstaller::GetSingleton()->Cancel();

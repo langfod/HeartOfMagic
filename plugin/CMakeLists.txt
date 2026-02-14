@@ -60,7 +60,7 @@ add_commonlibsse_plugin(${PROJECT_NAME}
         src/ISLIntegration.cpp
         src/SpellCastXPSource.cpp
         src/PassiveLearningSource.cpp
-    src/SpellEffectivenessHook.cpp
+        src/SpellEffectivenessHook.cpp
         src/SpellTomeHook.cpp
         src/PapyrusAPI.cpp
         src/PythonInstaller.cpp

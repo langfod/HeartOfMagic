@@ -1643,7 +1643,7 @@ void SpellEffectivenessHook::OnGameLoaded(SKSE::SerializationInterface* a_intfc)
     });
 }
 
-void SpellEffectivenessHook::OnRevert(SKSE::SerializationInterface* a_intfc)
+void SpellEffectivenessHook::OnRevert([[maybe_unused]] SKSE::SerializationInterface* a_intfc)
 {
     std::unique_lock<std::shared_mutex> lock(m_mutex);
     m_earlyLearnedSpells.clear();
