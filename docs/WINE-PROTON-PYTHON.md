@@ -1,14 +1,15 @@
 # Wine/Proton Python Compatibility
 
-## Current Status (Working)
+## Current Status (Testing)
 
 The mod runs on Linux via Wine/Proton using **Windows embedded Python** with the following workarounds:
 
 - **TCP socket IPC** instead of pipes (pipe inheritance is broken in Wine)
-- **cmd.exe /c wrapper** for process creation (Wine's CreateProcess needs it for proper stdio)
+- **`cmd.exe /c` wrapper with `CREATE_NEW_CONSOLE`** — cmd.exe properly chains the process environment to Python, while `CREATE_NEW_CONSOLE` allocates a console so both cmd.exe and Python get valid stdio handles even from Steam/Proton (no parent console). `SW_HIDE` keeps the console window invisible.
 - **Subprocess isolation** to detect numpy segfaults before they crash the server
 - **sys.modules poisoning** to prevent segfault-causing imports while letting pure-Python fallbacks work
 - **Python 3.11.9** for Wine (3.12+ has additional Wine issues)
+- **Extended timeouts** — 30s TCP connect, 120s ready signal (numpy/sklearn subprocess tests take ~30s each)
 
 All 5 tree builders register and work. Tree building completes successfully with 866 spells in ~6s.
 
@@ -52,7 +53,20 @@ numpy's C extensions (.pyd files compiled with MSVC) crash with `STATUS_DLL_INIT
 - Result: **All 5 builders registered**, tree built successfully
 - This is the current shipping solution
 
-### Attempt 10: Linux native Python (removed)
+### Attempt 10: Direct spawn + CREATE_NEW_CONSOLE
+- **Problem**: Two Steam/Proton users reported TCP connection timeout — Python never connected
+- **Root cause**: cmd.exe /c without `CREATE_NEW_CONSOLE` only works if the parent process has a console (e.g. launched from terminal). Steam/Proton launches have no console → cmd.exe/Python get no stdio → Python crashes before executing server.py
+- **Fix**: Spawn python.exe directly (no cmd.exe wrapper) with `CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT` and `STARTF_USESHOWWINDOW + SW_HIDE`. The console gives Python valid stdin/stdout/stderr handles; SW_HIDE keeps it invisible in Proton's virtual desktop. TCP socket handles actual communication.
+- **Also**: Increased TCP timeout from 15s → 30s, ready timeout from 15s → 120s (Wine numpy/sklearn subprocess tests take ~30s each). Added exit code diagnostics on TCP timeout.
+- **Result**: Python process exits with code 1 (0x1) — a Python-level error, not a DLL crash. The new diagnostics work (exit code captured), but Python never reaches TCP connect. Direct spawn may bypass Wine's process chain setup that cmd.exe handles.
+
+### Attempt 11: cmd.exe /c + CREATE_NEW_CONSOLE (current)
+- **Problem**: Direct python.exe spawn (Attempt 10) exits with code 1 before connecting
+- **Hypothesis**: cmd.exe is needed for Wine's process chain to properly set up the environment for Python. The original cmd.exe approach worked for terminal users — only the missing console was the issue.
+- **Fix**: Combine both approaches — use `cmd.exe /c` wrapper WITH `CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT` and `STARTF_USESHOWWINDOW + SW_HIDE`. cmd.exe chains the environment to Python, CREATE_NEW_CONSOLE gives valid stdio, SW_HIDE keeps it invisible.
+- **Also**: Added pre-spawn verification that resolved server.py path exists on disk.
+
+### Attempt 12: Linux native Python (removed)
 - Hypothesis: Launch Linux native python3 (where numpy works natively) as Phase 1, fall back to Windows Python as Phase 2
 - Implementation: Find python3 at Z:\usr\bin\python3, write bash script to /tmp/, launch via cmd.exe /c bash
 - Result: **python3 and bash found**, paths converted correctly, bash script written, process launched, but **TCP connection timed out after 5s**
@@ -164,7 +178,8 @@ SpawnProcess() — Wine detected
 |   +-- If connected: numpy works natively, all builders at full capability
 |
 +-- Phase 2: Fall back to Windows Python (current approach)
-    +-- cmd.exe /c python.exe -u server.py --port N --wine
+    +-- Direct: python.exe -u server.py --port N --wine
+    +-- CREATE_NEW_CONSOLE + SW_HIDE for valid stdio
     +-- Poison modules prevent segfault
     +-- Pure-Python fallback paths for all builders
 ```

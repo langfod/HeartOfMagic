@@ -65,6 +65,7 @@ add_library(${PROJECT_NAME} SHARED
     src/ProgressionManager.cpp
     src/ISLIntegration.cpp
     src/SpellCastXPSource.cpp
+    src/PassiveLearningSource.cpp
     src/SpellEffectivenessHook.cpp
     src/SpellTomeHook.cpp
     src/PapyrusAPI.cpp

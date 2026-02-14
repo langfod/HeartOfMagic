@@ -387,19 +387,95 @@ Ready signal:  {"id":"__ready__","success":true,"result":{"pid":1234}}\n
 **Status:** ✅ Implemented
 
 **Responsibilities:**
-- Expose C++ functions to Papyrus scripts for inter-mod communication
+- Expose 26 C++ functions to Papyrus scripts for inter-mod communication
+- Menu control, XP granting, progress queries, learning target management, settings queries
 
-**Papyrus Functions:**
+**Papyrus Functions (26):**
 ```papyrus
-SpellLearning.OpenMenu()      ; Show UI
-SpellLearning.CloseMenu()     ; Hide UI
-SpellLearning.ToggleMenu()    ; Toggle UI
-SpellLearning.IsMenuOpen()    ; Query state
-SpellLearning.GetVersion()    ; Version string
+; Menu
+SpellLearning.OpenMenu()                              ; Show UI
+SpellLearning.CloseMenu()                             ; Hide UI
+SpellLearning.ToggleMenu()                            ; Toggle UI
+SpellLearning.IsMenuOpen()                            ; Query state
+SpellLearning.GetVersion()                            ; Version string
+
+; XP (Modder API)
+SpellLearning.RegisterXPSource(sourceId, displayName) ; Register source → creates UI controls
+SpellLearning.AddSourcedXP(spell, amount, source)     ; Grant XP through cap system
+SpellLearning.AddRawXP(spell, amount)                 ; Bypass all caps/multipliers
+SpellLearning.SetSpellXP(spell, xp)                   ; Debug: set exact XP
+
+; Progress Queries
+SpellLearning.GetSpellProgress(spell)                 ; 0.0-100.0%
+SpellLearning.GetSpellCurrentXP(spell)                ; Raw XP
+SpellLearning.GetSpellRequiredXP(spell)               ; Required XP
+SpellLearning.IsSpellMastered(spell)                  ; 100% + unlocked
+SpellLearning.IsSpellUnlocked(spell)                  ; Granted to player
+SpellLearning.IsSpellAvailableToLearn(spell)           ; In tree, prereqs met
+SpellLearning.ArePrerequisitesMet(spell)               ; Tree prereqs check
+
+; Learning Target Control
+SpellLearning.GetLearningTarget(school)                ; Get target for school
+SpellLearning.GetAllLearningTargets()                  ; All active targets
+SpellLearning.GetLearningMode()                        ; "perSchool" or "single"
+SpellLearning.SetLearningTarget(spell)                 ; Auto-determines school
+SpellLearning.SetLearningTargetForSchool(school, spell)
+SpellLearning.ClearLearningTarget(school)
+SpellLearning.ClearAllLearningTargets()
+
+; Settings Queries
+SpellLearning.GetGlobalXPMultiplier()
+SpellLearning.GetXPForTier(tier)                       ; "novice", "expert", etc.
+SpellLearning.GetSourceCap(source)                     ; Cap % for any source
 ```
 
-**ModEvents Sent:**
+**ModEvents Sent (7):**
 - `SpellLearning_MenuOpened` / `SpellLearning_MenuClosed`
+- `SpellLearning_XPGained` — (strArg=source, numArg=amount, sender=Spell)
+- `SpellLearning_SpellMastered` — (strArg=school, sender=Spell)
+- `SpellLearning_SpellEarlyGranted` — (strArg=school, numArg=progress%, sender=Spell)
+- `SpellLearning_TargetChanged` — (strArg=school, numArg=1.0/0.0, sender=Spell)
+- `SpellLearning_SourceRegistered` — (strArg=sourceId)
+
+**C++ API (for SKSE plugins):** See `SpellLearningAPI.h` — SKSE Messaging (fire-and-forget) or full `ISpellLearningAPI` interface.
+
+<a id="modder-api-reference"></a>
+### Modder API Reference
+
+**For Papyrus modders** who want to add custom XP sources to SpellLearning:
+
+```papyrus
+; 1. Register your source on init (creates UI controls for users)
+SpellLearning.RegisterXPSource("book_reading", "Book Reading")
+
+; 2. Grant XP when your event fires
+Spell[] targets = SpellLearning.GetAllLearningTargets()
+int i = 0
+while i < targets.Length
+    SpellLearning.AddSourcedXP(targets[i], 15.0, "book_reading")
+    i += 1
+endwhile
+
+; 3. Listen for SpellLearning events (optional)
+RegisterForModEvent("SpellLearning_SpellMastered", "OnMastered")
+```
+
+**What happens when you register a source:**
+1. C++ `ProgressionManager::RegisterModdedXPSource()` creates a `ModdedSourceConfig` (enabled=true, multiplier=100%, cap=25%)
+2. `UIManager::NotifyModdedSourceRegistered()` sends JSON to PrismaUI
+3. JS `onModdedXPSourceRegistered()` creates UI row with enable toggle + multiplier/cap sliders
+4. User can adjust multiplier (0-200%) and cap (0-100%) per source
+5. Settings persist via `saveUnifiedConfig()` → `config.json`
+
+**XP flow through `AddSourcedXP()`:**
+```
+amount → × source multiplier (0-200%) → × global multiplier
+       → clamped to: requiredXP × source cap %
+       → minus already-tracked XP from this source
+       → result added to spell progress
+```
+
+**For C++ plugins:** Use `SpellLearningAPI.h` — either SKSE messaging (fire-and-forget) or request the `ISpellLearningAPI` interface pointer.
 
 ---
 
@@ -1013,10 +1089,40 @@ MO2/mods/HeartOfMagic_RELEASE/
 - Plugin whitelist/blacklist filtering
 - 12 visual shape profiles (organic, explosion, tree, mountain, portals, spiky, radial, cloud, cascade, swords, grid, linear)
 
+### ✅ Recently Completed (Feb 11, 2026)
+
+#### Passive Learning Feature
+- **UI:** Toggle, scope dropdown (All/Root/Novice), XP-per-game-hour slider (1-50), per-tier max % caps
+- **Settings:** `passiveLearning` object in `state.js` with `enabled`, `scope`, `xpPerGameHour`, `maxByTier`
+- **Persistence:** Saved/loaded via `saveUnifiedConfig`/`onUnifiedConfigLoaded`
+- **C++ side:** Not yet implemented (UI settings ready for timer-based XP granting)
+
+#### Curved Edge Rendering
+- **`_drawEdgePath()`** helper in `canvasRendererV2.js` — quadratic Bezier curves with 15% perpendicular offset
+- **Settings toggle:** `edgeStyle: 'straight'|'curved'` in state.js + checkbox in settings panel
+- Applied to all 3 edge passes (base connections, selected path, learning path)
+
+#### themeColor Pipeline Fix
+- **treeViewerUI.js** fast path (`_loadTrustedTree`): Added `theme`, `themeColor`, `skillLevel` to node construction
+- **treeParser.js** slow path: Same fields added to node construction
+- Fixes per-node theme colors being ignored (falling back to school color)
+
+#### Import Modal Buttons
+- Added `paste-tree-btn` and `import-cancel` buttons to import modal (HTML elements JS already referenced)
+
+#### Modder API (Papyrus + C++)
+- **`SpellLearningAPI.h`** — Public C++ header for SKSE plugins (messaging + full interface)
+- **`SpellLearning.psc`** — Papyrus API with 26 native functions
+- **`RegisterXPSource()`** — Creates UI controls (enable toggle, multiplier slider, cap slider)
+- **`AddSourcedXP()`** — Grants XP through cap system with named source
+- **`AddRawXP()`** — Bypasses all caps/multipliers
+- **ModEvents** — 7 events for inter-mod communication
+- See [Modder API Reference](#modder-api-reference) section below
+
 ### 🔄 Planned Improvements
+- Passive learning C++ timer (game-hour XP granting)
 - Viewport culling for large trees
 - Level-of-detail rendering
-- Additional XP sources
 
 ### ✅ Recently Completed (Feb 9, 2026)
 

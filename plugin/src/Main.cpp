@@ -6,6 +6,7 @@
 #include "ISLIntegration.h"
 #include "XPSource.h"
 #include "SpellCastXPSource.h"
+#include "PassiveLearningSource.h"
 #include "SpellEffectivenessHook.h"
 #include "SpellTomeHook.h"
 #include "PapyrusAPI.h"
@@ -331,9 +332,10 @@ void OnDataLoaded()
     // Initialize ISL/DEST integration (detects DEST_ISL.esp and enables event dispatch)
     DESTIntegration::Initialize();
     
-    // Register and initialize XP sources (spell casting only - tomes handled by SpellTomeHook)
+    // Register and initialize XP sources
     auto& registry = SpellLearning::XPSourceRegistry::GetSingleton();
     registry.Register<SpellLearning::SpellCastXPSource>();
+    registry.Register<SpellLearning::PassiveLearningSource>();
     registry.InitializeAll();
     logger::info("XP sources registered: {} total, {} active", 
                  registry.GetAll().size(), registry.GetActive().size());
@@ -343,11 +345,15 @@ void OnNewGame()
 {
     logger::info("New game started - progression will be cleared");
     // Progress is automatically cleared by OnRevert callback
-    
+
     // Fix input lock if UI was open in main menu
     if (UIManager::GetSingleton()->IsInitialized()) {
         UIManager::GetSingleton()->EnsureFocusReleased();
     }
+
+    // Reset passive learning timer
+    auto* passive = SpellLearning::PassiveLearningSource::GetSingleton();
+    if (passive) passive->OnGameLoad();
 }
 
 void OnPostLoadGame()
@@ -359,6 +365,10 @@ void OnPostLoadGame()
     if (UIManager::GetSingleton()->IsInitialized()) {
         UIManager::GetSingleton()->EnsureFocusReleased();
     }
+
+    // Reset passive learning timer for loaded save
+    auto* passive = SpellLearning::PassiveLearningSource::GetSingleton();
+    if (passive) passive->OnGameLoad();
 
     // Re-register ISL aliases every save load.
     // OnInit() only fires once per save creation (not on load), so on fresh
@@ -383,7 +393,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
             // Install hooks after all plugins are loaded but before game data
             SpellEffectivenessHook::Install();
             SpellEffectivenessHook::InstallDisplayHooks();
-            
+
             // Install spell tome hook (intercepts book reading)
             if (SpellTomeHook::Install()) {
                 logger::info("SpellTomeHook installed - spell tome interception active");
@@ -391,6 +401,16 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
                 logger::error("SpellTomeHook failed to install - spell tomes will use vanilla behavior");
             }
             break;
+        case SKSE::MessagingInterface::kPostPostLoad: {
+            // Broadcast API to all listening plugins
+            // Consumers register with: messaging->RegisterListener("SpellLearning", callback)
+            auto* api = SpellLearningAPIImpl::GetSingleton();
+            SKSE::GetMessagingInterface()->Dispatch(
+                SpellLearning::kMessageType_APIReady,
+                api, sizeof(void*), nullptr);
+            logger::info("SpellLearning: API broadcasted to all listeners (v{})", api->GetAPIVersion());
+            break;
+        }
         case SKSE::MessagingInterface::kDataLoaded:
             OnDataLoaded();
             break;
@@ -434,9 +454,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
         return false;
     }
 
-    // Register listener for external plugin API messages (targeted at "SpellLearning")
-    messaging->RegisterListener("SpellLearning", OnExternalPluginMessage);
-    logger::info("SpellLearning inter-plugin API listener registered");
+    logger::info("SpellLearning: API will be broadcasted at kPostPostLoad for addon plugins");
     
     // Register serialization interface (co-save)
     auto serialization = SKSE::GetSerializationInterface();

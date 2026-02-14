@@ -44,6 +44,7 @@ if _script_dir not in sys.path:
 # Dynamic discovery: any modules/*/python/ dir is auto-added.
 _prisma_modules = Path(__file__).resolve().parent.parent.parent.parent.parent / \
     "PrismaUI" / "views" / "SpellLearning" / "SpellLearningPanel" / "modules"
+_prisma_modules_found = []  # Track which module python dirs were found (logged later)
 
 if _prisma_modules.is_dir():
     for _subdir in _prisma_modules.glob('*/python'):
@@ -51,12 +52,15 @@ if _prisma_modules.is_dir():
             _mod_path = str(_subdir)
             if _mod_path not in sys.path:
                 sys.path.insert(0, _mod_path)
+                _prisma_modules_found.append(_subdir.parent.name)
 else:
     # Fallback to hardcoded paths if parent dir not found
+    _prisma_modules_found.append(f"NOT_FOUND:{_prisma_modules}")
     for _subdir in ['classic/python', 'tree/python']:
         _mod_path = str(_prisma_modules / _subdir)
         if os.path.isdir(_mod_path) and _mod_path not in sys.path:
             sys.path.insert(0, _mod_path)
+            _prisma_modules_found.append(_subdir.split('/')[0])
 
 # Log file for debug output (NOT stdout)
 # Try multiple locations — mod folders on Wine/Proton may be read-only.
@@ -328,6 +332,12 @@ def main():
     # try/except ImportError fallbacks (theme_discovery, etc.) will gracefully
     # degrade. Pure-Python modules (prereq_master_scorer, core.node) work as-is.
 
+    # Log PrismaUI module discovery (deferred from early init before log() existed)
+    if _prisma_modules_found:
+        log(f"PrismaUI module python dirs: {_prisma_modules_found}")
+    else:
+        log(f"WARNING: No PrismaUI module python dirs found (path: {_prisma_modules})")
+
     # Tree Growth builder (NLP-based) — try module folder first, fallback to local
     _build_tree_import_error = None
     tcp_diag("importing tree_build_tree...")
@@ -404,10 +414,26 @@ def main():
 
     log(f"Registered commands: {list(COMMAND_HANDLERS.keys())}")
 
+    # Collect import errors for diagnostics (sent to C++ in ready signal)
+    _import_errors = {}
+    if _build_tree_import_error:
+        _import_errors["build_tree"] = _build_tree_import_error
+    if _classic_build_import_error:
+        _import_errors["build_tree_classic"] = _classic_build_import_error
+
     log("All imports complete. Sending ready signal.")
 
-    # Signal ready to C++
-    send_response("__ready__", True, {"pid": os.getpid()})
+    # Signal ready to C++ — include registered commands and any import errors
+    # so the SKSE log captures what's available without needing server.log
+    _ready_info = {
+        "pid": os.getpid(),
+        "commands": list(COMMAND_HANDLERS.keys()),
+        "log_file": str(LOG_FILE),
+        "prisma_modules": _prisma_modules_found,
+    }
+    if _import_errors:
+        _ready_info["import_errors"] = _import_errors
+    send_response("__ready__", True, _ready_info)
 
     # Main loop: read JSON-line commands from stdin or TCP socket
     input_source = sock_file_r if sock_file_r is not None else sys.stdin

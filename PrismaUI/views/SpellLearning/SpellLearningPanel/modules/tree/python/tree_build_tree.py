@@ -153,7 +153,7 @@ def compute_fuzzy_relationships(spells: list, top_n: int = 5, similarity_thresho
     spell_themes = {}
     
     for school_name, themes in themes_per_school.items():
-        school_spells = [s for s in spells if s.get('school', 'Unknown') == school_name]
+        school_spells = [s for s in spells if s.get('school', '') == school_name]
         
         for theme in themes:
             theme_key = f"{school_name}_{theme}"
@@ -275,10 +275,13 @@ def build_tree_from_data(spells, config_dict):
     config.setdefault('convergence_chance', 0.4)
     config.setdefault('branching_energy', {})
 
-    # Count schools
+    # Count schools (only the 5 vanilla magic schools)
+    VALID_SCHOOLS = {'Alteration', 'Conjuration', 'Destruction', 'Illusion', 'Restoration'}
     schools = {}
     for spell in spells:
-        school = spell.get('school', 'Unknown')
+        school = spell.get('school', '')
+        if school not in VALID_SCHOOLS:
+            continue
         schools[school] = schools.get(school, 0) + 1
 
     # LLM setup
@@ -290,12 +293,12 @@ def build_tree_from_data(spells, config_dict):
     school_configs = {}
     llm_groups_data = {}
 
-    # Group spells by school
+    # Group spells by school (only the 5 vanilla magic schools)
     school_spells = {}
     for spell in spells:
-        school = spell.get('school', 'Unknown')
-        if not school or school in ('null', 'undefined', 'None', ''):
-            school = 'Hedge Wizard'
+        school = spell.get('school', '')
+        if school not in VALID_SCHOOLS:
+            continue
         if school not in school_spells:
             school_spells[school] = []
         school_spells[school].append(spell)
@@ -666,10 +669,13 @@ Examples:
         print("[Error] No spells found")
         sys.exit(1)
     
-    # Count schools
+    # Count schools (only the 5 vanilla magic schools)
+    VALID_SCHOOLS_MAIN = {'Alteration', 'Conjuration', 'Destruction', 'Illusion', 'Restoration'}
     schools = {}
     for spell in spells:
-        school = spell.get('school', 'Unknown')
+        school = spell.get('school', '')
+        if school not in VALID_SCHOOLS_MAIN:
+            continue
         schools[school] = schools.get(school, 0) + 1
     print(f"[Info] Schools: {', '.join(f'{s} ({c})' for s, c in sorted(schools.items()))}")
     
@@ -698,12 +704,12 @@ Examples:
     school_configs = {}  # Store per-school configs for output
     llm_groups_data = {}  # Store LLM-enhanced group data
     
-    # Group spells by school for LLM sampling
+    # Group spells by school for LLM sampling (only the 5 vanilla magic schools)
     school_spells = {}
     for spell in spells:
-        school = spell.get('school', 'Unknown')
-        if not school or school in ('null', 'undefined', 'None', ''):
-            school = 'Hedge Wizard'
+        school = spell.get('school', '')
+        if school not in VALID_SCHOOLS_MAIN:
+            continue
         if school not in school_spells:
             school_spells[school] = []
         school_spells[school].append(spell)

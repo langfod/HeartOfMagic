@@ -979,10 +979,10 @@
                                     <span class="setting-label" data-i18n="settings.progression.learningMode">Learning Mode</span>
                                     <span class="setting-desc" data-i18n="settings.progression.learningModeDesc">How many spells learned at once</span>
                                 </div>
-                                <select id="learningModeSelect" class="setting-select">
-                                    <option value="perSchool" data-i18n="settings.progression.learningModePerSchool">One spell per school</option>
-                                    <option value="single" data-i18n="settings.progression.learningModeSingle">One spell at a time</option>
-                                </select>
+                                <div id="learningModeToggle" class="segmented-toggle">
+                                    <div class="seg-btn active" data-value="perSchool">Per School</div>
+                                    <div class="seg-btn" data-value="single">Single</div>
+                                </div>
                             </div>
                             <div class="setting-row">
                                 <div class="setting-info">
@@ -1017,10 +1017,10 @@
                                     <input type="checkbox" id="autoAdvanceLearningToggle" checked>
                                     <span class="toggle-slider"></span>
                                 </label>
-                                <select id="autoAdvanceModeSelect" class="setting-select" style="width:auto; min-width: 130px;">
-                                    <option value="branch">Next in Branch</option>
-                                    <option value="random">Random in School</option>
-                                </select>
+                                <div id="autoAdvanceModeToggle" class="segmented-toggle">
+                                    <div class="seg-btn active" data-value="branch">Branch</div>
+                                    <div class="seg-btn" data-value="random">Random</div>
+                                </div>
                             </div>
                         </div>
 
@@ -1096,13 +1096,6 @@
                         
                         <p class="setting-note" data-i18n="settings.progression.xpCapsExample">Example: With caps at 5%/15%/50%, the final 50% must come from casting the spell itself.</p>
 
-                        <!-- Modded XP Sources (populated dynamically when external mods register) -->
-                        <div id="moddedXPSourcesSection" class="settings-subsection" style="display:none;">
-                            <span class="subsection-title">Modded XP Sources</span>
-                            <p class="setting-note">External mods that grant XP. Each source has its own multiplier and cap, and is still affected by the Overall XP Multiplier.</p>
-                            <div id="moddedXPSourcesList"></div>
-                        </div>
-
                         <!-- XP Required per Tier -->
                         <div class="settings-subsection">
                             <span class="subsection-title" data-i18n="settings.progression.xpRequiredByTier">XP Required by Spell Tier</span>
@@ -1156,11 +1149,11 @@
                                     <span class="setting-desc">Which spells gain passive XP</span>
                                 </div>
                                 <div class="inline-controls">
-                                    <select id="passiveScopeSelect" class="setting-select" style="width:auto; min-width:100px; padding:3px 6px; font-size:0.8em; background:rgba(0,0,0,0.3); border:1px solid rgba(184,168,120,0.3); color:var(--text-primary); border-radius:3px;">
-                                        <option value="all">All Spells</option>
-                                        <option value="root">Root Spells</option>
-                                        <option value="novice" selected>Novice Spells</option>
-                                    </select>
+                                    <div id="passiveScopeToggle" class="segmented-toggle">
+                                        <div class="seg-btn" data-value="all">All</div>
+                                        <div class="seg-btn" data-value="root">Root</div>
+                                        <div class="seg-btn active" data-value="novice">Novice</div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1343,6 +1336,13 @@
                             <button id="resetPowerStepsBtn" class="btn btn-secondary btn-small">
                                 <span class="btn-icon">[R]</span> <span data-i18n="settings.earlyLearning.resetDefaults">Reset to Defaults</span>
                             </button>
+                        </div>
+
+                        <!-- Modded XP Sources (populated dynamically when external mods register) -->
+                        <div id="moddedXPSourcesSection" class="settings-subsection" style="display:none;">
+                            <span class="subsection-title">Modded XP Sources</span>
+                            <p class="setting-note">External mods that grant XP. Each source has its own multiplier and cap, and is still affected by the Overall XP Multiplier.</p>
+                            <div id="moddedXPSourcesList"></div>
                         </div>
                     </div>
                 </div>
@@ -1655,6 +1655,23 @@
             </div>
             <div class="modal-footer">
                 <button id="spawn-cancel" class="btn btn-secondary" data-i18n="modals.spawnSpell.cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Find Spell Modal (Spell Tree Search) -->
+    <div id="find-spell-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content find-spell-modal">
+            <div class="modal-header">
+                <h3>Find Spell</h3>
+                <span class="find-spell-hint">F</span>
+                <button class="modal-close" id="find-spell-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="find-spell-search" class="spawn-search" placeholder="Search spells on tree..." autofocus>
+                <div id="find-spell-list" class="spawn-spell-list">
+                </div>
             </div>
         </div>
     </div>

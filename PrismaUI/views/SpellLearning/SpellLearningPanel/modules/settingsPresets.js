@@ -783,11 +783,8 @@ function updateProgressionSettingsUI() {
         }
     }
 
-    // Learning mode select
-    var learningModeSelect = document.getElementById('learningModeSelect');
-    if (learningModeSelect) {
-        learningModeSelect.value = settings.learningMode;
-    }
+    // Learning mode toggle
+    setSegmentedToggleValue('learningModeToggle', settings.learningMode);
 
     // Update spell tome learning UI if function exists
     if (typeof updateSpellTomeLearningUI === 'function') {

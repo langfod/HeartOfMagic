@@ -316,8 +316,9 @@ bool PythonBridge::EnsureProcess()
 
     if (m_running.load() && !m_ready.load()) {
         // Process is starting, wait for ready
+        int readyTimeout = IsRunningUnderWine() ? READY_TIMEOUT_WINE_MS : READY_TIMEOUT_MS;
         std::unique_lock<std::mutex> lock(m_mutex);
-        m_readyCv.wait_for(lock, std::chrono::milliseconds(READY_TIMEOUT_MS), [this] {
+        m_readyCv.wait_for(lock, std::chrono::milliseconds(readyTimeout), [this] {
             return m_ready.load() || !m_running.load();
         });
         return m_ready.load();
@@ -339,9 +340,6 @@ bool PythonBridge::SpawnProcess()
 
     bool isWine = IsRunningUnderWine();
 
-    // On Wine, use python.exe wrapped in cmd.exe /c — cmd.exe initializes the console
-    // environment properly, which avoids Wine's broken CreateProcess handle inheritance.
-    // This mirrors how std::system() launches processes (and std::system works on Wine).
     std::filesystem::path pythonExe = paths.pythonExe;
 
     auto pythonHome = pythonExe.parent_path().wstring();
@@ -419,7 +417,7 @@ bool PythonBridge::SpawnProcess()
         getsockname(listenSock, reinterpret_cast<sockaddr*>(&boundAddr), &addrLen);
         tcpPort = ntohs(boundAddr.sin_port);
 
-        logger::info("PythonBridge: Wine detected — using cmd.exe /c wrapper + TCP socket on port {}", tcpPort);
+        logger::info("PythonBridge: Wine detected — using cmd.exe /c + CREATE_NEW_CONSOLE + TCP socket on port {}", tcpPort);
     } else {
         // Standard pipe approach for native Windows
         SECURITY_ATTRIBUTES sa = {};
@@ -442,13 +440,29 @@ bool PythonBridge::SpawnProcess()
         SetHandleInformation(m_hStdoutRead, HANDLE_FLAG_INHERIT, 0);
     }
 
+    // Verify resolved server.py exists before spawning
+    {
+        std::error_code ec;
+        if (!std::filesystem::exists(paths.serverScript, ec)) {
+            logger::error("PythonBridge: server.py not found at resolved path: {}", paths.serverScript.string());
+            logger::error("PythonBridge: This may indicate USVFS path resolution failed — try reinstalling the mod");
+            if (isWine && listenSock != INVALID_SOCKET) closesocket(listenSock);
+            return false;
+        }
+    }
+
     // Build command line
     std::wstring cmdLine;
     if (isWine) {
-        // Wrap in cmd.exe /c — Wine handles cmd.exe process creation properly
-        // (std::system uses this internally and works on Wine). cmd.exe initializes
-        // the console environment, giving Python valid stdio file descriptors.
-        // The outer quotes are stripped by cmd.exe's /c parser, inner quotes preserved.
+        // Use cmd.exe /c wrapper WITH CREATE_NEW_CONSOLE (below). This combines:
+        // 1. cmd.exe properly chains process environment/handles to Python
+        // 2. CREATE_NEW_CONSOLE allocates a console so cmd.exe/Python get valid stdio
+        // 3. SW_HIDE keeps the console invisible in Proton's virtual desktop
+        // History:
+        //   - cmd.exe without CREATE_NEW_CONSOLE: worked from terminal, failed from Steam
+        //     (no parent console → no stdio → Python crashed silently)
+        //   - Direct python.exe with CREATE_NEW_CONSOLE: Python exits with code 1
+        //     (cmd.exe may be needed for proper Wine process chain setup)
         cmdLine = L"cmd.exe /c \"\"" + pythonExe.wstring() + L"\" -u \""
                 + paths.serverScript.wstring() + L"\" --port "
                 + std::to_wstring(tcpPort) + L" --wine\"";
@@ -460,9 +474,11 @@ bool PythonBridge::SpawnProcess()
     STARTUPINFOW si = {};
     si.cb = sizeof(si);
     if (isWine) {
-        // Don't set STARTF_USESTDHANDLES — cmd.exe manages its own console/stdio.
-        // This matches how std::system() launches processes.
-        si.dwFlags = 0;
+        // CREATE_NEW_CONSOLE (below) allocates a console for cmd.exe, which Python
+        // inherits — giving both valid stdin/stdout/stderr handles. SW_HIDE prevents
+        // the console window from showing in Proton's virtual desktop.
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
     } else {
         si.hStdInput = hStdinRead;
         si.hStdOutput = hStdoutWrite;
@@ -476,19 +492,21 @@ bool PythonBridge::SpawnProcess()
     logger::info("PythonBridge: Spawning: {}", std::filesystem::path(cmdLine).string());
 
     DWORD createFlags = CREATE_UNICODE_ENVIRONMENT;
-    if (!isWine) {
+    if (isWine) {
+        // CREATE_NEW_CONSOLE: allocate a new console for cmd.exe so the cmd→Python
+        // chain gets valid stdio handles. Without this, Steam/Proton has no console,
+        // and cmd.exe/Python crash before reaching server.py's TCP connect code.
+        createFlags |= CREATE_NEW_CONSOLE;
+    } else {
         createFlags |= CREATE_NO_WINDOW;
     }
-    // Wine: no CREATE_NO_WINDOW / DETACHED_PROCESS — cmd.exe needs a console to
-    // properly initialize stdio for the child Python process. The console won't be
-    // visible in Proton's virtual desktop.
 
     BOOL ok = CreateProcessW(
         nullptr,
         cmdLine.data(),
         nullptr,
         nullptr,
-        isWine ? FALSE : TRUE,  // Wine: cmd.exe manages its own handles; Windows: inherit pipe handles
+        isWine ? FALSE : TRUE,  // Wine: no handle inheritance needed (TCP for IPC); Windows: inherit pipe handles
         createFlags,
         envBlock.data(),
         paths.scriptDir.wstring().c_str(),
@@ -518,16 +536,27 @@ bool PythonBridge::SpawnProcess()
 
     // On Wine, accept the incoming TCP connection from Python
     if (isWine) {
-        logger::info("PythonBridge: Waiting for Python to connect on port {}...", tcpPort);
+        int tcpTimeoutSec = isWine ? TCP_CONNECT_TIMEOUT_WINE_S : TCP_CONNECT_TIMEOUT_S;
+        logger::info("PythonBridge: Waiting for Python to connect on port {} (timeout: {}s)...", tcpPort, tcpTimeoutSec);
 
         fd_set readSet;
         FD_ZERO(&readSet);
         FD_SET(listenSock, &readSet);
-        timeval timeout = {15, 0};  // 15 second timeout
+        timeval timeout = {tcpTimeoutSec, 0};
 
         int selResult = select(0, &readSet, nullptr, nullptr, &timeout);
         if (selResult <= 0) {
-            logger::error("PythonBridge: Python did not connect to TCP socket within 15s");
+            // Check if Python already exited (crashed before connecting)
+            DWORD exitCode = STILL_ACTIVE;
+            GetExitCodeProcess(pi.hProcess, &exitCode);
+            if (exitCode != STILL_ACTIVE) {
+                logger::error("PythonBridge: Python process exited with code {} (0x{:X}) before connecting — likely crashed during startup",
+                    exitCode, exitCode);
+                // Hint the user to check server.log for details
+                logger::error("PythonBridge: Check SpellTreeBuilder/python/server.log or %%TEMP%%/SpellLearning_server.log for crash details");
+            } else {
+                logger::error("PythonBridge: Python did not connect to TCP socket within {}s (process still running — may be stuck)", tcpTimeoutSec);
+            }
             closesocket(listenSock);
             TerminateProcess(pi.hProcess, 1);
             CloseHandle(pi.hProcess);
@@ -561,14 +590,15 @@ bool PythonBridge::SpawnProcess()
     // Start reader thread
     m_readerThread = std::thread(&PythonBridge::ReaderThread, this);
 
-    // Wait for ready signal
+    // Wait for ready signal (Wine: much longer due to numpy/sklearn subprocess tests)
     {
+        int readyTimeout = isWine ? READY_TIMEOUT_WINE_MS : READY_TIMEOUT_MS;
         std::unique_lock<std::mutex> lock(m_mutex);
-        bool gotReady = m_readyCv.wait_for(lock, std::chrono::milliseconds(READY_TIMEOUT_MS), [this] {
+        bool gotReady = m_readyCv.wait_for(lock, std::chrono::milliseconds(readyTimeout), [this] {
             return m_ready.load() || !m_running.load();
         });
         if (!gotReady || !m_ready.load()) {
-            logger::error("PythonBridge: Python process did not become ready within {}ms", READY_TIMEOUT_MS);
+            logger::error("PythonBridge: Python process did not become ready within {}ms", readyTimeout);
             lock.unlock();  // Must release before KillProcess (it locks m_mutex internally)
             KillProcess();
             return false;
@@ -681,6 +711,36 @@ void PythonBridge::ReaderThread()
                 // Ready signal
                 if (id == "__ready__") {
                     logger::info("PythonBridge: Received ready signal from Python");
+
+                    // Log registered commands and import errors from ready payload
+                    if (j.contains("result")) {
+                        auto& result = j["result"];
+                        if (result.contains("commands")) {
+                            std::string cmds;
+                            for (auto& c : result["commands"]) {
+                                if (!cmds.empty()) cmds += ", ";
+                                cmds += c.get<std::string>();
+                            }
+                            logger::info("PythonBridge: Registered commands: [{}]", cmds);
+                        }
+                        if (result.contains("log_file")) {
+                            logger::info("PythonBridge: Python log file: {}", result["log_file"].get<std::string>());
+                        }
+                        if (result.contains("prisma_modules")) {
+                            std::string mods;
+                            for (auto& m : result["prisma_modules"]) {
+                                if (!mods.empty()) mods += ", ";
+                                mods += m.get<std::string>();
+                            }
+                            logger::info("PythonBridge: PrismaUI module dirs: [{}]", mods);
+                        }
+                        if (result.contains("import_errors")) {
+                            for (auto& [cmd, err] : result["import_errors"].items()) {
+                                logger::error("PythonBridge: Import failed for '{}': {}", cmd, err.get<std::string>());
+                            }
+                        }
+                    }
+
                     m_ready = true;
                     m_readyCv.notify_all();
                     continue;

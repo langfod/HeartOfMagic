@@ -879,12 +879,13 @@ def oracle_build_tree_from_data(spells: list, config_dict: dict) -> dict:
     llm_mode = 'llm' if llm_client else 'fallback'
     _log(f"oracle mode: {llm_mode}, chaos={chaos}, batch_size={batch_size}")
 
-    # Group spells by school
+    # Group spells by school (only the 5 vanilla magic schools)
+    VALID_SCHOOLS = {'Alteration', 'Conjuration', 'Destruction', 'Illusion', 'Restoration'}
     school_spells: Dict[str, List[dict]] = defaultdict(list)
     for spell in spells:
-        school = spell.get('school', 'Unknown')
-        if not school or school in ('null', 'undefined', 'None', ''):
-            school = 'Hedge Wizard'
+        school = spell.get('school', '')
+        if school not in VALID_SCHOOLS:
+            continue
         school_spells[school].append(spell)
 
     # Discover themes per school (used by fallback mode and as quality signal)

@@ -100,12 +100,13 @@ def classic_build_tree_from_data(spells: list, config_dict: dict) -> dict:
                 config['max_children_per_node'] = 4
                 _log(f"  FLAT + spacious grid → max_children increased to 4")
 
-    # Group spells by school
+    # Group spells by school (only the 5 vanilla magic schools)
+    VALID_SCHOOLS = {'Alteration', 'Conjuration', 'Destruction', 'Illusion', 'Restoration'}
     school_spells: Dict[str, List[dict]] = defaultdict(list)
     for spell in spells:
-        school = spell.get('school', 'Unknown')
-        if not school or school in ('null', 'undefined', 'None', ''):
-            school = 'Hedge Wizard'
+        school = spell.get('school', '')
+        if school not in VALID_SCHOOLS:
+            continue
         school_spells[school].append(spell)
 
     # Discover themes per school for NLP-guided parent matching

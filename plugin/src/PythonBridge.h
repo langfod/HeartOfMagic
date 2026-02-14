@@ -79,6 +79,9 @@ private:
     std::atomic<uint64_t> m_nextRequestId{1};
     static constexpr int MAX_RESTARTS = 3;
     static constexpr int READY_TIMEOUT_MS = 15000;
+    static constexpr int READY_TIMEOUT_WINE_MS = 120000;  // Wine: numpy/sklearn subprocess tests take ~30s each
+    static constexpr int TCP_CONNECT_TIMEOUT_WINE_S = 30;  // Wine: Python startup can be slow
+    static constexpr int TCP_CONNECT_TIMEOUT_S = 15;
     static constexpr int BUILD_TREE_TIMEOUT_MS = 120000;
     static constexpr int PRM_TIMEOUT_MS = 30000;
 

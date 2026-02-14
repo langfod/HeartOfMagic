@@ -19,6 +19,65 @@
  */
 
 // =============================================================================
+// SEGMENTED TOGGLE HELPER
+// =============================================================================
+
+/**
+ * Initialize a segmented toggle control.
+ * @param {string} containerId - The id of the .segmented-toggle div
+ * @param {string} activeValue - The currently active value
+ * @param {function} onChange - Callback with selected value string
+ */
+function initSegmentedToggle(containerId, activeValue, onChange) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    var btns = container.querySelectorAll('.seg-btn');
+    // Set initial active state
+    for (var i = 0; i < btns.length; i++) {
+        if (btns[i].getAttribute('data-value') === activeValue) {
+            btns[i].classList.add('active');
+        } else {
+            btns[i].classList.remove('active');
+        }
+    }
+    // Click handlers
+    container.addEventListener('click', function(e) {
+        var btn = e.target.closest('.seg-btn');
+        if (!btn || btn.classList.contains('active')) return;
+        var siblings = container.querySelectorAll('.seg-btn');
+        for (var j = 0; j < siblings.length; j++) siblings[j].classList.remove('active');
+        btn.classList.add('active');
+        if (onChange) onChange(btn.getAttribute('data-value'));
+    });
+}
+
+/**
+ * Set the active button on a segmented toggle without triggering callbacks.
+ */
+function setSegmentedToggleValue(containerId, value) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    var btns = container.querySelectorAll('.seg-btn');
+    for (var i = 0; i < btns.length; i++) {
+        if (btns[i].getAttribute('data-value') === value) {
+            btns[i].classList.add('active');
+        } else {
+            btns[i].classList.remove('active');
+        }
+    }
+}
+
+/**
+ * Enable or disable (dim) a segmented toggle.
+ */
+function setSegmentedToggleEnabled(containerId, enabled) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    container.style.opacity = enabled ? '1' : '0.5';
+    container.style.pointerEvents = enabled ? '' : 'none';
+}
+
+// =============================================================================
 // SETTINGS PANEL
 // =============================================================================
 
@@ -851,36 +910,28 @@ function initializeSettings() {
     // Heart Animation Settings Popup
     initializeHeartSettings();
     
-    // Progression settings - Learning Mode
-    var learningModeSelect = document.getElementById('learningModeSelect');
-    if (learningModeSelect) {
-        learningModeSelect.value = settings.learningMode;
-        learningModeSelect.addEventListener('change', function() {
-            settings.learningMode = this.value;
-            console.log('[SpellLearning] Learning mode:', settings.learningMode);
-            autoSaveSettings();
-        });
-    }
+    // Progression settings - Learning Mode (segmented toggle)
+    initSegmentedToggle('learningModeToggle', settings.learningMode, function(value) {
+        settings.learningMode = value;
+        console.log('[SpellLearning] Learning mode:', value);
+        autoSaveSettings();
+    });
 
     // Progression settings - Auto-Advance Learning Target
     var autoAdvanceToggle = document.getElementById('autoAdvanceLearningToggle');
-    var autoAdvanceModeSelect = document.getElementById('autoAdvanceModeSelect');
     if (autoAdvanceToggle) {
         autoAdvanceToggle.checked = settings.autoAdvanceLearning;
         autoAdvanceToggle.addEventListener('change', function() {
             settings.autoAdvanceLearning = this.checked;
-            if (autoAdvanceModeSelect) autoAdvanceModeSelect.disabled = !this.checked;
+            setSegmentedToggleEnabled('autoAdvanceModeToggle', this.checked);
             autoSaveSettings();
         });
     }
-    if (autoAdvanceModeSelect) {
-        autoAdvanceModeSelect.value = settings.autoAdvanceMode || 'branch';
-        autoAdvanceModeSelect.disabled = !settings.autoAdvanceLearning;
-        autoAdvanceModeSelect.addEventListener('change', function() {
-            settings.autoAdvanceMode = this.value;
-            autoSaveSettings();
-        });
-    }
+    initSegmentedToggle('autoAdvanceModeToggle', settings.autoAdvanceMode || 'branch', function(value) {
+        settings.autoAdvanceMode = value;
+        autoSaveSettings();
+    });
+    setSegmentedToggleEnabled('autoAdvanceModeToggle', settings.autoAdvanceLearning);
 
     // Progression settings - XP Multiplier Sliders
     function updateSliderFill(slider) {
@@ -1333,29 +1384,25 @@ function resetSettings() {
     if (cheatInfo) cheatInfo.classList.add('hidden');
     
     // Update progression settings UI
-    var learningModeSelect = document.getElementById('learningModeSelect');
     var xpDirectSlider = document.getElementById('xpDirectSlider');
     var xpSchoolSlider = document.getElementById('xpSchoolSlider');
     var xpAnySlider = document.getElementById('xpAnySlider');
     var globalMultSlider = document.getElementById('xpGlobalMultiplierSlider');
-    
+
     // Helper to update slider fill visual
     function updateSliderFillReset(slider) {
         if (!slider) return;
         var percent = (slider.value - slider.min) / (slider.max - slider.min) * 100;
         slider.style.setProperty('--slider-fill', percent + '%');
     }
-    
-    if (learningModeSelect) learningModeSelect.value = 'perSchool';
+
+    setSegmentedToggleValue('learningModeToggle', 'perSchool');
 
     // Auto-advance reset
     var autoAdvanceToggle = document.getElementById('autoAdvanceLearningToggle');
-    var autoAdvanceModeSelect = document.getElementById('autoAdvanceModeSelect');
     if (autoAdvanceToggle) autoAdvanceToggle.checked = true;
-    if (autoAdvanceModeSelect) {
-        autoAdvanceModeSelect.value = 'branch';
-        autoAdvanceModeSelect.disabled = false;
-    }
+    setSegmentedToggleValue('autoAdvanceModeToggle', 'branch');
+    setSegmentedToggleEnabled('autoAdvanceModeToggle', true);
 
     // Global multiplier
     if (globalMultSlider) {
@@ -1845,28 +1892,24 @@ window.onUnifiedConfigLoaded = function(dataStr) {
         if (cheatInfo) cheatInfo.classList.toggle('hidden', !settings.cheatMode);
         
         // Update progression settings UI
-        var learningModeSelect = document.getElementById('learningModeSelect');
         var xpDirectSlider = document.getElementById('xpDirectSlider');
         var xpSchoolSlider = document.getElementById('xpSchoolSlider');
         var xpAnySlider = document.getElementById('xpAnySlider');
-        
+
         // Helper to update slider fill visual
         function updateSliderFillVisual(slider) {
             if (!slider) return;
             var percent = (slider.value - slider.min) / (slider.max - slider.min) * 100;
             slider.style.setProperty('--slider-fill', percent + '%');
         }
-        
-        if (learningModeSelect) learningModeSelect.value = settings.learningMode;
+
+        setSegmentedToggleValue('learningModeToggle', settings.learningMode);
 
         // Auto-advance learning target
         var autoAdvanceToggle = document.getElementById('autoAdvanceLearningToggle');
-        var autoAdvanceModeSelect = document.getElementById('autoAdvanceModeSelect');
         if (autoAdvanceToggle) autoAdvanceToggle.checked = settings.autoAdvanceLearning;
-        if (autoAdvanceModeSelect) {
-            autoAdvanceModeSelect.value = settings.autoAdvanceMode;
-            autoAdvanceModeSelect.disabled = !settings.autoAdvanceLearning;
-        }
+        setSegmentedToggleValue('autoAdvanceModeToggle', settings.autoAdvanceMode);
+        setSegmentedToggleEnabled('autoAdvanceModeToggle', settings.autoAdvanceLearning);
 
         // Global multiplier slider
         var globalMultSlider = document.getElementById('xpGlobalMultiplierSlider');
@@ -2313,6 +2356,9 @@ function addModdedXPSourceUI(sourceId, displayName, multiplier, cap, enabled) {
  * Rebuild all modded XP source UI rows from settings.moddedXPSources.
  * Called when loading config or applying presets.
  */
+// Internal sources that use the modded cap system but have their own UI section
+var INTERNAL_XP_SOURCES = { 'passive': true };
+
 function rebuildModdedXPSourcesUI() {
     var list = document.getElementById('moddedXPSourcesList');
     var section = document.getElementById('moddedXPSourcesSection');
@@ -2321,6 +2367,7 @@ function rebuildModdedXPSourcesUI() {
     var hasAny = false;
     for (var srcId in settings.moddedXPSources) {
         if (!settings.moddedXPSources.hasOwnProperty(srcId)) continue;
+        if (INTERNAL_XP_SOURCES[srcId]) continue;
         var src = settings.moddedXPSources[srcId];
         addModdedXPSourceUI(srcId, src.displayName || srcId, src.multiplier, src.cap, src.enabled);
         hasAny = true;
@@ -2335,6 +2382,7 @@ function rebuildModdedXPSourcesUI() {
 window.onModdedXPSourceRegistered = function(dataStr) {
     try {
         var data = typeof dataStr === 'string' ? JSON.parse(dataStr) : dataStr;
+        if (INTERNAL_XP_SOURCES[data.sourceId]) return;
         if (!settings.moddedXPSources[data.sourceId]) {
             settings.moddedXPSources[data.sourceId] = {
                 displayName: data.displayName,

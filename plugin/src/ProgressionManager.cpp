@@ -68,7 +68,9 @@ void ProgressionManager::SetLearningTarget(const std::string& school, RE::FormID
     
     // Initialize progress if not exists
     if (m_spellProgress.find(formId) == m_spellProgress.end()) {
-        m_spellProgress[formId] = SpellProgress{};
+        SpellProgress progress;
+        progress.requiredXP = GetRequiredXP(formId);
+        m_spellProgress[formId] = progress;
     }
     
     // If switching back to a spell with progress above early threshold, regrant it
@@ -380,7 +382,7 @@ void ProgressionManager::SendModEvent(const char* eventName, const std::string& 
 // PUBLIC MODDER API
 // =============================================================================
 
-bool ProgressionManager::RegisterModdedXPSource(const std::string& sourceId, const std::string& displayName)
+bool ProgressionManager::RegisterModdedXPSource(const std::string& sourceId, const std::string& displayName, bool internal)
 {
     // Check if already registered
     if (m_xpSettings.moddedSources.find(sourceId) != m_xpSettings.moddedSources.end()) {
@@ -394,12 +396,16 @@ bool ProgressionManager::RegisterModdedXPSource(const std::string& sourceId, con
     config.enabled = true;
     config.multiplier = 100.0f;
     config.cap = 25.0f;
+    config.internal = internal;
     m_xpSettings.moddedSources[sourceId] = config;
 
-    logger::info("ProgressionManager: Registered modded XP source '{}' (display: '{}')", sourceId, config.displayName);
+    logger::info("ProgressionManager: Registered {} XP source '{}' (display: '{}')",
+        internal ? "internal" : "modded", sourceId, config.displayName);
 
-    // Notify UI to create controls
-    UIManager::GetSingleton()->NotifyModdedSourceRegistered(sourceId, config.displayName, config.multiplier, config.cap);
+    // Only notify UI for external (non-internal) sources
+    if (!internal) {
+        UIManager::GetSingleton()->NotifyModdedSourceRegistered(sourceId, config.displayName, config.multiplier, config.cap);
+    }
 
     // Fire ModEvent
     SendModEvent("SpellLearning_SourceRegistered", sourceId, 0.0f, nullptr);

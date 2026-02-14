@@ -276,12 +276,13 @@ class SpellTreeBuilder:
         Returns:
             Tree structure in expected JSON format
         """
-        # Group spells by school
+        # Group spells by school (only the 5 vanilla magic schools)
+        VALID_SCHOOLS = {'Alteration', 'Conjuration', 'Destruction', 'Illusion', 'Restoration'}
         schools: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         for spell in spells:
-            school = spell.get('school', 'Unknown')
-            if not school or school in ('null', 'undefined', 'None', ''):
-                school = 'Hedge Wizard'
+            school = spell.get('school', '')
+            if school not in VALID_SCHOOLS:
+                continue
             schools[school].append(spell)
         
         # Discover themes for all schools

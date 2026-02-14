@@ -11,6 +11,7 @@
 #include "PythonInstaller.h"
 #include "PythonBridge.h"
 #include "WineDetect.h"
+#include "PassiveLearningSource.h"
 
 // =============================================================================
 // JSON HELPER - Safe value accessor that handles null values
@@ -1402,6 +1403,18 @@ json GenerateDefaultConfig() {
             {"requireAllPrereqs", true},
             {"requireSkillLevel", false}
         }},
+        {"passiveLearning", {
+            {"enabled", false},
+            {"scope", "novice"},
+            {"xpPerGameHour", 5},
+            {"maxByTier", {
+                {"novice", 100},
+                {"apprentice", 75},
+                {"adept", 50},
+                {"expert", 25},
+                {"master", 5}
+            }}
+        }},
         {"notifications", {
             {"weakenedSpellNotifications", true},
             {"weakenedSpellInterval", 10.0f}
@@ -1528,8 +1541,10 @@ void UIManager::OnLoadUnifiedConfig(const char* argument)
     xpSettings.xpAdept = SafeJsonValue<int>(unifiedConfig, "xpAdept", 400);
     xpSettings.xpExpert = SafeJsonValue<int>(unifiedConfig, "xpExpert", 800);
     xpSettings.xpMaster = SafeJsonValue<int>(unifiedConfig, "xpMaster", 1500);
+    // Preserve modded sources registered by API consumers before config loaded
+    xpSettings.moddedSources = ProgressionManager::GetSingleton()->GetXPSettings().moddedSources;
     ProgressionManager::GetSingleton()->SetXPSettings(xpSettings);
-    
+
     // Update SpellEffectivenessHook with early learning settings
     if (unifiedConfig.contains("earlySpellLearning") && !unifiedConfig["earlySpellLearning"].is_null()) {
         auto& elConfig = unifiedConfig["earlySpellLearning"];
@@ -1580,6 +1595,29 @@ void UIManager::OnLoadUnifiedConfig(const char* argument)
             tomeSettings.useProgressionSystem, tomeSettings.requirePrereqs, tomeSettings.requireAllPrereqs, tomeSettings.requireSkillLevel);
     }
     
+    // Update PassiveLearningSource with passive learning settings
+    if (unifiedConfig.contains("passiveLearning") && !unifiedConfig["passiveLearning"].is_null()) {
+        auto& plConfig = unifiedConfig["passiveLearning"];
+        SpellLearning::PassiveLearningSource::Settings plSettings;
+        plSettings.enabled = SafeJsonValue<bool>(plConfig, "enabled", false);
+        plSettings.scope = SafeJsonValue<std::string>(plConfig, "scope", "novice");
+        plSettings.xpPerGameHour = SafeJsonValue<float>(plConfig, "xpPerGameHour", 5.0f);
+        if (plConfig.contains("maxByTier") && plConfig["maxByTier"].is_object()) {
+            auto& tiers = plConfig["maxByTier"];
+            plSettings.maxNovice = SafeJsonValue<float>(tiers, "novice", 100.0f);
+            plSettings.maxApprentice = SafeJsonValue<float>(tiers, "apprentice", 75.0f);
+            plSettings.maxAdept = SafeJsonValue<float>(tiers, "adept", 50.0f);
+            plSettings.maxExpert = SafeJsonValue<float>(tiers, "expert", 25.0f);
+            plSettings.maxMaster = SafeJsonValue<float>(tiers, "master", 5.0f);
+        }
+        auto* passiveSource = SpellLearning::PassiveLearningSource::GetSingleton();
+        if (passiveSource) {
+            passiveSource->SetSettings(plSettings);
+        }
+        logger::info("UIManager: Applied passive learning settings - enabled: {}, scope: {}, xp/hr: {}",
+            plSettings.enabled, plSettings.scope, plSettings.xpPerGameHour);
+    }
+
     // Update SpellCastHandler with notification settings
     if (unifiedConfig.contains("notifications") && !unifiedConfig["notifications"].is_null()) {
         auto& notifConfig = unifiedConfig["notifications"];
@@ -1590,11 +1628,37 @@ void UIManager::OnLoadUnifiedConfig(const char* argument)
             castHandler->GetWeakenedNotificationsEnabled(), castHandler->GetNotificationInterval());
     }
     
+    // Strip internal sources from config before sending to UI (they have their own UI sections)
+    if (unifiedConfig.contains("moddedXPSources") && unifiedConfig["moddedXPSources"].is_object()) {
+        auto& sources = ProgressionManager::GetSingleton()->GetXPSettings().moddedSources;
+        for (auto it = unifiedConfig["moddedXPSources"].begin(); it != unifiedConfig["moddedXPSources"].end();) {
+            if (sources.count(it.key()) && sources.at(it.key()).internal) {
+                it = unifiedConfig["moddedXPSources"].erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
     // Send to UI
     std::string configStr = unifiedConfig.dump();
     logger::info("UIManager: Sending unified config to UI ({} bytes)", configStr.size());
     instance->m_prismaUI->InteropCall(instance->m_view, "onUnifiedConfigLoaded", configStr.c_str());
-    
+
+    // Re-notify all registered external modded XP sources to the UI.
+    // Sources registered before PrismaUI was ready had their notifications dropped,
+    // so we push them all now that the view is live. Skip internal sources (e.g. passive).
+    auto& moddedSources = ProgressionManager::GetSingleton()->GetXPSettings().moddedSources;
+    int notifiedCount = 0;
+    for (auto& [srcId, srcConfig] : moddedSources) {
+        if (srcConfig.internal) continue;
+        instance->NotifyModdedSourceRegistered(srcId, srcConfig.displayName, srcConfig.multiplier, srcConfig.cap);
+        notifiedCount++;
+    }
+    if (notifiedCount > 0) {
+        logger::info("UIManager: Re-notified {} modded XP sources to UI", notifiedCount);
+    }
+
     // Notify UI of ISL detection status (fresh detection, not from saved config)
     instance->NotifyISLDetectionStatus();
 }
@@ -1727,6 +1791,12 @@ void UIManager::DoSaveUnifiedConfig(const std::string& configData)
             logger::info("UIManager: Loaded {} modded XP source configs", xpSettings.moddedSources.size());
         }
 
+        // Preserve modded sources registered by API consumers that aren't in the saved config
+        for (auto& [srcId, srcConfig] : ProgressionManager::GetSingleton()->GetXPSettings().moddedSources) {
+            if (xpSettings.moddedSources.find(srcId) == xpSettings.moddedSources.end()) {
+                xpSettings.moddedSources[srcId] = srcConfig;
+            }
+        }
         ProgressionManager::GetSingleton()->SetXPSettings(xpSettings);
 
         // Update early learning settings in SpellEffectivenessHook if changed
@@ -1778,6 +1848,29 @@ void UIManager::DoSaveUnifiedConfig(const std::string& configData)
             logger::info("UIManager: Applied SpellTomeHook settings from save");
         }
         
+        // Update passive learning settings if changed
+        if (newConfig.contains("passiveLearning") && !newConfig["passiveLearning"].is_null()) {
+            auto& plConfig = newConfig["passiveLearning"];
+            SpellLearning::PassiveLearningSource::Settings plSettings;
+            plSettings.enabled = SafeJsonValue<bool>(plConfig, "enabled", false);
+            plSettings.scope = SafeJsonValue<std::string>(plConfig, "scope", "novice");
+            plSettings.xpPerGameHour = SafeJsonValue<float>(plConfig, "xpPerGameHour", 5.0f);
+            if (plConfig.contains("maxByTier") && plConfig["maxByTier"].is_object()) {
+                auto& tiers = plConfig["maxByTier"];
+                plSettings.maxNovice = SafeJsonValue<float>(tiers, "novice", 100.0f);
+                plSettings.maxApprentice = SafeJsonValue<float>(tiers, "apprentice", 75.0f);
+                plSettings.maxAdept = SafeJsonValue<float>(tiers, "adept", 50.0f);
+                plSettings.maxExpert = SafeJsonValue<float>(tiers, "expert", 25.0f);
+                plSettings.maxMaster = SafeJsonValue<float>(tiers, "master", 5.0f);
+            }
+            auto* passiveSource = SpellLearning::PassiveLearningSource::GetSingleton();
+            if (passiveSource) {
+                passiveSource->SetSettings(plSettings);
+            }
+            logger::info("UIManager: Applied passive learning settings from save - enabled: {}",
+                plSettings.enabled);
+        }
+
         // Update notification settings if changed
         if (newConfig.contains("notifications") && !newConfig["notifications"].is_null()) {
             auto& notifConfig = newConfig["notifications"];

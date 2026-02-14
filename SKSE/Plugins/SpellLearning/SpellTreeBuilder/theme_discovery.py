@@ -218,12 +218,13 @@ def discover_themes_per_school(
     Returns:
         Dictionary mapping school name to list of themes
     """
-    # Group spells by school
+    # Group spells by school (only the 5 vanilla magic schools)
+    VALID_SCHOOLS = {'Alteration', 'Conjuration', 'Destruction', 'Illusion', 'Restoration'}
     schools: Dict[str, List[Dict[str, Any]]] = {}
     for spell in spells:
-        school = spell.get('school', 'Unknown')
-        if not school or school in ('null', 'undefined', 'None', ''):
-            school = 'Hedge Wizard'
+        school = spell.get('school', '')
+        if school not in VALID_SCHOOLS:
+            continue
         if school not in schools:
             schools[school] = []
         schools[school].append(spell)

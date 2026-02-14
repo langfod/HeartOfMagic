@@ -479,13 +479,17 @@ window.onPresetsLoaded = function(resultStr) {
             if (typeof updateSettingsPresetsUI === 'function') {
                 updateSettingsPresetsUI();
             }
-            // Auto-apply saved settings preset (or "Default" fallback)
+            // Track active preset name for UI highlighting, but do NOT auto-apply.
+            // config.json is the source of truth — applying a preset here would
+            // overwrite the user's saved settings (discoveryMode, requireSkillLevel, etc.)
             var settingsTarget = (typeof _activeSettingsPreset !== 'undefined') ? _activeSettingsPreset : '';
             var settingsKey = _findPresetKeyCaseInsensitive(settingsPresets, settingsTarget)
                            || _findPresetKeyCaseInsensitive(settingsPresets, 'Default');
-            if (settingsKey && typeof applySettingsPreset === 'function') {
-                console.log('[Presets] Auto-applying settings preset: ' + settingsKey);
-                applySettingsPreset(settingsKey);
+            if (settingsKey) {
+                _activeSettingsPreset = settingsKey;
+                if (typeof updateSettingsPresetsUI === 'function') {
+                    updateSettingsPresetsUI();
+                }
             }
         }
     } catch (e) {

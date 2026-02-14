@@ -114,6 +114,7 @@ public:
         bool enabled = true;
         float multiplier = 100.0f;  // 0-200%
         float cap = 25.0f;          // 0-100% of required XP
+        bool internal = false;      // Internal sources use cap tracking but don't show in modded UI
     };
 
     // XP Settings (loaded from unified config)
@@ -160,7 +161,8 @@ public:
 
     // Register a named modded XP source (creates UI controls).
     // Returns true if newly registered, false if already existed.
-    bool RegisterModdedXPSource(const std::string& sourceId, const std::string& displayName);
+    // Internal sources use cap tracking but don't appear in the modded XP sources UI.
+    bool RegisterModdedXPSource(const std::string& sourceId, const std::string& displayName, bool internal = false);
 
     // Get the cap value for a source (works for built-in and modded)
     float GetSourceCap(const std::string& sourceName) const;

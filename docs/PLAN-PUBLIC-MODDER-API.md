@@ -382,61 +382,67 @@ All use SKSE's `ModCallbackEvent(string eventName, string strArg, float numArg, 
 
 ## 5. C++ Public API (`SpellLearningAPI.h`)
 
+### API Handshake (Broadcast Pattern)
+
+SpellLearning uses SKSE's standard broadcast pattern (same as TrueHUD, PO3, etc.):
+
+1. **SpellLearning** broadcasts `ISpellLearningAPI*` to all listeners at `kPostPostLoad`
+2. **Your plugin** registers `RegisterListener("SpellLearning", callback)` in `SKSEPluginLoad`
+3. **Your callback** receives the API pointer via `kMessageType_APIReady` message
+4. **Use the API** at `kDataLoaded` or later when game data is available
+
+```
+SKSE Lifecycle:
+  kPostLoad          - Plugins loaded
+  kPostPostLoad      - SpellLearning broadcasts API → your callback receives it
+  kInputLoaded       - Input system ready
+  kDataLoaded        - Game data ready → register sources, grant XP here
+  kNewGame/kPostLoadGame - Save loaded
+```
+
+### Header
+
+Copy `SpellLearningAPI.h` from the HeartOfMagic source into your plugin.
+
 ```cpp
 namespace SpellLearning {
     constexpr uint32_t kAPIVersion = 1;
 
+    // Message type broadcasted by SpellLearning at kPostPostLoad.
+    // Register with: messaging->RegisterListener("SpellLearning", callback)
     enum MessageType : uint32_t {
-        kMessageType_RequestAPI     = 0x534C0001,
-        kMessageType_AddXP          = 0x534C0002,
-        kMessageType_RegisterSource = 0x534C0003,
-    };
-
-    enum class XPSourceType : uint32_t {
-        Any = 0, School = 1, Direct = 2, Self = 3, Raw = 4, Custom = 5
-    };
-
-    struct AddXPMessage {
-        RE::FormID spellFormID;
-        float amount;
-        XPSourceType sourceType;
-        char sourceName[64];  // For Custom type -- null-terminated source ID
-    };
-
-    struct RegisterSourceMessage {
-        char sourceId[64];
-        char displayName[128];
+        kMessageType_APIReady       = 0x534C0001,  // Broadcasted with ISpellLearningAPI* as data
+        kMessageType_AddXP          = 0x534C0002,  // Reserved for future fire-and-forget
+        kMessageType_RegisterSource = 0x534C0003,  // Reserved for future fire-and-forget
     };
 
     class ISpellLearningAPI {
     public:
+        virtual ~ISpellLearningAPI() = default;
         virtual uint32_t GetAPIVersion() const = 0;
 
-        // XP
-        virtual float AddSourcedXP(RE::FormID, float, const std::string& sourceName) = 0;
-        virtual float AddRawXP(RE::FormID, float) = 0;
-        virtual void SetSpellXP(RE::FormID, float) = 0;
+        // XP - amount is pre-multiplier, sourceName identifies the XP source
+        virtual float AddSourcedXP(uint32_t spellFormID, float amount, const std::string& sourceName) = 0;
+        virtual float AddRawXP(uint32_t spellFormID, float amount) = 0;
+        virtual void SetSpellXP(uint32_t spellFormID, float xp) = 0;
 
         // Queries
-        virtual bool IsSpellMastered(RE::FormID) const = 0;
-        virtual bool IsSpellAvailableToLearn(RE::FormID) const = 0;
-        virtual float GetRequiredXP(RE::FormID) const = 0;
-        virtual float GetProgress(RE::FormID) const = 0;
+        virtual bool IsSpellMastered(uint32_t spellFormID) const = 0;
+        virtual bool IsSpellAvailableToLearn(uint32_t spellFormID) const = 0;
+        virtual float GetRequiredXP(uint32_t spellFormID) const = 0;
+        virtual float GetProgress(uint32_t spellFormID) const = 0;  // 0.0 - 1.0
 
-        // Targets
-        virtual RE::FormID GetLearningTarget(const std::string& school) const = 0;
-        virtual void SetLearningTarget(RE::FormID) = 0;
+        // Learning targets
+        virtual uint32_t GetLearningTarget(const std::string& school) const = 0;
+        virtual void SetLearningTarget(uint32_t spellFormID) = 0;
         virtual void ClearLearningTarget(const std::string& school) = 0;
 
         // Settings
         virtual float GetGlobalMultiplier() const = 0;
 
-        // Source registration
-        virtual bool RegisterXPSource(const std::string& sourceId,
-                                       const std::string& displayName) = 0;
+        // Source registration - creates UI controls in settings panel
+        virtual bool RegisterXPSource(const std::string& sourceId, const std::string& displayName) = 0;
     };
-
-    using APIResultCallback = void(*)(ISpellLearningAPI*);
 }
 ```
 
@@ -466,7 +472,7 @@ Event OnActivate(ObjectReference akActivator)
 EndEvent
 ```
 
-The player sees in Settings > Progression > Modded XP Sources:
+The player sees in Settings > Early Spell Learning > Modded XP Sources:
 ```
 [x] Combat Training
     Multiplier: [====|----] 100%    Cap: [==|------] 25%
@@ -500,18 +506,57 @@ Event OnXPGained(string sourceName, float amount, Form spellForm)
 EndEvent
 ```
 
-### SKSE Plugin (C++ fire-and-forget)
+### SKSE Plugin (C++ -- Full Example: SL_BookXP)
+
+This is a complete working example. See `addons/BookXP/` for the full buildable project.
 
 ```cpp
-SpellLearning::AddXPMessage msg;
-msg.spellFormID = 0x00012AB5;
-msg.amount = 50.0f;
-msg.sourceType = SpellLearning::XPSourceType::Custom;
-strncpy(msg.sourceName, "myskse_source", sizeof(msg.sourceName));
+#include <RE/Skyrim.h>
+#include <SKSE/SKSE.h>
+#include "SpellLearningAPI.h"  // Copy from HeartOfMagic/plugin/src/
 
-SKSE::GetMessagingInterface()->Dispatch(
-    SpellLearning::kMessageType_AddXP, &msg, sizeof(msg), "SpellLearning");
+// Cached API pointer (received at kPostPostLoad)
+static SpellLearning::ISpellLearningAPI* g_api = nullptr;
+
+// Receive API broadcast from SpellLearning
+void OnSpellLearningMessage(SKSE::MessagingInterface::Message* msg) {
+    if (msg->type == SpellLearning::kMessageType_APIReady && msg->data) {
+        g_api = static_cast<SpellLearning::ISpellLearningAPI*>(msg->data);
+        // API is ready -- use it at kDataLoaded or later
+    }
+}
+
+void OnSKSEMessage(SKSE::MessagingInterface::Message* msg) {
+    if (msg->type == SKSE::MessagingInterface::kDataLoaded) {
+        // Register XP source (creates settings UI controls)
+        if (g_api) {
+            g_api->RegisterXPSource("book_reading", "Book Reading");
+        }
+
+        // Now you can grant XP whenever appropriate:
+        //   g_api->AddSourcedXP(spellFormID, 15.0f, "book_reading");
+    }
+}
+
+SKSEPluginLoad(const SKSE::LoadInterface* skse) {
+    SKSE::Init(skse);
+    auto messaging = SKSE::GetMessagingInterface();
+
+    // Listen for SKSE lifecycle events
+    messaging->RegisterListener(OnSKSEMessage);
+
+    // Listen for SpellLearning API broadcast (arrives at kPostPostLoad)
+    messaging->RegisterListener("SpellLearning", OnSpellLearningMessage);
+
+    return true;
+}
 ```
+
+**Key points:**
+- `RegisterListener("SpellLearning", ...)` listens for messages FROM SpellLearning
+- API arrives automatically at `kPostPostLoad` -- no need to Dispatch anything
+- Register your source at `kDataLoaded` when game data is available
+- Grant XP via `AddSourcedXP()` with your source ID -- respects user's multiplier/cap settings
 
 ---
 

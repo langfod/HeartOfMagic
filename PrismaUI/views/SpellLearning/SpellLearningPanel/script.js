@@ -1094,16 +1094,12 @@ function initializePassiveLearningSettings() {
         });
     }
 
-    // Scope select
-    var scopeSelect = document.getElementById('passiveScopeSelect');
-    if (scopeSelect) {
-        scopeSelect.value = settings.passiveLearning.scope;
-        scopeSelect.addEventListener('change', function() {
-            settings.passiveLearning.scope = this.value;
-            console.log('[SpellLearning] Passive learning scope:', this.value);
-            autoSaveSettings();
-        });
-    }
+    // Scope toggle (segmented)
+    initSegmentedToggle('passiveScopeToggle', settings.passiveLearning.scope, function(value) {
+        settings.passiveLearning.scope = value;
+        console.log('[SpellLearning] Passive learning scope:', value);
+        autoSaveSettings();
+    });
 
     // XP per game hour slider
     var xpSlider = document.getElementById('passiveXpPerHourSlider');
@@ -1166,8 +1162,7 @@ function updatePassiveLearningUI() {
     var enableToggle = document.getElementById('passiveLearningToggle');
     if (enableToggle) enableToggle.checked = settings.passiveLearning.enabled;
 
-    var scopeSelect = document.getElementById('passiveScopeSelect');
-    if (scopeSelect) scopeSelect.value = settings.passiveLearning.scope;
+    setSegmentedToggleValue('passiveScopeToggle', settings.passiveLearning.scope);
 
     var xpSlider = document.getElementById('passiveXpPerHourSlider');
     var xpValue = document.getElementById('passiveXpPerHourValue');
