@@ -47,3 +47,4 @@ SKSE/Plugins/SpellLearning/SpellTreeBuilder/python/
 # Build artifacts
 plugin/build/
 *.pex
+plugin/Build_Config_Local.ps1

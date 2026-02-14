@@ -16,20 +16,8 @@
 
 void SetupLog()
 {
-    auto path = logger::log_directory();
-    if (!path) {
-        return;
-    }
+    logger::init();
 
-    *path /= PLUGIN_NAME ".log"sv;
-
-    auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), true);
-    auto log = std::make_shared<spdlog::logger>("global log"s, std::move(sink));
-
-    log->set_level(spdlog::level::info);
-    log->flush_on(spdlog::level::info);
-
-    spdlog::set_default_logger(std::move(log));
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
 }
 
@@ -256,25 +244,12 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 }
 
 // =============================================================================
-// SKSE PLUGIN INFO
-// =============================================================================
-
-SKSEPluginInfo(
-    .Version = { PLUGIN_VERSION_MAJOR, PLUGIN_VERSION_MINOR, PLUGIN_VERSION_PATCH, 0 },
-    .Name = PLUGIN_NAME,
-    .Author = PLUGIN_AUTHOR,
-    .SupportEmail = "",
-    .StructCompatibility = SKSE::StructCompatibility::Independent,
-    .RuntimeCompatibility = SKSE::VersionIndependence::AddressLibrary
-)
-
-// =============================================================================
 // SKSE PLUGIN LOAD
 // =============================================================================
 
 SKSEPluginLoad(const SKSE::LoadInterface* skse)
 {
-    SKSE::Init(skse);
+    SKSE::Init(skse, false);
     SetupLog();
 
     logger::info("{} v{} by {} loading...", PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR);
