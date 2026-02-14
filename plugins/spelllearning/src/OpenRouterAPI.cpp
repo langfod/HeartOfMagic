@@ -270,10 +270,13 @@ namespace OpenRouterAPI {
         return result;
     }
 
-    Response SendPrompt(const std::string& systemPrompt, const std::string& userPrompt) {
+    // Internal: uses explicit config to avoid racing on s_config from a background thread
+    static Response SendPromptWithConfig(const std::string& systemPrompt,
+                                         const std::string& userPrompt,
+                                         const Config& config) {
         Response response;
 
-        if (s_config.apiKey.empty()) {
+        if (config.apiKey.empty()) {
             response.error = "API key not configured";
             logger::error("OpenRouterAPI: {}", response.error);
             return response;
@@ -281,8 +284,8 @@ namespace OpenRouterAPI {
 
         // Build request body
         json requestBody;
-        requestBody["model"] = s_config.model;
-        requestBody["max_tokens"] = s_config.maxTokens;
+        requestBody["model"] = config.model;
+        requestBody["max_tokens"] = config.maxTokens;
         requestBody["messages"] = json::array({
             {{"role", "system"}, {"content", systemPrompt}},
             {{"role", "user"}, {"content", userPrompt}}
@@ -296,7 +299,7 @@ namespace OpenRouterAPI {
             "openrouter.ai",
             "/api/v1/chat/completions",
             body,
-            s_config.apiKey
+            config.apiKey
         );
 
         if (httpResponse.empty()) {
@@ -337,13 +340,20 @@ namespace OpenRouterAPI {
         return response;
     }
 
+    Response SendPrompt(const std::string& systemPrompt, const std::string& userPrompt) {
+        return SendPromptWithConfig(systemPrompt, userPrompt, s_config);
+    }
+
     void SendPromptAsync(const std::string& systemPrompt, const std::string& userPrompt,
                          std::function<void(const Response&)> callback) {
         logger::info("OpenRouterAPI: Starting async request thread");
         
-        std::thread([systemPrompt, userPrompt, callback]() {
+        // Snapshot config so the background thread doesn't race with game-thread mutations
+        Config configCopy = s_config;
+        
+        std::thread([systemPrompt, userPrompt, callback, configCopy]() {
             logger::info("OpenRouterAPI: Thread started, calling SendPrompt");
-            Response response = SendPrompt(systemPrompt, userPrompt);
+            Response response = SendPromptWithConfig(systemPrompt, userPrompt, configCopy);
             
             logger::info("OpenRouterAPI: SendPrompt returned, success={}, content_len={}, error={}", 
                         response.success, response.content.length(), response.error);

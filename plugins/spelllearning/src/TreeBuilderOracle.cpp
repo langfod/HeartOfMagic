@@ -182,8 +182,12 @@ static std::vector<json> MergeSimilarChains(const std::vector<json>& chains)
                     std::min(wordsA.size(), wordsB.size());
 
                 if (ratio >= 0.5f) {
+                    std::unordered_set<std::string> existingIds;
+                    for (const auto& id : combined["spellIds"])
+                        if (id.is_string()) existingIds.insert(id.get<std::string>());
                     for (const auto& id : chains[j]["spellIds"])
-                        combined["spellIds"].push_back(id);
+                        if (!id.is_string() || !existingIds.contains(id.get<std::string>()))
+                            combined["spellIds"].push_back(id);
                     used[j] = true;
                     if (combined.value("narrative", std::string("")).empty())
                         combined["narrative"] = chains[j].value("narrative", std::string(""));
@@ -532,7 +536,7 @@ static json BuildSchoolTreeFallback(
 
         // Capitalize theme name for display
         auto displayName = themeName;
-        if (!displayName.empty()) displayName[0] = static_cast<char>(toupper(displayName[0]));
+        if (!displayName.empty()) displayName[0] = static_cast<char>(toupper(static_cast<unsigned char>(displayName[0])));
 
         chainMeta.push_back({
             {"name", displayName},

@@ -658,6 +658,12 @@ bool SpellEffectivenessHook::IsEarlyLearnedSpell(RE::FormID formId) const
     return m_earlyLearnedSpells.find(formId) != m_earlyLearnedSpells.end();
 }
 
+std::unordered_set<RE::FormID> SpellEffectivenessHook::GetEarlyLearnedSpells() const
+{
+    std::shared_lock<std::shared_mutex> lock(m_mutex);
+    return m_earlyLearnedSpells;
+}
+
 bool SpellEffectivenessHook::NeedsNerfing(RE::FormID spellFormId) const
 {
     // PERFORMANCE: Fast checks first (no locks)
@@ -736,13 +742,13 @@ float SpellEffectivenessHook::GetSteppedEffectiveness(RE::FormID spellFormId) co
     return 1.0f;  // Full effectiveness if something went wrong
 }
 
-const char* SpellEffectivenessHook::GetPowerStepLabel(int step) const
+std::string SpellEffectivenessHook::GetPowerStepLabel(int step) const
 {
     std::shared_lock<std::shared_mutex> lock(m_mutex);
     if (step < 0 || step >= static_cast<int>(m_powerSteps.size())) {
         return "Unknown";
     }
-    return m_powerSteps[step].label.c_str();
+    return m_powerSteps[step].label;
 }
 
 float SpellEffectivenessHook::CalculateEffectiveness(RE::FormID spellFormId) const
@@ -784,9 +790,9 @@ void SpellEffectivenessHook::GrantEarlySpell(RE::SpellItem* spell)
         // Show notification that spell was granted (weakened)
         char notification[256];
         int step = hook->GetCurrentPowerStep(formId);
-        const char* label = hook->GetPowerStepLabel(step);
-        snprintf(notification, sizeof(notification), "%s %s learned (weakened)", 
-            label, spell->GetName());
+        std::string label = hook->GetPowerStepLabel(step);
+        snprintf(notification, sizeof(notification), "%s %s learned (weakened)",
+            label.c_str(), spell->GetName());
         RE::SendHUDMessage::ShowHUDMessage(notification);
     }
     
@@ -994,7 +1000,11 @@ std::string SpellEffectivenessHook::GetModifiedSpellName(RE::SpellItem* spell)
     UpdateSpellDisplayCache(spellId, spell);
 
     std::shared_lock<std::shared_mutex> lock(m_mutex);
-    return m_displayCache[spellId].modifiedName;
+    auto it = m_displayCache.find(spellId);
+    if (it != m_displayCache.end()) {
+        return it->second.modifiedName;
+    }
+    return "";
 }
 
 void SpellEffectivenessHook::UpdateSpellDisplayCache(RE::FormID spellFormId, RE::SpellItem* spell)

@@ -172,9 +172,9 @@ void OnSpellLearningMessage(SKSE::MessagingInterface::Message* a_msg)
 // SKSE PLUGIN ENTRY
 // =============================================================================
 
-SKSEPluginLoad(const SKSE::LoadInterface* skse)
+SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
-    SKSE::Init(skse, false);
+    SKSE::Init(a_skse, false);
     SetupLog();
 
     logger::info("{} v{} by {}", SKSE::GetPluginName(), SKSE::GetPluginVersion(), SKSE::GetPluginAuthor());

@@ -63,7 +63,7 @@ void PassiveLearningSource::PollLoop() {
         if (!m_running) break;
 
         // Quick check without lock
-        if (!m_enabled || !m_initialized) continue;
+        if (!m_initialized) continue;
 
         Settings currentSettings;
         {
@@ -165,7 +165,7 @@ float PassiveLearningSource::GetTierCap(float requiredXP) const {
 
     Settings currentSettings;
     {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(m_settingsMutex));
+        std::lock_guard<std::mutex> lock(m_settingsMutex);
         currentSettings = m_settings;
     }
 
@@ -179,7 +179,7 @@ float PassiveLearningSource::GetTierCap(float requiredXP) const {
 bool PassiveLearningSource::IsSpellEligible(RE::FormID spellId) const {
     Settings currentSettings;
     {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(m_settingsMutex));
+        std::lock_guard<std::mutex> lock(m_settingsMutex);
         currentSettings = m_settings;
     }
 

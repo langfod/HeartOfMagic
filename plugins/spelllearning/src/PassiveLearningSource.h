@@ -50,7 +50,10 @@ public:
     int GetPriority() const override { return 50; }
 
     void SetSettings(const Settings& settings);
-    const Settings& GetSettings() const { return m_settings; }
+    Settings GetSettings() const {
+        std::lock_guard<std::mutex> lock(m_settingsMutex);
+        return m_settings;
+    }
 
     // Called when game loads (reset time tracking)
     void OnGameLoad();
@@ -64,7 +67,7 @@ private:
     bool IsSpellEligible(RE::FormID spellId) const;
 
     Settings m_settings;
-    std::mutex m_settingsMutex;
+    mutable std::mutex m_settingsMutex;
 
     // Polling thread
     std::atomic<bool> m_running{false};
@@ -72,7 +75,7 @@ private:
 
     // Game time tracking
     float m_lastGameTime = 0.0f;
-    bool m_initialized = false;
+    std::atomic<bool> m_initialized{false};
 
     static PassiveLearningSource* s_singleton;
 };

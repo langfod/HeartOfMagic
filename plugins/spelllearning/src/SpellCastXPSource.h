@@ -1,7 +1,6 @@
 #pragma once
 
 #include "XPSource.h"
-#include "SpellCastHandler.h"
 
 namespace SpellLearning {
 

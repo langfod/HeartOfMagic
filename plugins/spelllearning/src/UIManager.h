@@ -18,6 +18,10 @@ public:
     void HidePanel();
     bool IsPanelVisible() const { return m_isPanelVisible; }
     bool IsInitialized() const { return m_isInitialized; }
+    
+    // Settings
+    void SetPauseGameOnFocus(bool pause) { m_pauseGameOnFocus = pause; }
+    bool GetPauseGameOnFocus() const { return m_pauseGameOnFocus; }
 
     // Send data to Scanner Tab
     void SendSpellData(const std::string& jsonData);
@@ -154,8 +158,4 @@ private:
     std::chrono::steady_clock::time_point m_lastConfigSaveTime{};
     static constexpr int kConfigSaveDebounceMs = 500;  // Ignore saves within 500ms of each other
 
-public:
-    // Settings
-    void SetPauseGameOnFocus(bool pause) { m_pauseGameOnFocus = pause; }
-    bool GetPauseGameOnFocus() const { return m_pauseGameOnFocus; }
 };

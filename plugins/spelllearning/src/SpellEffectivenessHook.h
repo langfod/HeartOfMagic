@@ -73,12 +73,12 @@ public:
     void AddEarlyLearnedSpell(RE::FormID formId);
     void RemoveEarlyLearnedSpell(RE::FormID formId);  // Called at 100% mastery
     bool IsEarlyLearnedSpell(RE::FormID formId) const;
-    const std::unordered_set<RE::FormID>& GetEarlyLearnedSpells() const { return m_earlyLearnedSpells; }
+    std::unordered_set<RE::FormID> GetEarlyLearnedSpells() const;
     
     // Power step calculations
     int GetCurrentPowerStep(RE::FormID spellFormId) const;
     float GetSteppedEffectiveness(RE::FormID spellFormId) const;
-    const char* GetPowerStepLabel(int step) const;
+    std::string GetPowerStepLabel(int step) const;
     
     // Check if spell needs nerfing (early learned AND not mastered)
     bool NeedsNerfing(RE::FormID spellFormId) const;

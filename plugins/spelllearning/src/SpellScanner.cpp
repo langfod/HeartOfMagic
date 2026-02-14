@@ -49,72 +49,72 @@ namespace SpellScanner
 
     /**
      * Strict UTF-8 sanitization - validates and fixes invalid UTF-8 sequences.
-     * Used as fallback when encoding conversion fails.
+     * Uses Windows API (MB_ERR_INVALID_CHARS) for correct handling of overlongs,
+     * surrogates, and code points above U+10FFFF.
      */
     std::string SanitizeToUTF8Strict(const std::string& input)
     {
+        // Fast path: validate entire string as UTF-8 via Windows API
+        int wideLen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                                           input.c_str(), static_cast<int>(input.size()),
+                                           nullptr, 0);
+        if (wideLen > 0) {
+            // Already valid UTF-8 — round-trip through UTF-16 to normalize
+            std::wstring wide(wideLen, L'\0');
+            MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                               input.c_str(), static_cast<int>(input.size()),
+                               &wide[0], wideLen);
+            int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), wideLen,
+                                              nullptr, 0, nullptr, nullptr);
+            std::string result(utf8Len, '\0');
+            WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), wideLen,
+                               &result[0], utf8Len, nullptr, nullptr);
+            return result;
+        }
+
+        // Invalid UTF-8 somewhere — salvage byte by byte
         std::string result;
         result.reserve(input.size());
 
         size_t i = 0;
         while (i < input.size()) {
             unsigned char c = static_cast<unsigned char>(input[i]);
-            
+
             if (c < 0x80) {
-                // ASCII (0x00-0x7F) - always valid
                 result += static_cast<char>(c);
                 ++i;
-            } else if (c >= 0xC2 && c <= 0xDF && i + 1 < input.size()) {
-                // 2-byte UTF-8 sequence (110xxxxx 10xxxxxx)
-                unsigned char c2 = static_cast<unsigned char>(input[i + 1]);
-                if (c2 >= 0x80 && c2 <= 0xBF) {
-                    result += static_cast<char>(c);
-                    result += static_cast<char>(c2);
-                    i += 2;
-                } else {
-                    ++i;  // Skip invalid byte silently
-                }
-            } else if (c >= 0xE0 && c <= 0xEF && i + 2 < input.size()) {
-                // 3-byte UTF-8 sequence (1110xxxx 10xxxxxx 10xxxxxx)
-                unsigned char c2 = static_cast<unsigned char>(input[i + 1]);
-                unsigned char c3 = static_cast<unsigned char>(input[i + 2]);
-                if (c2 >= 0x80 && c2 <= 0xBF && c3 >= 0x80 && c3 <= 0xBF) {
-                    result += static_cast<char>(c);
-                    result += static_cast<char>(c2);
-                    result += static_cast<char>(c3);
-                    i += 3;
-                } else {
-                    ++i;  // Skip invalid byte silently
-                }
-            } else if (c >= 0xF0 && c <= 0xF4 && i + 3 < input.size()) {
-                // 4-byte UTF-8 sequence (11110xxx 10xxxxxx 10xxxxxx 10xxxxxx)
-                unsigned char c2 = static_cast<unsigned char>(input[i + 1]);
-                unsigned char c3 = static_cast<unsigned char>(input[i + 2]);
-                unsigned char c4 = static_cast<unsigned char>(input[i + 3]);
-                if (c2 >= 0x80 && c2 <= 0xBF && c3 >= 0x80 && c3 <= 0xBF && c4 >= 0x80 && c4 <= 0xBF) {
-                    result += static_cast<char>(c);
-                    result += static_cast<char>(c2);
-                    result += static_cast<char>(c3);
-                    result += static_cast<char>(c4);
-                    i += 4;
-                } else {
-                    ++i;  // Skip invalid byte silently
-                }
-            } else if (c >= 0x80 && c <= 0x9F) {
-                // Windows-1252 control characters - replace with ASCII equivalents
-                switch (c) {
-                    case 0x91: case 0x92: result += '\''; break;  // Single quotes
-                    case 0x93: case 0x94: result += '"'; break;   // Double quotes
-                    case 0x96: case 0x97: result += '-'; break;   // Dashes
-                    case 0x85: result += "..."; break;            // Ellipsis
-                    case 0x99: result += "(TM)"; break;           // Trademark
-                    default: break;  // Skip other control chars
-                }
-                ++i;
-            } else {
-                // Invalid byte - skip silently
-                ++i;
+                continue;
             }
+
+            // Determine expected multi-byte sequence length
+            int seqLen = 0;
+            if (c >= 0xC2 && c <= 0xDF) seqLen = 2;
+            else if (c >= 0xE0 && c <= 0xEF) seqLen = 3;
+            else if (c >= 0xF0 && c <= 0xF4) seqLen = 4;
+
+            if (seqLen > 0 && i + seqLen <= input.size()) {
+                // Let the API validate this sequence (catches overlongs, surrogates, etc.)
+                int testLen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                                                  &input[i], seqLen, nullptr, 0);
+                if (testLen > 0) {
+                    result.append(input, i, seqLen);
+                    i += seqLen;
+                    continue;
+                }
+            }
+
+            // Windows-1252 control characters — map to ASCII equivalents
+            if (c >= 0x80 && c <= 0x9F) {
+                switch (c) {
+                    case 0x91: case 0x92: result += '\''; break;
+                    case 0x93: case 0x94: result += '"'; break;
+                    case 0x96: case 0x97: result += '-'; break;
+                    case 0x85: result += "..."; break;
+                    case 0x99: result += "(TM)"; break;
+                    default: break;
+                }
+            }
+            ++i;
         }
 
         return result;
@@ -131,35 +131,11 @@ namespace SpellScanner
     {
         if (input.empty()) return input;
         
-        // Check if input is already valid UTF-8 by attempting strict validation
-        bool isValidUTF8 = true;
-        size_t i = 0;
-        while (i < input.size() && isValidUTF8) {
-            unsigned char c = static_cast<unsigned char>(input[i]);
-            if (c < 0x80) {
-                ++i;
-            } else if (c >= 0xC2 && c <= 0xDF && i + 1 < input.size()) {
-                unsigned char c2 = static_cast<unsigned char>(input[i + 1]);
-                isValidUTF8 = (c2 >= 0x80 && c2 <= 0xBF);
-                i += 2;
-            } else if (c >= 0xE0 && c <= 0xEF && i + 2 < input.size()) {
-                unsigned char c2 = static_cast<unsigned char>(input[i + 1]);
-                unsigned char c3 = static_cast<unsigned char>(input[i + 2]);
-                isValidUTF8 = (c2 >= 0x80 && c2 <= 0xBF && c3 >= 0x80 && c3 <= 0xBF);
-                i += 3;
-            } else if (c >= 0xF0 && c <= 0xF4 && i + 3 < input.size()) {
-                unsigned char c2 = static_cast<unsigned char>(input[i + 1]);
-                unsigned char c3 = static_cast<unsigned char>(input[i + 2]);
-                unsigned char c4 = static_cast<unsigned char>(input[i + 3]);
-                isValidUTF8 = (c2 >= 0x80 && c2 <= 0xBF && c3 >= 0x80 && c3 <= 0xBF && c4 >= 0x80 && c4 <= 0xBF);
-                i += 4;
-            } else {
-                isValidUTF8 = false;
-            }
-        }
-        
-        if (isValidUTF8) {
-            // Already valid UTF-8, return as-is
+        // Check if input is already valid UTF-8 via Windows API
+        // MB_ERR_INVALID_CHARS correctly rejects overlongs, surrogates, and >U+10FFFF
+        if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                                input.c_str(), static_cast<int>(input.size()),
+                                nullptr, 0) > 0) {
             return input;
         }
         
@@ -777,7 +753,7 @@ You MUST return ONLY valid JSON matching this exact schema. No explanations, no 
                 std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
                 
                 // Skip obvious non-player spells by name patterns
-                if (lowerName.find("فخ") != std::string::npos) { filteredCount++; continue; }  // trap (Arabic)
+                if (lowerName.find("\xD9\x81\xD8\xAE") != std::string::npos) { filteredCount++; continue; }  // trap (Arabic: فخ)
                 // Skip spells with very generic/system names
                 if (lowerName == "yourspellname" || lowerName == "yourspell") { filteredCount++; continue; }
             }
@@ -929,8 +905,10 @@ You MUST return ONLY valid JSON matching this exact schema. No explanations, no 
         // Build timestamp
         auto now = std::chrono::system_clock::now();
         auto time = std::chrono::system_clock::to_time_t(now);
+        std::tm tmBuf{};
+        gmtime_s(&tmBuf, &time);
         std::stringstream ss;
-        ss << std::put_time(std::gmtime(&time), "%Y-%m-%dT%H:%M:%SZ");
+        ss << std::put_time(&tmBuf, "%Y-%m-%dT%H:%M:%SZ");
 
         // Build output JSON
         json output;
@@ -1044,6 +1022,8 @@ You MUST return ONLY valid JSON matching this exact schema. No explanations, no 
             // Optional fields
             if (fields.editorId && spellEditorId) {
                 spellJson["editorId"] = spellEditorId;
+            } else if (fields.editorId) {
+                spellJson["editorId"] = "";
             }
             if (fields.magickaCost) {
                 spellJson["magickaCost"] = spell->CalculateMagickaCost(nullptr);
@@ -1117,8 +1097,10 @@ You MUST return ONLY valid JSON matching this exact schema. No explanations, no 
         // Build timestamp
         auto now = std::chrono::system_clock::now();
         auto time = std::chrono::system_clock::to_time_t(now);
+        std::tm tmBuf{};
+        gmtime_s(&tmBuf, &time);
         std::stringstream ss;
-        ss << std::put_time(std::gmtime(&time), "%Y-%m-%dT%H:%M:%SZ");
+        ss << std::put_time(&tmBuf, "%Y-%m-%dT%H:%M:%SZ");
 
         // Build output JSON
         json output;

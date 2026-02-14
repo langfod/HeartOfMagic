@@ -67,12 +67,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     miniz::miniz
 )
 
-# Unity build - combines .cpp files to reduce redundant header parsing
-# Applied only to our target, NOT globally (CommonLib breaks with unity build)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     OUTPUT_NAME "${PROJECT_NAME}"
-    UNITY_BUILD OFF
-    UNITY_BUILD_BATCH_SIZE 4
 )
 
 # Generate fomod/info.xml from template with current version

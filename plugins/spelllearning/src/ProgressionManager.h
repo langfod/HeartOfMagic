@@ -120,7 +120,7 @@ public:
     // XP Settings (loaded from unified config)
     struct XPSettings {
         std::string learningMode = "perSchool";  // "perSchool" or "single"
-        float globalMultiplier = 1.0f;   // 1-1000, overall XP multiplier
+        float globalMultiplier = 1.0f;   // Direct multiplier (1.0 = normal, 2.0 = double XP)
         float multiplierDirect = 1.0f;   // 0.0-1.0 for direct prerequisite spells
         float multiplierSchool = 0.5f;   // 0.0-1.0 for same school spells
         float multiplierAny = 0.1f;      // 0.0-1.0 for any spell

@@ -3,9 +3,10 @@ param(
     [int]$threads = 32,
     [switch]$fresh
 )
+$vsDevShellPath = "C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat"
 # Load in template default variables
 . .\Build_Config_Template.ps1
-# Load in local variable overides
+# Load in local variable overrides
 if (Test-Path .\Build_Config_Local.ps1) {
     . .\Build_Config_Local.ps1
 }

@@ -1,10 +1,10 @@
 #pragma once
 
 #include "PCH.h"
+#include <algorithm>
 #include <string>
 #include <memory>
 #include <vector>
-#include <functional>
 
 namespace SpellLearning {
 

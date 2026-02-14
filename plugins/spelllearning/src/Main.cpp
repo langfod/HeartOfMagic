@@ -137,6 +137,10 @@ void OnExternalPluginMessage(SKSE::MessagingInterface::Message* a_msg)
                     case SpellLearning::XPSourceType::Custom:
                         sourceName = msg->sourceName;
                         break;
+                    default:
+                        logger::warn("SpellLearning: External AddXP with unknown sourceType {}",
+                            static_cast<uint32_t>(msg->sourceType));
+                        return;
                 }
 
                 ProgressionManager::GetSingleton()->AddSourcedXP(
@@ -416,9 +420,9 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 // SKSE PLUGIN LOAD
 // =============================================================================
 
-SKSEPluginLoad(const SKSE::LoadInterface* skse)
+SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
-    SKSE::Init(skse, false);
+    SKSE::Init(a_skse, false);
     SetupLog();
 
     logger::info("{} v{} by {} loading...", SKSE::GetPluginName(), SKSE::GetPluginVersion(), SKSE::GetPluginAuthor());

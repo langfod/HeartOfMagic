@@ -2,7 +2,6 @@
 
 #include "PCH.h"
 #include <SKSE/RegistrationSet.h>
-#include <mutex>
 
 // =============================================================================
 // ISL / DEST Integration

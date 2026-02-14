@@ -101,6 +101,7 @@ namespace SpellLearning {
 
     // Convenience: null-safe string copy for message structs
     inline void CopySourceName(char* dest, size_t destSize, const char* src) {
+        if (destSize == 0) return;
         if (src) {
             strncpy(dest, src, destSize - 1);
             dest[destSize - 1] = '\0';

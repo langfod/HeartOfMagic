@@ -17,7 +17,7 @@
 static const std::unordered_set<std::string> kStopWords = {
     // Generic spell words
     "spell", "magic", "magical", "target", "targets", "effect", "effects",
-    "damage", "point", "points", "second", "seconds", "per", "for", "the",
+    "damage", "point", "points", "second", "seconds", "per", "for",
     "does", "causes", "cast", "caster", "casting", "level", "levels",
     "health", "magicka", "stamina", "drain", "drains",
     // Effect description fragments
@@ -273,8 +273,9 @@ float TreeNLP::CharNgramSimilarity(const std::string& a, const std::string& b, i
     auto lb = ToLower(b);
 
     // Strip whitespace
-    la.erase(std::remove_if(la.begin(), la.end(), ::isspace), la.end());
-    lb.erase(std::remove_if(lb.begin(), lb.end(), ::isspace), lb.end());
+    auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
+    la.erase(std::remove_if(la.begin(), la.end(), isSpace), la.end());
+    lb.erase(std::remove_if(lb.begin(), lb.end(), isSpace), lb.end());
 
     if (static_cast<int>(la.size()) < n || static_cast<int>(lb.size()) < n) {
         return 0.0f;
