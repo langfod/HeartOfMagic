@@ -40,7 +40,14 @@ var CanvasRenderer = {
     // Spatial index for hit detection
     _nodeGrid: null,
     _gridCellSize: 50,
-    
+
+    // LOD (Level of Detail) - zoom-based rendering tiers
+    _lodTier: 'full',        // 'full' | 'simple' | 'minimal'
+    _activeDpr: 0,           // Current effective DPR (for tier-transition resize)
+    _nodeBuckets: null,      // { 'school|state': [node, ...] } for batched minimal rendering
+    _cachedDividerGradients: null,  // Cached CanvasGradient objects for school dividers
+    _dividerCacheKey: '',    // String key to detect when divider settings change
+
     // Performance
     _rafId: null,
     _needsRender: true,
@@ -264,7 +271,44 @@ var CanvasRenderer = {
     _getShapePath: function(school) {
         return this._shapePaths[school] || this._shapePaths['default'];
     },
-    
+
+    // =========================================================================
+    // LOD (Level of Detail) SYSTEM
+    // =========================================================================
+
+    /**
+     * Compute LOD tier based on current zoom level.
+     * Returns 'full', 'simple', or 'minimal'.
+     * Forces 'full' when EditMode is active.
+     */
+    _computeLODTier: function() {
+        // EditMode always needs full detail for accurate editing
+        if (typeof EditMode !== 'undefined' && EditMode.isActive) {
+            return 'full';
+        }
+        if (this.zoom >= 0.45) return 'full';
+        if (this.zoom >= 0.25) return 'simple';
+        return 'minimal';
+    },
+
+    /**
+     * Build node buckets grouped by 'school|state' for batched minimal rendering.
+     * Pre-caches school color on each node to avoid per-node lookups.
+     */
+    _buildNodeBuckets: function() {
+        this._nodeBuckets = {};
+        for (var i = 0; i < this.nodes.length; i++) {
+            var node = this.nodes[i];
+            var key = (node.school || 'unknown') + '|' + (node.state || 'locked');
+            if (!this._nodeBuckets[key]) {
+                this._nodeBuckets[key] = [];
+            }
+            this._nodeBuckets[key].push(node);
+            // Pre-cache school color on node
+            node._cachedSchoolColor = node.themeColor || this._getSchoolColor(node.school);
+        }
+    },
+
     // =========================================================================
     // INITIALIZATION
     // =========================================================================
@@ -409,6 +453,7 @@ var CanvasRenderer = {
         this._computeSchoolAngles();
         this._buildDiscoveryVisibility();
         this._buildLearningPaths();
+        this._buildNodeBuckets();
 
         this._needsRender = true;
         this._logNextRender = true;
@@ -943,7 +988,24 @@ var CanvasRenderer = {
         var cx = width / 2;
         var cy = height / 2;
         var dpr = window.devicePixelRatio || 1;
-        
+
+        // Compute LOD tier based on zoom
+        this._lodTier = this._computeLODTier();
+
+        // DPR reduction in MINIMAL tier (halve pixel work on HiDPI)
+        var effectiveDpr = dpr;
+        if (this._lodTier === 'minimal' && dpr > 1) {
+            effectiveDpr = 1;
+        }
+        // Only resize canvas buffer when effective DPR changes (avoids per-frame resize)
+        if (this._activeDpr !== effectiveDpr) {
+            this._activeDpr = effectiveDpr;
+            this.canvas.width = width * effectiveDpr;
+            this.canvas.height = height * effectiveDpr;
+            // CSS size stays the same — browser upscales
+        }
+        dpr = effectiveDpr;
+
         // FULL RESET - prevent ghosting
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalAlpha = 1.0;
@@ -1080,8 +1142,20 @@ var CanvasRenderer = {
                 pulse = (beat1 + beat2 * 0.6) * 0.08;  // Max ~8% scale change
             }
             scale = 1 + pulse;
+
+            // Global rising-edge detection — fires once per beat start
+            var nowBeatingGlobal = cyclePos < beatDuration && cyclePos < 0.5;
+            if (nowBeatingGlobal && !this._lastHeartbeatGlobal) {
+                // Scatter globe particles on every heartbeat
+                if (typeof Globe3D !== 'undefined' && Globe3D.onHeartbeat) {
+                    Globe3D.onHeartbeat(1.0);
+                }
+                // Boost particle core flash on heartbeat
+                this._coreFlashBoost = 1.0;
+            }
+            this._lastHeartbeatGlobal = nowBeatingGlobal;
         }
-        
+
         // Keep animation running for heartbeat or globe (throttled to reduce CPU)
         var globeEnabled = this._globeEnabled && (typeof Globe3D !== 'undefined') && Globe3D.enabled;
         if (this._heartAnimationEnabled || globeEnabled) {
@@ -1129,23 +1203,28 @@ var CanvasRenderer = {
         ctx.lineWidth = 2.5;
         ctx.stroke();
         
-        // Globe text - use separate text color if set, supports \n for line breaks
-        var textColor = this._magicTextColor || ringColor;
-        var fontSize = this._globeTextSize || 16;
-        var globeText = this._globeText || 'HoM';
-        ctx.fillStyle = textColor;
-        ctx.font = 'bold ' + fontSize + 'px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        
-        // Split by \n for multi-line support
-        var lines = globeText.replace(/\\n/g, '\n').split('\n');
-        var lineHeight = fontSize * 1.2;
-        var totalHeight = (lines.length - 1) * lineHeight;
-        var startY = -totalHeight / 2;
-        
-        for (var i = 0; i < lines.length; i++) {
-            ctx.fillText(lines[i], 0, startY + i * lineHeight);
+        // Center content: particle core OR text
+        if (this._particleCoreEnabled) {
+            this._renderParticleCore(ctx, pulse);
+        } else {
+            // Globe text - use separate text color if set, supports \n for line breaks
+            var textColor = this._magicTextColor || ringColor;
+            var fontSize = this._globeTextSize || 16;
+            var globeText = this._globeText || 'HoM';
+            ctx.fillStyle = textColor;
+            ctx.font = 'bold ' + fontSize + 'px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // Split by \n for multi-line support
+            var lines = globeText.replace(/\\n/g, '\n').split('\n');
+            var lineHeight = fontSize * 1.2;
+            var totalHeight = (lines.length - 1) * lineHeight;
+            var startY = -totalHeight / 2;
+
+            for (var i = 0; i < lines.length; i++) {
+                ctx.fillText(lines[i], 0, startY + i * lineHeight);
+            }
         }
         
         // 3D Globe particle effect (uses Globe3D module)
@@ -1173,56 +1252,75 @@ var CanvasRenderer = {
     renderSchoolDividers: function(ctx) {
         // Check if dividers are enabled
         if (!settings.showSchoolDividers) return;
-        
+
+        // LOD: Skip dividers entirely in MINIMAL tier
+        if (this._lodTier === 'minimal') return;
+
         var schoolNames = Object.keys(this.schools);
         if (schoolNames.length < 2) return;
-        
+
         var length = settings.dividerLength !== undefined ? settings.dividerLength : 800;
         var fade = (settings.dividerFade !== undefined ? settings.dividerFade : 50) / 100;  // Convert to 0-1
         var lineWidth = settings.dividerSpacing !== undefined ? settings.dividerSpacing : 3;
         var colorMode = settings.dividerColorMode || 'school';
         var customColor = settings.dividerCustomColor || '#ffffff';
-        
+        var gd = (state.treeData && state.treeData.globe) || { x: 0, y: 0 };
+
+        // Build cache key from all settings that affect gradients
+        var cacheKey = length + '|' + fade + '|' + lineWidth + '|' + colorMode + '|' + customColor + '|' + gd.x + '|' + gd.y + '|' + schoolNames.length;
+        for (var ci = 0; ci < schoolNames.length; ci++) {
+            var sch = this.schools[schoolNames[ci]];
+            cacheKey += '|' + (sch.startAngle || 0);
+            if (colorMode === 'school') cacheKey += '|' + this._getSchoolColor(schoolNames[ci]);
+        }
+
+        // Rebuild gradient cache if settings changed
+        if (this._dividerCacheKey !== cacheKey || !this._cachedDividerGradients) {
+            this._dividerCacheKey = cacheKey;
+            this._cachedDividerGradients = [];
+            var startAlpha = 0.8;
+            var endAlpha = startAlpha * (1 - fade);
+
+            for (var i = 0; i < schoolNames.length; i++) {
+                var schoolName = schoolNames[i];
+                var school = this.schools[schoolName];
+                var angle = school.startAngle !== undefined ? school.startAngle : (i * (360 / schoolNames.length) - 90);
+                var rad = angle * Math.PI / 180;
+
+                var color;
+                if (colorMode === 'custom') {
+                    color = customColor;
+                } else {
+                    color = this._getSchoolColor(schoolName) || '#ffffff';
+                }
+
+                var endX = gd.x + Math.cos(rad) * length;
+                var endY = gd.y + Math.sin(rad) * length;
+                var gradient = ctx.createLinearGradient(gd.x, gd.y, endX, endY);
+
+                var rgb = this._hexToRgb(color);
+                gradient.addColorStop(0, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + startAlpha + ')');
+                gradient.addColorStop(0.5, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + (startAlpha * 0.7 + endAlpha * 0.3) + ')');
+                gradient.addColorStop(1, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + endAlpha + ')');
+
+                this._cachedDividerGradients.push({
+                    gradient: gradient,
+                    startX: gd.x, startY: gd.y,
+                    endX: endX, endY: endY
+                });
+            }
+        }
+
         ctx.lineWidth = lineWidth;
         ctx.lineCap = 'round';
-        
-        // Draw dividers at each school's START angle (derived from actual node data)
-        for (var i = 0; i < schoolNames.length; i++) {
-            var schoolName = schoolNames[i];
-            var school = this.schools[schoolName];
-            var angle = school.startAngle !== undefined ? school.startAngle : (i * (360 / schoolNames.length) - 90);
-            var rad = angle * Math.PI / 180;
-            
-            // Determine color based on mode
-            var color;
-            if (colorMode === 'custom') {
-                color = customColor;
-            } else {
-                // Use school color (the school whose boundary this divider represents)
-                color = this._getSchoolColor(schoolName) || '#ffffff';
-            }
-            
-            // Create gradient for fade effect (globe center to outer edge)
-            var gd = (state.treeData && state.treeData.globe) || { x: 0, y: 0 };
-            var endX = gd.x + Math.cos(rad) * length;
-            var endY = gd.y + Math.sin(rad) * length;
-            var gradient = ctx.createLinearGradient(gd.x, gd.y, endX, endY);
-            
-            // Fade setting: 0% = solid line, 100% = fades to transparent
-            // Higher fade = more transparent at the end
-            var rgb = this._hexToRgb(color);
-            var startAlpha = 0.8;  // Always start fairly visible
-            var endAlpha = startAlpha * (1 - fade);  // At 100% fade, end is transparent
-            
-            gradient.addColorStop(0, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + startAlpha + ')');
-            gradient.addColorStop(0.5, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + (startAlpha * 0.7 + endAlpha * 0.3) + ')');
-            gradient.addColorStop(1, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + endAlpha + ')');
-            
-            ctx.strokeStyle = gradient;
-            
+
+        // Draw using cached gradients
+        for (var i = 0; i < this._cachedDividerGradients.length; i++) {
+            var cached = this._cachedDividerGradients[i];
+            ctx.strokeStyle = cached.gradient;
             ctx.beginPath();
-            ctx.moveTo(gd.x, gd.y);
-            ctx.lineTo(endX, endY);
+            ctx.moveTo(cached.startX, cached.startY);
+            ctx.lineTo(cached.endX, cached.endY);
             ctx.stroke();
         }
     },
@@ -1237,10 +1335,26 @@ var CanvasRenderer = {
     },
     
     _hexToRgba: function(hex, alpha) { return hexToRgba(hex, alpha); },
-    
+
+    /**
+     * Draw an edge path between two points (straight or curved Bezier).
+     * Call between ctx.beginPath() and ctx.stroke().
+     */
+    _drawEdgePath: function(ctx, x1, y1, x2, y2, curved) {
+        ctx.moveTo(x1, y1);
+        if (curved) {
+            var cpx = (x1 + x2) / 2 + (y2 - y1) * 0.15;
+            var cpy = (y1 + y2) / 2 - (x2 - x1) * 0.15;
+            ctx.quadraticCurveTo(cpx, cpy, x2, y2);
+        } else {
+            ctx.lineTo(x2, y2);
+        }
+    },
+
     renderEdges: function(ctx, viewLeft, viewRight, viewTop, viewBottom) {
         var learningPathColor = this._learningPathColor || '#00ffff';
         var hasLearningPaths = this._learningPathNodes instanceof Set && this._learningPathNodes.size > 0;
+        var curved = settings.edgeStyle === 'curved';
         
         // Detect heartbeat for spawning traveling pulses
         var isHeartbeating = false;
@@ -1251,10 +1365,9 @@ var CanvasRenderer = {
             var cycleLength = beatDuration + pulseDelay;
             var cyclePos = this._heartbeatPhase % cycleLength;
             
-            // Detect start of heartbeat (rising edge)
+            // Detect start of heartbeat (rising edge) for learning path particles
             var nowBeating = cyclePos < beatDuration && cyclePos < 0.5;
             if (nowBeating && !this._lastHeartbeatPulse) {
-                // Detach globe particle to travel along learning path
                 this._detachGlobeParticleToLearningPath();
             }
             this._lastHeartbeatPulse = nowBeating;
@@ -1351,8 +1464,11 @@ var CanvasRenderer = {
         }
 
         // === PASS 1: Dim/normal edges (background) ===
+        // LOD: Skip entirely in MINIMAL (biggest edge savings)
+        if (this._lodTier !== 'minimal') {
         // Check if base connections should be shown (setting)
         var showBaseConnections = settings.showBaseConnections !== false;
+        var lodSimple = this._lodTier === 'simple';
 
         ctx.lineWidth = 1;
         for (var i = 0; i < this.edges.length; i++) {
@@ -1372,6 +1488,9 @@ var CanvasRenderer = {
             if (isOnSelectedPath || isLearningEdge) continue;
 
             var bothUnlocked = fromNode.state === 'unlocked' && toNode.state === 'unlocked';
+
+            // LOD SIMPLE: skip edges where neither node is unlocked
+            if (lodSimple && !bothUnlocked) continue;
 
             // Unlocked connections always show; base connections respect setting
             if (!bothUnlocked && !showBaseConnections) continue;
@@ -1396,16 +1515,17 @@ var CanvasRenderer = {
             }
 
             ctx.beginPath();
-            ctx.moveTo(fromNode.x, fromNode.y);
-            ctx.lineTo(toNode.x, toNode.y);
+            this._drawEdgePath(ctx, fromNode.x, fromNode.y, toNode.x, toNode.y, curved);
             ctx.stroke();
         }
+        } // end LOD skip for MINIMAL
 
         // === PASS 2: Selected path edges (WHITE, middle layer) ===
+        // LOD: Skip in MINIMAL tier
         // Only draw if selection path highlighting is enabled
         var showSelectionPath = settings.showSelectionPath !== false;
 
-        if (hasSelectedPath && showSelectionPath) {
+        if (this._lodTier !== 'minimal' && hasSelectedPath && showSelectionPath) {
             for (var i = 0; i < this.edges.length; i++) {
                 var edge = this.edges[i];
                 var nodes = shouldDrawEdge(edge);
@@ -1424,8 +1544,7 @@ var CanvasRenderer = {
                 ctx.globalAlpha = 0.5;
 
                 ctx.beginPath();
-                ctx.moveTo(nodes.fromNode.x, nodes.fromNode.y);
-                ctx.lineTo(nodes.toNode.x, nodes.toNode.y);
+                this._drawEdgePath(ctx, nodes.fromNode.x, nodes.fromNode.y, nodes.toNode.x, nodes.toNode.y, curved);
                 ctx.stroke();
             }
         }
@@ -1457,14 +1576,14 @@ var CanvasRenderer = {
                 ctx.globalAlpha = 0.7;
 
                 ctx.beginPath();
-                ctx.moveTo(fromNode.x, fromNode.y);
-                ctx.lineTo(toNode.x, toNode.y);
+                this._drawEdgePath(ctx, fromNode.x, fromNode.y, toNode.x, toNode.y, curved);
                 ctx.stroke();
             }
         }
 
         // === PASS 4: Chain edges for hardPrereqs on selected node ===
-        if (this.selectedNode && this.selectedNode.hardPrereqs && this.selectedNode.hardPrereqs.length > 0) {
+        // LOD: Skip in MINIMAL and SIMPLE tiers (chains are expensive + low visibility)
+        if (this._lodTier === 'full' && this.selectedNode && this.selectedNode.hardPrereqs && this.selectedNode.hardPrereqs.length > 0) {
             var selNode = this.selectedNode;
 
             for (var li = 0; li < selNode.hardPrereqs.length; li++) {
@@ -1490,14 +1609,45 @@ var CanvasRenderer = {
                 // Chain-link parameters
                 var linkW = 5;       // Link width (along chain)
                 var linkH = 3.2;     // Link height (perpendicular)
-                var linkThick = 1.8; // Stroke thickness of each link
                 var linkSpacing = linkW * 1.15; // Center-to-center distance
                 var numLinks = Math.max(3, Math.round(dist / linkSpacing));
                 var angle = Math.atan2(dy, dx);
 
+                // Lazy-create chain link sprite (once, ~12x10px offscreen canvas)
+                if (!this._chainSprite) {
+                    var linkThick = 1.8;
+                    var pad = Math.ceil(linkThick) + 1;
+                    var sprW = Math.ceil(linkW + pad * 2); if (sprW % 2 !== 0) sprW++;
+                    var sprH = Math.ceil(linkH + pad * 2); if (sprH % 2 !== 0) sprH++;
+                    var sc = document.createElement('canvas'); sc.width = sprW; sc.height = sprH;
+                    var sctx = sc.getContext('2d');
+                    var scx = sprW / 2, scy = sprH / 2;
+                    var hw = linkW * 0.5, hh = linkH * 0.5, cr = Math.min(hw, hh) * 0.8;
+                    sctx.beginPath();
+                    sctx.moveTo(scx-hw+cr, scy-hh); sctx.lineTo(scx+hw-cr, scy-hh);
+                    sctx.arcTo(scx+hw, scy-hh, scx+hw, scy-hh+cr, cr); sctx.lineTo(scx+hw, scy+hh-cr);
+                    sctx.arcTo(scx+hw, scy+hh, scx+hw-cr, scy+hh, cr); sctx.lineTo(scx-hw+cr, scy+hh);
+                    sctx.arcTo(scx-hw, scy+hh, scx-hw, scy+hh-cr, cr); sctx.lineTo(scx-hw, scy-hh+cr);
+                    sctx.arcTo(scx-hw, scy-hh, scx-hw+cr, scy-hh, cr); sctx.closePath();
+                    sctx.fillStyle = 'rgba(130, 130, 140, 0.6)';
+                    sctx.strokeStyle = 'rgba(80, 80, 90, 0.9)';
+                    sctx.lineWidth = linkThick; sctx.fill(); sctx.stroke();
+                    var ihw = hw * 0.45, ihh = hh * 0.35, ir = Math.min(ihw, ihh) * 0.6;
+                    sctx.beginPath();
+                    sctx.moveTo(scx-ihw+ir, scy-ihh); sctx.lineTo(scx+ihw-ir, scy-ihh);
+                    sctx.arcTo(scx+ihw, scy-ihh, scx+ihw, scy-ihh+ir, ir); sctx.lineTo(scx+ihw, scy+ihh-ir);
+                    sctx.arcTo(scx+ihw, scy+ihh, scx+ihw-ir, scy+ihh, ir); sctx.lineTo(scx-ihw+ir, scy+ihh);
+                    sctx.arcTo(scx-ihw, scy+ihh, scx-ihw, scy+ihh-ir, ir); sctx.lineTo(scx-ihw, scy-ihh+ir);
+                    sctx.arcTo(scx-ihw, scy-ihh, scx-ihw+ir, scy-ihh, ir); sctx.closePath();
+                    sctx.fillStyle = 'rgba(20, 20, 30, 0.7)'; sctx.fill();
+                    this._chainSprite = sc;
+                }
+                var spr = this._chainSprite;
+                var sprHW = spr.width / 2, sprHH = spr.height / 2;
+
                 ctx.globalAlpha = 0.8;
 
-                // Draw interlocking chain links (alternating orientation)
+                // Draw chain links using pre-rendered sprite
                 for (var cl = 0; cl < numLinks; cl++) {
                     var t = (cl + 0.5) / numLinks;
                     var cx = fromNode.x + dx * t;
@@ -1506,55 +1656,8 @@ var CanvasRenderer = {
                     ctx.save();
                     ctx.translate(cx, cy);
                     ctx.rotate(angle);
-
-                    // Alternate: even links are horizontal (along chain), odd are rotated 90 degrees
-                    if (cl % 2 !== 0) {
-                        ctx.rotate(Math.PI / 2);
-                    }
-
-                    // Draw a rounded-rectangle chain link (pill shape)
-                    var hw = linkW * 0.5;
-                    var hh = linkH * 0.5;
-                    var r = Math.min(hw, hh) * 0.8; // corner radius
-
-                    ctx.beginPath();
-                    ctx.moveTo(-hw + r, -hh);
-                    ctx.lineTo(hw - r, -hh);
-                    ctx.arcTo(hw, -hh, hw, -hh + r, r);
-                    ctx.lineTo(hw, hh - r);
-                    ctx.arcTo(hw, hh, hw - r, hh, r);
-                    ctx.lineTo(-hw + r, hh);
-                    ctx.arcTo(-hw, hh, -hw, hh - r, r);
-                    ctx.lineTo(-hw, -hh + r);
-                    ctx.arcTo(-hw, -hh, -hw + r, -hh, r);
-                    ctx.closePath();
-
-                    // Gray fill + darker stroke = solid chain look
-                    ctx.fillStyle = 'rgba(130, 130, 140, 0.6)';
-                    ctx.strokeStyle = 'rgba(80, 80, 90, 0.9)';
-                    ctx.lineWidth = linkThick;
-                    ctx.fill();
-                    ctx.stroke();
-
-                    // Inner cutout (hollow center of each link)
-                    var ihw = hw * 0.45;
-                    var ihh = hh * 0.35;
-                    var ir = Math.min(ihw, ihh) * 0.6;
-                    ctx.beginPath();
-                    ctx.moveTo(-ihw + ir, -ihh);
-                    ctx.lineTo(ihw - ir, -ihh);
-                    ctx.arcTo(ihw, -ihh, ihw, -ihh + ir, ir);
-                    ctx.lineTo(ihw, ihh - ir);
-                    ctx.arcTo(ihw, ihh, ihw - ir, ihh, ir);
-                    ctx.lineTo(-ihw + ir, ihh);
-                    ctx.arcTo(-ihw, ihh, -ihw, ihh - ir, ir);
-                    ctx.lineTo(-ihw, -ihh + ir);
-                    ctx.arcTo(-ihw, -ihh, -ihw + ir, -ihh, ir);
-                    ctx.closePath();
-
-                    ctx.fillStyle = 'rgba(20, 20, 30, 0.7)';
-                    ctx.fill();
-
+                    if (cl % 2 !== 0) ctx.rotate(Math.PI / 2);
+                    ctx.drawImage(spr, -sprHW, -sprHH);
                     ctx.restore();
                 }
             }
@@ -1563,20 +1666,171 @@ var CanvasRenderer = {
         ctx.globalAlpha = 1.0;
     },
     
-    renderNodes: function(ctx, viewLeft, viewRight, viewTop, viewBottom) {
+    /**
+     * Minimal node rendering - batched fillRect dots grouped by school+state.
+     * ~15 style changes + N fillRect calls instead of 8-18 canvas API calls per node.
+     */
+    renderNodesMinimal: function(ctx, viewLeft, viewRight, viewTop, viewBottom) {
+        if (!this._nodeBuckets) return;
+
+        var isEditActive = typeof EditMode !== 'undefined' && EditMode.isActive;
+        var hasDiscovery = this._discoveryVisibleIds && !isEditActive;
+        var schoolVis = settings.schoolVisibility;
+
+        var bucketKeys = Object.keys(this._nodeBuckets);
+        for (var b = 0; b < bucketKeys.length; b++) {
+            var key = bucketKeys[b];
+            var parts = key.split('|');
+            var bucketSchool = parts[0];
+            var bucketState = parts[1];
+            var bucket = this._nodeBuckets[key];
+            if (bucket.length === 0) continue;
+
+            // Skip hidden schools
+            if (schoolVis && schoolVis[bucketSchool] === false) continue;
+
+            // Determine dot size and alpha by state
+            var dotSize, alpha;
+            if (bucketState === 'unlocked') {
+                dotSize = 4; alpha = 1.0;
+            } else if (bucketState === 'available' || bucketState === 'learning') {
+                dotSize = 3; alpha = 0.8;
+            } else {
+                dotSize = 2; alpha = 0.4;
+            }
+
+            // Set style once per bucket
+            var color = bucket[0]._cachedSchoolColor || this._getSchoolColor(bucketSchool);
+            ctx.fillStyle = color;
+            ctx.globalAlpha = alpha;
+
+            var halfDot = dotSize / 2;
+
+            for (var i = 0; i < bucket.length; i++) {
+                var node = bucket[i];
+
+                // Viewport culling
+                if (node.x < viewLeft || node.x > viewRight || node.y < viewTop || node.y > viewBottom) continue;
+
+                // Discovery visibility
+                if (hasDiscovery) {
+                    if (!this._discoveryVisibleIds.has(node.id) && !this._discoveryVisibleIds.has(node.formId)) continue;
+                }
+
+                ctx.fillRect(node.x - halfDot, node.y - halfDot, dotSize, dotSize);
+            }
+        }
+
+        // Render selected/hovered node as larger highlighted dot on top
+        var highlight = this.selectedNode || this.hoveredNode;
+        if (highlight) {
+            var hColor = highlight._cachedSchoolColor || this._getSchoolColor(highlight.school);
+            ctx.fillStyle = '#ffffff';
+            ctx.globalAlpha = 1.0;
+            ctx.fillRect(highlight.x - 5, highlight.y - 5, 10, 10);
+            ctx.fillStyle = hColor;
+            ctx.fillRect(highlight.x - 3, highlight.y - 3, 6, 6);
+        }
+
+        ctx.globalAlpha = 1.0;
+    },
+
+    /**
+     * Simple node rendering - shapes without rotation, lock overlays, or inner accents.
+     * Still uses Path2D + save/translate/scale/fill/stroke/restore but skips atan2/rotate.
+     */
+    renderNodesSimple: function(ctx, viewLeft, viewRight, viewTop, viewBottom) {
+        var isEditActive = typeof EditMode !== 'undefined' && EditMode.isActive;
+        var hasDiscovery = this._discoveryVisibleIds && !isEditActive;
+        var learningPathColor = this._learningPathColor || '#00ffff';
+
         for (var i = 0; i < this.nodes.length; i++) {
             var node = this.nodes[i];
-            
+
+            // Viewport culling
+            if (node.x < viewLeft || node.x > viewRight || node.y < viewTop || node.y > viewBottom) continue;
+
+            // Skip hidden schools
+            if (settings.schoolVisibility && settings.schoolVisibility[node.school] === false) continue;
+
+            // Discovery mode visibility
+            if (hasDiscovery) {
+                if (!this._discoveryVisibleIds.has(node.id) && !this._discoveryVisibleIds.has(node.formId)) continue;
+                if (node.state === 'locked') {
+                    // Simplified mystery node - just a dim dot
+                    var dimColor = node._cachedSchoolColor || this._getSchoolColor(node.school);
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillStyle = dimColor;
+                    ctx.fillRect(node.x - 3, node.y - 3, 6, 6);
+                    continue;
+                }
+            }
+
+            var schoolColor = node._cachedSchoolColor || this._getSchoolColor(node.school);
+            var isSelected = this.selectedNode && this.selectedNode.id === node.id;
+            var isHovered = this.hoveredNode && this.hoveredNode.id === node.id;
+            var path = this._getShapePath(node.school);
+            var isLearning = node.state === 'learning';
+
+            var size, fillColor, strokeColor, strokeWidth, alpha;
+
+            if (node.state === 'unlocked') {
+                size = 12; fillColor = schoolColor; strokeColor = schoolColor;
+                strokeWidth = 1.5; alpha = 1.0;
+            } else if (isLearning) {
+                size = 12; fillColor = learningPathColor; strokeColor = learningPathColor;
+                strokeWidth = 1.5; alpha = 1.0;
+            } else if (node.state === 'available') {
+                size = 9; fillColor = '#1a1a2e'; strokeColor = schoolColor;
+                strokeWidth = 1; alpha = 0.8;
+            } else {
+                size = 7; fillColor = '#1a1a2e'; strokeColor = schoolColor;
+                strokeWidth = 1; alpha = 0.4;
+            }
+
+            if (isSelected || isHovered) {
+                size += 1.5; strokeColor = '#fff'; strokeWidth = 1.5; alpha = 1.0;
+            }
+
+            ctx.save();
+            ctx.translate(node.x, node.y);
+            // NO rotation — skip atan2 + rotate (main LOD saving)
+            ctx.scale(size, size);
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = fillColor;
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = strokeWidth / size;
+            ctx.fill(path);
+            ctx.stroke(path);
+            ctx.restore();
+        }
+        ctx.globalAlpha = 1.0;
+    },
+
+    renderNodes: function(ctx, viewLeft, viewRight, viewTop, viewBottom) {
+        // LOD dispatch
+        if (this._lodTier === 'minimal') {
+            this.renderNodesMinimal(ctx, viewLeft, viewRight, viewTop, viewBottom);
+            return;
+        }
+        if (this._lodTier === 'simple') {
+            this.renderNodesSimple(ctx, viewLeft, viewRight, viewTop, viewBottom);
+            return;
+        }
+
+        for (var i = 0; i < this.nodes.length; i++) {
+            var node = this.nodes[i];
+
             // Viewport culling
             if (node.x < viewLeft || node.x > viewRight || node.y < viewTop || node.y > viewBottom) {
                 continue;
             }
-            
+
             // Skip hidden schools
             if (settings.schoolVisibility && settings.schoolVisibility[node.school] === false) {
                 continue;
             }
-            
+
             // Discovery mode visibility (disabled in edit mode - show everything)
             if (this._discoveryVisibleIds && !(typeof EditMode !== 'undefined' && EditMode.isActive)) {
                 if (!this._discoveryVisibleIds.has(node.id) && !this._discoveryVisibleIds.has(node.formId)) {
@@ -1589,7 +1843,7 @@ var CanvasRenderer = {
                     continue;
                 }
             }
-            
+
             this.renderNode(ctx, node);
         }
     },
@@ -1658,7 +1912,7 @@ var CanvasRenderer = {
     },
     
     renderNode: function(ctx, node) {
-        var schoolColor = this._getSchoolColor(node.school);
+        var schoolColor = node.themeColor || this._getSchoolColor(node.school);
         var isSelected = this.selectedNode && this.selectedNode.id === node.id;
         var isHovered = this.hoveredNode && this.hoveredNode.id === node.id;
         var path = this._getShapePath(node.school);
@@ -1929,18 +2183,27 @@ var CanvasRenderer = {
             return;
         }
         
-        // Use learning path color (cyan)
         var color = this._learningPathColor || '#00ffff';
-        
-        // Use learning path color (cyan)
-        var color = this._learningPathColor || '#00ffff';
-        
+
+        // Pre-compute segment lengths for animation (avoids sqrt per frame)
+        var segmentLengths = [];
+        var totalLength = 0;
+        for (var si = 1; si < path.length; si++) {
+            var sdx = path[si].x - path[si-1].x;
+            var sdy = path[si].y - path[si-1].y;
+            var slen = Math.sqrt(sdx * sdx + sdy * sdy);
+            segmentLengths.push(slen);
+            totalLength += slen;
+        }
+
         this._learningPath = {
             nodeId: nodeId,
             path: path,
             progress: 0,
             startTime: performance.now(),
-            color: color
+            color: color,
+            segmentLengths: segmentLengths,
+            totalLength: totalLength
         };
 
         // Store which nodes are in THIS specific animating path
@@ -1975,18 +2238,11 @@ var CanvasRenderer = {
         
         var path = lp.path;
         if (path.length < 2) return;
-        
-        // Calculate total path length
-        var totalLength = 0;
-        var segmentLengths = [];
-        for (var i = 1; i < path.length; i++) {
-            var dx = path[i].x - path[i-1].x;
-            var dy = path[i].y - path[i-1].y;
-            var len = Math.sqrt(dx * dx + dy * dy);
-            segmentLengths.push(len);
-            totalLength += len;
-        }
-        
+
+        // Use pre-computed segment lengths (cached in triggerLearningAnimation)
+        var segmentLengths = lp.segmentLengths;
+        var totalLength = lp.totalLength;
+
         // How far along the path we are
         var targetLength = totalLength * easedProgress;
         
@@ -2155,6 +2411,70 @@ var CanvasRenderer = {
                         Math.round(rgb.b * 0.4) + ')';
     },
     
+    // =========================================================================
+    // PARTICLE CORE (replaces center text when enabled)
+    // =========================================================================
+
+    _initParticleCore: function() {
+        this._coreParticles = [];
+        var count = 35;
+        for (var i = 0; i < count; i++) {
+            var r = Math.random() * 8;
+            var angle = Math.random() * Math.PI * 2;
+            this._coreParticles.push({
+                baseX: Math.cos(angle) * r,
+                baseY: Math.sin(angle) * r,
+                size: 1 + Math.random() * 1.5,
+                flashPhase: Math.random() * Math.PI * 2,
+                flashSpeed: 0.08 + Math.random() * 0.15,
+                jitterAmount: 1.5 + Math.random() * 3
+            });
+        }
+        this._coreFrame = 0;
+        this._coreFlashBoost = 0;
+    },
+
+    _renderParticleCore: function(ctx, pulse) {
+        if (!this._coreParticles) this._initParticleCore();
+
+        this._coreFrame++;
+
+        // Decay heartbeat boost
+        if (this._coreFlashBoost > 0.01) {
+            this._coreFlashBoost *= 0.9;
+        } else {
+            this._coreFlashBoost = 0;
+        }
+
+        var boost = this._coreFlashBoost || 0;
+        var jitterMult = 1 + boost * 3;    // Heartbeat amplifies jitter
+        var speedMult = 1 + boost * 2;     // Heartbeat speeds up flash
+        var frame = this._coreFrame;
+
+        for (var i = 0; i < this._coreParticles.length; i++) {
+            var p = this._coreParticles[i];
+
+            // Vibrate position
+            var jx = p.jitterAmount * jitterMult * (Math.random() - 0.5);
+            var jy = p.jitterAmount * jitterMult * (Math.random() - 0.5);
+            var x = p.baseX + jx;
+            var y = p.baseY + jy;
+
+            // Flash between black and white
+            var flash = Math.sin(frame * p.flashSpeed * speedMult + p.flashPhase);
+            var brightness = Math.round((flash * 0.5 + 0.5) * 255);
+            var alpha = 0.6 + Math.abs(flash) * 0.4;
+
+            // Slight size variation
+            var size = p.size * (0.8 + Math.random() * 0.4);
+
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(' + brightness + ',' + brightness + ',' + brightness + ',' + alpha.toFixed(2) + ')';
+            ctx.fill();
+        }
+    },
+
     parseColor: function(color) {
         if (!color) return null;
         if (color.startsWith('#')) {
@@ -2306,9 +2626,13 @@ var CanvasRenderer = {
         this._nodeByFormId = new Map();
         this._nodeGrid = {};
         this._discoveryVisibleIds = null;
+        this._nodeBuckets = null;
+        this._cachedDividerGradients = null;
+        this._dividerCacheKey = '';
+        this._activeDpr = 0;
         this.selectedNode = null;
         this.hoveredNode = null;
-        
+
         if (this.ctx && this.canvas) {
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -2324,6 +2648,7 @@ var CanvasRenderer = {
         // Rebuild discovery visibility if in discovery mode
         this._buildDiscoveryVisibility();
         this._buildLearningPaths();
+        this._buildNodeBuckets();
         this._needsRender = true;
     },
     
@@ -2463,29 +2788,41 @@ var CanvasRenderer = {
             var gd = (state.treeData && state.treeData.globe) || { x: 0, y: 0 };
             var rootNode = self._nodeMap.get(pathNodeIds[0]);
             if (rootNode) {
+                var sdx = rootNode.x - gd.x, sdy = rootNode.y - gd.y;
                 segments.push({
                     from: { x: gd.x, y: gd.y },
-                    to: { x: rootNode.x, y: rootNode.y }
+                    to: { x: rootNode.x, y: rootNode.y },
+                    length: Math.sqrt(sdx * sdx + sdy * sdy)
                 });
             }
-            
+
             // Subsequent segments: node to node
             for (var i = 0; i < pathNodeIds.length - 1; i++) {
                 var fromNode = self._nodeMap.get(pathNodeIds[i]);
                 var toNode = self._nodeMap.get(pathNodeIds[i + 1]);
                 if (fromNode && toNode) {
+                    var sdx2 = toNode.x - fromNode.x, sdy2 = toNode.y - fromNode.y;
                     segments.push({
                         from: { x: fromNode.x, y: fromNode.y },
-                        to: { x: toNode.x, y: toNode.y }
+                        to: { x: toNode.x, y: toNode.y },
+                        length: Math.sqrt(sdx2 * sdx2 + sdy2 * sdy2)
                     });
                 }
             }
-            
+
             if (segments.length > 0) {
+                // Pre-compute segmentLengths array and totalLength for pulse animation
+                var segLengths = [];
+                var totalLen = 0;
+                for (var si = 0; si < segments.length; si++) {
+                    segLengths.push(segments[si].length);
+                    totalLen += segments[si].length;
+                }
                 self._learningPathSegments.push({
                     learningNodeId: learningId,
                     segments: segments,
-                    totalLength: self._calculatePathLength(segments)
+                    segmentLengths: segLengths,
+                    totalLength: totalLen
                 });
             }
         });
@@ -2563,8 +2900,8 @@ var CanvasRenderer = {
             
             if (!pathData) continue;
             
-            // Find position along path
-            var pos = this._getPositionAlongPath(pathData.segments, pulse.progress);
+            // Find position along path (use cached segment lengths)
+            var pos = this._getPositionAlongPath(pathData.segments, pulse.progress, pathData.segmentLengths, pathData.totalLength);
             if (!pos) continue;
             
             // Draw glowing pulse
@@ -2592,30 +2929,36 @@ var CanvasRenderer = {
     /**
      * Get x,y position along a path given progress (0-1)
      */
-    _getPositionAlongPath: function(segments, progress) {
+    _getPositionAlongPath: function(segments, progress, cachedSegLengths, cachedTotalLength) {
         if (!segments || segments.length === 0) return null;
-        
-        // Calculate total length
-        var totalLength = 0;
-        var segmentLengths = [];
-        for (var i = 0; i < segments.length; i++) {
-            var seg = segments[i];
-            var dx = seg.to.x - seg.from.x;
-            var dy = seg.to.y - seg.from.y;
-            var len = Math.sqrt(dx * dx + dy * dy);
-            segmentLengths.push(len);
-            totalLength += len;
+
+        // Use pre-cached lengths if available, else compute
+        var totalLength, segmentLengths;
+        if (cachedSegLengths && cachedTotalLength > 0) {
+            segmentLengths = cachedSegLengths;
+            totalLength = cachedTotalLength;
+        } else {
+            totalLength = 0;
+            segmentLengths = [];
+            for (var i = 0; i < segments.length; i++) {
+                var seg = segments[i];
+                var len = seg.length !== undefined ? seg.length : Math.sqrt(
+                    (seg.to.x - seg.from.x) * (seg.to.x - seg.from.x) +
+                    (seg.to.y - seg.from.y) * (seg.to.y - seg.from.y)
+                );
+                segmentLengths.push(len);
+                totalLength += len;
+            }
         }
-        
+
         // Find position
         var targetDist = progress * totalLength;
         var distSoFar = 0;
-        
+
         for (var i = 0; i < segments.length; i++) {
             var segLen = segmentLengths[i];
-            
+
             if (distSoFar + segLen >= targetDist) {
-                // Position is in this segment
                 var segProgress = (targetDist - distSoFar) / segLen;
                 var seg = segments[i];
                 return {
@@ -2623,10 +2966,10 @@ var CanvasRenderer = {
                     y: seg.from.y + (seg.to.y - seg.from.y) * segProgress
                 };
             }
-            
+
             distSoFar += segLen;
         }
-        
+
         // Return end position
         var lastSeg = segments[segments.length - 1];
         return { x: lastSeg.to.x, y: lastSeg.to.y };
