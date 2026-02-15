@@ -8,7 +8,68 @@ Each spell is assigned to its best-matching theme, creating
 logical groupings like "fire spells", "flesh spells", etc.
 """
 
-from thefuzz import fuzz, process
+try:
+    from thefuzz import fuzz, process
+    HAS_FUZZY = True
+except ImportError:
+    HAS_FUZZY = False
+    process = None
+    # Pure-Python fallback using difflib (what thefuzz wraps internally)
+    from difflib import SequenceMatcher as _SM
+
+    class _FallbackFuzz:
+        """Minimal reimplementation of thefuzz.fuzz using stdlib difflib."""
+
+        @staticmethod
+        def ratio(s1, s2):
+            if not s1 or not s2:
+                return 0
+            return int(_SM(None, s1, s2).ratio() * 100)
+
+        @staticmethod
+        def partial_ratio(s1, s2):
+            if not s1 or not s2:
+                return 0
+            shorter, longer = (s1, s2) if len(s1) <= len(s2) else (s2, s1)
+            m = _SM(None, shorter, longer)
+            blocks = m.get_matching_blocks()
+            best = 0
+            for block in blocks:
+                long_start = max(0, block.b - block.a)
+                long_end = long_start + len(shorter)
+                long_substr = longer[long_start:long_end]
+                score = _SM(None, shorter, long_substr).ratio()
+                best = max(best, score)
+            return int(best * 100)
+
+        @staticmethod
+        def token_set_ratio(s1, s2):
+            if not s1 or not s2:
+                return 0
+            tokens1 = set(s1.lower().split())
+            tokens2 = set(s2.lower().split())
+            intersection = tokens1 & tokens2
+            sorted_inter = ' '.join(sorted(intersection))
+            combined1 = (sorted_inter + ' ' + ' '.join(sorted(tokens1 - intersection))).strip()
+            combined2 = (sorted_inter + ' ' + ' '.join(sorted(tokens2 - intersection))).strip()
+            candidates = [
+                _SM(None, sorted_inter, sorted_inter).ratio() if sorted_inter else 0,
+                _SM(None, sorted_inter, combined1).ratio() if sorted_inter else 0,
+                _SM(None, sorted_inter, combined2).ratio() if sorted_inter else 0,
+                _SM(None, combined1, combined2).ratio(),
+            ]
+            return int(max(candidates) * 100)
+
+        @staticmethod
+        def token_sort_ratio(s1, s2):
+            if not s1 or not s2:
+                return 0
+            sorted1 = ' '.join(sorted(s1.lower().split()))
+            sorted2 = ' '.join(sorted(s2.lower().split()))
+            return int(_SM(None, sorted1, sorted2).ratio() * 100)
+
+    fuzz = _FallbackFuzz()
+
 from typing import List, Dict, Any, Tuple, Optional
 from collections import defaultdict
 
