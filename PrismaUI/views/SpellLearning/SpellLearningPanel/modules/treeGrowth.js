@@ -581,8 +581,7 @@ var TreeGrowth = {
     updateBuildButton: function() {
         var buildBtn = document.getElementById('tgBuildBtn');
         if (!buildBtn) return;
-
-        if (this._builderReady && this._hasSpells && !this._treeBuilt) {
+        if (this._hasSpells && !this._treeBuilt) {
             buildBtn.disabled = false;
         } else {
             buildBtn.disabled = true;

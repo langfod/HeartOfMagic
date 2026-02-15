@@ -158,9 +158,6 @@ TreeBuilder::BuildResult TreeBuilder::BuildClassic(
     auto themes = DiscoverThemesPerSchool(spells, config.topThemesPerSchool);
     themes = MergeWithHints(themes, config.topThemesPerSchool + 4);
 
-    // Compute similarity matrix
-    auto sims = ComputeSimilarityMatrix(spells);
-
     // Build each school's tree
     json treeData;
     treeData["version"] = "1.0";
@@ -168,6 +165,9 @@ TreeBuilder::BuildResult TreeBuilder::BuildClassic(
 
     for (auto& [schoolName, schoolSpellList] : schoolSpells) {
         if (schoolSpellList.empty()) continue;
+
+        // Compute per-school similarity matrix (avoids wasted cross-school pairs)
+        auto sims = ComputeSimilarityMatrix(schoolSpellList);
 
         auto schoolThemes = themes.contains(schoolName) ? themes[schoolName] : std::vector<std::string>{};
 

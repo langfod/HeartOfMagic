@@ -1,6 +1,7 @@
 #include "TreeNLP.h"
 
 #include <rapidfuzz/distance/Levenshtein.hpp>
+#include <rapidfuzz/fuzz.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -281,21 +282,26 @@ float TreeNLP::CharNgramSimilarity(const std::string& a, const std::string& b, i
         return 0.0f;
     }
 
-    // Generate n-gram sets
-    std::unordered_set<std::string> gramsA, gramsB;
-    for (int i = 0; i <= static_cast<int>(la.size()) - n; ++i) {
-        gramsA.insert(la.substr(i, n));
-    }
-    for (int i = 0; i <= static_cast<int>(lb.size()) - n; ++i) {
-        gramsB.insert(lb.substr(i, n));
-    }
+    // Pack n-gram bytes into uint32_t to avoid string heap allocations
+    auto packNgram = [](const char* s, int len) -> uint32_t {
+        uint32_t h = 0;
+        for (int i = 0; i < len; ++i)
+            h = (h << 8) | static_cast<uint8_t>(s[i]);
+        return h;
+    };
+
+    // Generate n-gram sets using packed integers
+    std::unordered_set<uint32_t> gramsA, gramsB;
+    for (int i = 0; i <= static_cast<int>(la.size()) - n; ++i)
+        gramsA.insert(packNgram(la.data() + i, n));
+    for (int i = 0; i <= static_cast<int>(lb.size()) - n; ++i)
+        gramsB.insert(packNgram(lb.data() + i, n));
 
     // Jaccard similarity: |intersection| / |union|
     int intersection = 0;
-    for (const auto& g : gramsA) {
-        if (gramsB.contains(g)) {
-            intersection++;
-        }
+    for (auto g : gramsA) {
+        if (gramsB.contains(g))
+            ++intersection;
     }
 
     int unionSize = static_cast<int>(gramsA.size() + gramsB.size()) - intersection;
@@ -316,98 +322,26 @@ int TreeNLP::FuzzyRatio(const std::string& a, const std::string& b)
     if (a.empty() && b.empty()) return 100;
     if (a.empty() || b.empty()) return 0;
 
-    auto la = ToLower(a);
-    auto lb = ToLower(b);
-
-    int dist = LevenshteinDistance(la, lb);
-    int maxLen = static_cast<int>(std::max(la.size(), lb.size()));
-
     return static_cast<int>(std::round(
-        (1.0f - static_cast<float>(dist) / static_cast<float>(maxLen)) * 100.0f));
+        rapidfuzz::fuzz::ratio(ToLower(a), ToLower(b))));
 }
 
 int TreeNLP::FuzzyPartialRatio(const std::string& shorter, const std::string& longer)
 {
-    auto ls = ToLower(shorter);
-    auto ll = ToLower(longer);
+    if (shorter.empty() || longer.empty()) return 0;
 
-    // Ensure ls is the shorter string
-    if (ls.size() > ll.size()) {
-        std::swap(ls, ll);
-    }
-
-    if (ls.empty()) return 0;
-    if (ls.size() == ll.size()) return FuzzyRatio(ls, ll);
-
-    int bestScore = 0;
-    int windowLen = static_cast<int>(ls.size());
-
-    for (int i = 0; i <= static_cast<int>(ll.size()) - windowLen; ++i) {
-        std::string sub = ll.substr(i, windowLen);
-        int dist = LevenshteinDistance(ls, sub);
-        int score = static_cast<int>(std::round(
-            (1.0f - static_cast<float>(dist) / static_cast<float>(windowLen)) * 100.0f));
-        bestScore = std::max(bestScore, score);
-
-        // Early exit on perfect match
-        if (bestScore == 100) return 100;
-    }
-
-    return bestScore;
+    // rapidfuzz handles shorter/longer swap internally
+    return static_cast<int>(std::round(
+        rapidfuzz::fuzz::partial_ratio(ToLower(shorter), ToLower(longer))));
 }
 
 int TreeNLP::FuzzyTokenSetRatio(const std::string& a, const std::string& b)
 {
-    auto tokensA = Tokenize(a);
-    auto tokensB = Tokenize(b);
+    if (a.empty() && b.empty()) return 100;
+    if (a.empty() || b.empty()) return 0;
 
-    if (tokensA.empty() && tokensB.empty()) return 100;
-    if (tokensA.empty() || tokensB.empty()) return 0;
-
-    // Compute token sets
-    std::set<std::string> setA(tokensA.begin(), tokensA.end());
-    std::set<std::string> setB(tokensB.begin(), tokensB.end());
-
-    // Intersection
-    std::set<std::string> intersection;
-    std::set_intersection(setA.begin(), setA.end(), setB.begin(), setB.end(),
-        std::inserter(intersection, intersection.begin()));
-
-    // Remainders
-    std::set<std::string> remainderA, remainderB;
-    std::set_difference(setA.begin(), setA.end(), intersection.begin(), intersection.end(),
-        std::inserter(remainderA, remainderA.begin()));
-    std::set_difference(setB.begin(), setB.end(), intersection.begin(), intersection.end(),
-        std::inserter(remainderB, remainderB.begin()));
-
-    // Build sorted strings
-    auto joinSorted = [](const std::set<std::string>& s) {
-        std::string result;
-        for (const auto& w : s) {
-            if (!result.empty()) result += ' ';
-            result += w;
-        }
-        return result;
-    };
-
-    std::string intersectStr = joinSorted(intersection);
-    std::string combinedA = intersectStr;
-    if (!remainderA.empty()) {
-        if (!combinedA.empty()) combinedA += ' ';
-        combinedA += joinSorted(remainderA);
-    }
-    std::string combinedB = intersectStr;
-    if (!remainderB.empty()) {
-        if (!combinedB.empty()) combinedB += ' ';
-        combinedB += joinSorted(remainderB);
-    }
-
-    // Return max of three comparisons (matches thefuzz behavior)
-    int r1 = FuzzyRatio(intersectStr, combinedA);
-    int r2 = FuzzyRatio(intersectStr, combinedB);
-    int r3 = FuzzyRatio(combinedA, combinedB);
-
-    return std::max({r1, r2, r3});
+    return static_cast<int>(std::round(
+        rapidfuzz::fuzz::token_set_ratio(a, b)));
 }
 
 // =============================================================================
@@ -431,14 +365,19 @@ int TreeNLP::CalculateThemeScore(const json& spellData, const std::string& theme
         substringBonus = 30;
     }
 
+    // Cache theme pattern for reuse across partial_ratio calls
+    rapidfuzz::fuzz::CachedPartialRatio<char> cachedTheme(themeLower);
+
     // Strategy 2: Partial ratio (best substring match)
-    int partialScore = FuzzyPartialRatio(themeLower, text);
+    int partialScore = static_cast<int>(std::round(cachedTheme.similarity(text)));
 
     // Strategy 3: Token set ratio (handles word reordering)
-    int tokenScore = FuzzyTokenSetRatio(themeLower, text);
+    int tokenScore = static_cast<int>(std::round(
+        rapidfuzz::fuzz::token_set_ratio(themeLower, text)));
 
     // Strategy 4: Direct name comparison (weighted 1.2x)
-    float nameScore = static_cast<float>(FuzzyPartialRatio(themeLower, spellName)) * 1.2f;
+    float nameScore = static_cast<float>(
+        static_cast<int>(std::round(cachedTheme.similarity(spellName)))) * 1.2f;
 
     // Combine scores (weighted average)
     float combined =

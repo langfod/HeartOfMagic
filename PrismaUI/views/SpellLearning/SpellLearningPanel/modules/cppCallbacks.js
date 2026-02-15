@@ -88,7 +88,7 @@ window.onPythonAddonStatus = function(statusStr) {
 };
 
 window.updateSpellData = function(jsonStr) {
-    console.log('[SpellLearning] Received spell data, length:', jsonStr.length);
+    console.log('[SpellLearning] Received spell data, length:' + jsonStr.length);
 
     // Check if this is a tome-only scan response (used for filtering, not main data)
     try {
@@ -112,7 +112,9 @@ window.updateSpellData = function(jsonStr) {
             }
             return;
         }
-    } catch (e) { /* continue to normal processing */ }
+    } catch (e) {
+        console.error('[SpellLearning] Failed to parse JSON for tome scan check:', e);
+        /* continue to normal processing */ }
 
     var scanSuccess = false;
     try {

@@ -120,7 +120,6 @@ TreeBuilder::BuildResult TreeBuilder::BuildTree(
 
     auto themesMap = DiscoverThemesPerSchool(spells, config.topThemesPerSchool);
     themesMap = MergeWithHints(themesMap, config.topThemesPerSchool + 4);
-    auto globalSims = ComputeSimilarityMatrix(spells);
 
     json treeData;
     treeData["version"] = "1.0";
@@ -128,6 +127,9 @@ TreeBuilder::BuildResult TreeBuilder::BuildTree(
 
     for (auto& [schoolName, schoolSpellList] : schoolSpells) {
         if (schoolSpellList.empty()) continue;
+
+        // Compute per-school similarity matrix (avoids wasted cross-school pairs)
+        auto sims = ComputeSimilarityMatrix(schoolSpellList);
 
         auto schoolThemes = themesMap.contains(schoolName)
             ? themesMap[schoolName] : std::vector<std::string>{};
@@ -253,7 +255,7 @@ TreeBuilder::BuildResult TreeBuilder::BuildTree(
                         else if (tierDiff == 0) score += 10.0f;
 
                         // NLP similarity
-                        score += globalSims.GetTextSim(node.formId, cand->formId) * 60.0f;
+                        score += sims.GetTextSim(node.formId, cand->formId) * 60.0f;
 
                         // Capacity penalty
                         float childRatio = static_cast<float>(cand->children.size()) / maxChildren;
@@ -311,7 +313,7 @@ TreeBuilder::BuildResult TreeBuilder::BuildTree(
                     int tierDiff = tierDepth - cand->depth;
                     if (tierDiff == 1) score += 50.0f;
                     else if (tierDiff == 0) score += 10.0f;
-                    score += globalSims.GetTextSim(node.formId, cand->formId) * 60.0f;
+                    score += sims.GetTextSim(node.formId, cand->formId) * 60.0f;
                     score -= static_cast<float>(cand->children.size()) / maxChildren * 30.0f;
                     if (score > bestScore) { bestScore = score; bestParent = cand; }
                 }
@@ -390,7 +392,7 @@ TreeBuilder::BuildResult TreeBuilder::BuildTree(
                 if (IsDescendant(candId, fid, nodes)) continue;
 
                 float convScore = 0.0f;
-                convScore += globalSims.GetTextSim(fid, candId) * 40.0f;
+                convScore += sims.GetTextSim(fid, candId) * 40.0f;
                 int depthDiff = std::abs(node.depth - cand.depth);
                 convScore += std::max(0.0f, 20.0f - depthDiff * 10.0f);
                 if (cand.theme != node.theme) convScore += 10.0f;

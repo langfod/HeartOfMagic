@@ -81,7 +81,7 @@ bool UIManager::Initialize()
     // =========================================================================
     // Create Single Panel View (contains Scanner, Tree Rules, and Spell Tree tabs)
     // =========================================================================
-    m_view = m_prismaUI->CreateView("SpellLearning/SpellLearningPanel/index.html", OnDomReady);
+    m_view = m_prismaUI->CreateViewAccelerated("SpellLearning/SpellLearningPanel/index.html", OnDomReady);
 
     if (!m_prismaUI->IsValid(m_view)) {
         logger::error("UIManager: Failed to create Panel view");
@@ -2768,7 +2768,7 @@ void UIManager::OnProceduralPythonGenerate(const char* argument)
                     response["success"] = true;
                     response["treeData"] = result.treeData.dump();
                     response["elapsed"] = result.elapsedMs / 1000.0;
-                    logger::info("UIManager: {} completed in {:.2f}s (C++ native)", command, result.elapsedMs / 1000.0);
+                    logger::info("UIManager: {} completed in {:.2f}s Data size: {} bytes (C++ native)", command, result.elapsedMs / 1000.0, result.treeData.dump().size());
                 } else {
                     response["success"] = false;
                     response["error"] = result.error;

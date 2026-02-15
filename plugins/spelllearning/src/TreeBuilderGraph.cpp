@@ -242,11 +242,15 @@ TreeBuilder::BuildResult TreeBuilder::BuildGraph(
 
         // Assign themes
         if (!schoolThemes.empty()) {
+            // Build formId -> index lookup to avoid O(n^2) linear search
+            std::unordered_map<std::string, size_t> spellIndex;
+            for (size_t idx = 0; idx < schoolSpellList.size(); ++idx)
+                spellIndex[schoolSpellList[idx].value("formId", std::string(""))] = idx;
+
             for (auto& [fid, node] : nodes) {
-                auto spellIt = std::find_if(schoolSpellList.begin(), schoolSpellList.end(),
-                    [&fid](const json& s) { return s.value("formId", std::string("")) == fid; });
-                if (spellIt != schoolSpellList.end()) {
-                    auto [theme, score] = GetSpellPrimaryTheme(*spellIt, schoolThemes);
+                auto idxIt = spellIndex.find(fid);
+                if (idxIt != spellIndex.end()) {
+                    auto [theme, score] = GetSpellPrimaryTheme(schoolSpellList[idxIt->second], schoolThemes);
                     node.theme = (score > 30) ? theme : "";
                 }
             }

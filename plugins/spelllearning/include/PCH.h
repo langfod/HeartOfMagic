@@ -1,20 +1,8 @@
 #pragma once
 
-// Suppress winsock v1 so windows.h (pulled in by CommonLib) won't define
-// winsock1 symbols.  This lets us safely include <winsock2.h> AFTER CommonLib.
-#ifndef _WINSOCKAPI_
-#define _WINSOCKAPI_
-#endif
-
-#include "RE/Skyrim.h"
-#include "SKSE/SKSE.h"
-
-// Windows API for encoding conversion (MultiByteToWideChar,
-// WideCharToMultiByte)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <Windows.h>
 
 #include <algorithm>
 #include <chrono>
@@ -35,6 +23,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#include "RE/Skyrim.h"
+#include "SKSE/SKSE.h"
 
 using namespace std::literals;
 namespace logger = SKSE::log;

@@ -1,6 +1,10 @@
 # ============================================================================
 # PROJECT CONFIGURATION
 # ============================================================================
+
+# OpenMP support for parallel pairwise similarity loops
+string(APPEND CMAKE_CXX_FLAGS " /openmp")
+
 project(
     SpellLearning
     VERSION 2.3.0
@@ -47,6 +51,7 @@ add_commonlibsse_plugin(${PROJECT_NAME}
         src/TreeBuilderThematic.cpp
         src/TreeBuilderGraph.cpp
         src/TreeBuilderOracle.cpp
+        src/SimdKernels.cpp
 )
 
 # Include directories
@@ -64,7 +69,15 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     spdlog::spdlog
     nlohmann_json::nlohmann_json
     xbyak::xbyak
-    miniz::miniz
+    CURL::libcurl
+    hwy::hwy
+    hwy::hwy_contrib
+)
+
+# Highway foreach_target dispatch must not be merged into unity build groups
+set_source_files_properties(src/SimdKernels.cpp PROPERTIES
+    SKIP_UNITY_BUILD_INCLUSION ON
+    SKIP_PRECOMPILE_HEADERS ON
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES

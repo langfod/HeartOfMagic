@@ -1,4 +1,7 @@
 #include "TreeBuilderInternal.h"
+#include "SimdKernels.h"
+
+#include <hwy/aligned_allocator.h>
 
 #include <algorithm>
 #include <chrono>
@@ -78,46 +81,54 @@ void TreeBuilder::UnlinkNodes(TreeNode& parent, TreeNode& child)
 }
 
 // =============================================================================
-// SIMILARITY MATRIX
+// SIMILARITY MATRIX — Dense flat-array storage
 // =============================================================================
 
 float TreeBuilder::SimilarityMatrix::GetTextSim(const std::string& a, const std::string& b) const
 {
-    auto it = textSims.find(a + ":" + b);
-    return (it != textSims.end()) ? it->second : 0.0f;
+    auto ia = formIdToIndex.find(a);
+    auto ib = formIdToIndex.find(b);
+    if (ia == formIdToIndex.end() || ib == formIdToIndex.end()) return 0.0f;
+    return textSims[ia->second * n + ib->second];
 }
 
 float TreeBuilder::SimilarityMatrix::GetNameSim(const std::string& a, const std::string& b) const
 {
-    auto it = nameSims.find(a + ":" + b);
-    return (it != nameSims.end()) ? it->second : 0.0f;
+    auto ia = formIdToIndex.find(a);
+    auto ib = formIdToIndex.find(b);
+    if (ia == formIdToIndex.end() || ib == formIdToIndex.end()) return 0.0f;
+    return nameSims[ia->second * n + ib->second];
 }
 
 float TreeBuilder::SimilarityMatrix::GetEffectSim(const std::string& a, const std::string& b) const
 {
-    auto it = effectSims.find(a + ":" + b);
-    return (it != effectSims.end()) ? it->second : 0.0f;
+    auto ia = formIdToIndex.find(a);
+    auto ib = formIdToIndex.find(b);
+    if (ia == formIdToIndex.end() || ib == formIdToIndex.end()) return 0.0f;
+    return effectSims[ia->second * n + ib->second];
 }
 
 TreeBuilder::SimilarityMatrix TreeBuilder::ComputeSimilarityMatrix(const std::vector<json>& spells)
 {
     SimilarityMatrix matrix;
 
-    // Collect form IDs, names, and effect names
+    // Collect form IDs, names, and effect names (indexed by position)
     std::vector<std::string> formIds;
-    std::unordered_map<std::string, std::string> spellNames;
-    std::unordered_map<std::string, std::vector<std::string>> spellEffectNames;
+    std::vector<std::string> names;
+    std::vector<std::vector<std::string>> effectNames;
     std::vector<std::vector<std::string>> tokenizedDocs;
 
     for (const auto& s : spells) {
         auto fid = s.value("formId", std::string(""));
         if (fid.empty()) continue;
 
+        size_t idx = formIds.size();
         formIds.push_back(fid);
-        spellNames[fid] = s.value("name", std::string(""));
+        matrix.formIdToIndex[fid] = idx;
+        names.push_back(s.value("name", std::string("")));
 
         // Extract effect names
-        std::vector<std::string> effectNames;
+        std::vector<std::string> effs;
         if (s.contains("effects") && s["effects"].is_array()) {
             for (const auto& e : s["effects"]) {
                 std::string ename;
@@ -125,25 +136,24 @@ TreeBuilder::SimilarityMatrix TreeBuilder::ComputeSimilarityMatrix(const std::ve
                     ename = e["name"].get<std::string>();
                 else if (e.is_string())
                     ename = e.get<std::string>();
-                if (!ename.empty()) effectNames.push_back(ename);
+                if (!ename.empty()) effs.push_back(ename);
             }
         }
         if (s.contains("effectNames") && s["effectNames"].is_array()) {
             for (const auto& e : s["effectNames"]) {
                 if (e.is_string()) {
                     auto en = e.get<std::string>();
-                    if (!en.empty()) effectNames.push_back(en);
+                    if (!en.empty()) effs.push_back(en);
                 }
             }
         }
-        spellEffectNames[fid] = effectNames;
+        effectNames.push_back(std::move(effs));
 
         // Build text for TF-IDF
         json spellForText;
         spellForText["name"] = s.value("name", std::string(""));
         spellForText["desc"] = s.contains("description") ? s.value("description", std::string(""))
                                                           : s.value("desc", std::string(""));
-        // Flatten effects to strings
         json effectsFlat = json::array();
         if (s.contains("effects") && s["effects"].is_array()) {
             for (const auto& e : s["effects"]) {
@@ -157,59 +167,199 @@ TreeBuilder::SimilarityMatrix TreeBuilder::ComputeSimilarityMatrix(const std::ve
         tokenizedDocs.push_back(TreeNLP::Tokenize(text));
     }
 
-    // Compute TF-IDF vectors
-    auto tfidfVectors = TreeNLP::ComputeTfIdf(tokenizedDocs);
     auto n = formIds.size();
+    matrix.n = n;
 
-    // Pairwise text similarity
-    for (size_t i = 0; i < n; ++i) {
-        for (size_t j = i + 1; j < n; ++j) {
-            float sim = TreeNLP::CosineSimilarity(tfidfVectors[i], tfidfVectors[j]);
-            if (sim > 0.05f) {
-                auto keyAB = formIds[i] + ":" + formIds[j];
-                auto keyBA = formIds[j] + ":" + formIds[i];
-                matrix.textSims[keyAB] = sim;
-                matrix.textSims[keyBA] = sim;
+    // Allocate flat similarity arrays (zero-initialized)
+    matrix.textSims.assign(n * n, 0.0f);
+    matrix.nameSims.assign(n * n, 0.0f);
+    matrix.effectSims.assign(n * n, 0.0f);
+
+    // =========================================================================
+    // Text similarity: Dense TF-IDF + Highway SIMD dot product
+    // =========================================================================
+    {
+        // Build vocabulary index and document frequencies
+        std::unordered_map<std::string, uint32_t> vocab;
+        std::unordered_map<std::string, int> df;
+
+        for (const auto& doc : tokenizedDocs) {
+            std::unordered_set<std::string> unique(doc.begin(), doc.end());
+            for (const auto& token : unique) {
+                if (!vocab.contains(token))
+                    vocab[token] = static_cast<uint32_t>(vocab.size());
+                df[token]++;
+            }
+        }
+
+        const size_t vocabSize = vocab.size();
+        const size_t paddedVocabSize = SimdKernels::PadToSimd(vocabSize);
+        const auto nDocsF = static_cast<float>(n);
+
+        // Compute IDF weights
+        std::vector<float> idf(vocabSize);
+        for (const auto& [token, idx] : vocab) {
+            idf[idx] = std::log((nDocsF + 1.0f) / (static_cast<float>(df[token]) + 1.0f)) + 1.0f;
+        }
+
+        // Build dense TF-IDF matrix (aligned, zero-padded, L2-normalized rows)
+        auto denseMatrix = hwy::AllocateAligned<float>(n * paddedVocabSize);
+        HWY_ASSERT(denseMatrix);
+        std::memset(denseMatrix.get(), 0, n * paddedVocabSize * sizeof(float));
+
+        for (size_t d = 0; d < n; ++d) {
+            if (tokenizedDocs[d].empty()) continue;
+
+            float* row = denseMatrix.get() + d * paddedVocabSize;
+
+            // Term frequency
+            std::unordered_map<std::string, int> tf;
+            for (const auto& token : tokenizedDocs[d])
+                tf[token]++;
+
+            float total = static_cast<float>(tokenizedDocs[d].size());
+            float normSq = 0.0f;
+
+            for (const auto& [token, count] : tf) {
+                auto it = vocab.find(token);
+                if (it == vocab.end()) continue;
+                float w = (static_cast<float>(count) / total) * idf[it->second];
+                row[it->second] = w;
+                normSq += w * w;
+            }
+
+            // L2 normalize
+            if (normSq > 0.0f) {
+                float invNorm = 1.0f / std::sqrt(normSq);
+                for (size_t vi = 0; vi < vocabSize; ++vi)
+                    row[vi] *= invNorm;
+            }
+        }
+
+        // Pairwise cosine similarity via Highway-dispatched dot product
+        const auto nSigned = static_cast<int>(n);
+        #pragma omp parallel for schedule(dynamic, 16)
+        for (int i = 0; i < nSigned; ++i) {
+            const float* row_i = denseMatrix.get() + i * paddedVocabSize;
+            for (int j = i + 1; j < nSigned; ++j) {
+                const float* row_j = denseMatrix.get() + j * paddedVocabSize;
+                float sim = SimdKernels::DenseDotProduct(row_i, row_j, paddedVocabSize);
+                matrix.textSims[i * nSigned + j] = sim;
+                matrix.textSims[j * nSigned + i] = sim;
             }
         }
     }
 
-    // Pairwise name similarity (char n-grams)
-    for (size_t i = 0; i < n; ++i) {
-        for (size_t j = i + 1; j < n; ++j) {
-            auto& na = spellNames[formIds[i]];
-            auto& nb = spellNames[formIds[j]];
-            if (!na.empty() && !nb.empty()) {
-                float nsim = TreeNLP::CharNgramSimilarity(na, nb);
-                if (nsim > 0.1f) {
-                    auto keyAB = formIds[i] + ":" + formIds[j];
-                    auto keyBA = formIds[j] + ":" + formIds[i];
-                    matrix.nameSims[keyAB] = nsim;
-                    matrix.nameSims[keyBA] = nsim;
+    // =========================================================================
+    // Name similarity: cached char trigram Jaccard (sorted vectors)
+    // =========================================================================
+    {
+        // Pre-compute sorted trigram sets per spell name
+        std::vector<std::vector<uint32_t>> cachedNameGrams(n);
+        for (size_t i = 0; i < n; ++i) {
+            if (names[i].empty()) continue;
+            auto lower = TreeNLP::ToLower(names[i]);
+            lower.erase(std::remove_if(lower.begin(), lower.end(),
+                [](unsigned char c) { return std::isspace(c) != 0; }), lower.end());
+
+            if (lower.size() >= 3) {
+                std::unordered_set<uint32_t> seen;
+                for (size_t k = 0; k + 3 <= lower.size(); ++k) {
+                    uint32_t h = 0;
+                    for (int b = 0; b < 3; ++b)
+                        h = (h << 8) | static_cast<uint8_t>(lower[k + b]);
+                    seen.insert(h);
                 }
+                cachedNameGrams[i].assign(seen.begin(), seen.end());
+                std::sort(cachedNameGrams[i].begin(), cachedNameGrams[i].end());
+            }
+        }
+
+        // Pairwise Jaccard using sorted set intersection
+        const auto nSigned = static_cast<int>(n);
+        #pragma omp parallel for schedule(dynamic, 16)
+        for (int i = 0; i < nSigned; ++i) {
+            if (cachedNameGrams[i].empty()) continue;
+            for (int j = i + 1; j < nSigned; ++j) {
+                if (cachedNameGrams[j].empty()) continue;
+
+                std::vector<uint32_t> isect;
+                std::set_intersection(
+                    cachedNameGrams[i].begin(), cachedNameGrams[i].end(),
+                    cachedNameGrams[j].begin(), cachedNameGrams[j].end(),
+                    std::back_inserter(isect));
+
+                auto unionSize = cachedNameGrams[i].size() + cachedNameGrams[j].size() - isect.size();
+                float sim = (unionSize > 0)
+                    ? static_cast<float>(isect.size()) / static_cast<float>(unionSize)
+                    : 0.0f;
+                matrix.nameSims[i * nSigned + j] = sim;
+                matrix.nameSims[j * nSigned + i] = sim;
             }
         }
     }
 
-    // Pairwise effect-name affinity
-    for (size_t i = 0; i < n; ++i) {
-        for (size_t j = i + 1; j < n; ++j) {
-            auto& effsA = spellEffectNames[formIds[i]];
-            auto& effsB = spellEffectNames[formIds[j]];
-            if (effsA.empty() || effsB.empty()) continue;
+    // =========================================================================
+    // Effect similarity: cached n-gram sets (sorted vectors) for Jaccard
+    // =========================================================================
+    {
+        // Pack n-gram bytes into uint32_t
+        auto packNgram = [](const char* s, int len) -> uint32_t {
+            uint32_t h = 0;
+            for (int i = 0; i < len; ++i)
+                h = (h << 8) | static_cast<uint8_t>(s[i]);
+            return h;
+        };
 
-            float bestSim = 0.0f;
-            for (const auto& ea : effsA) {
-                for (const auto& eb : effsB) {
-                    float sim = TreeNLP::CharNgramSimilarity(ea, eb);
-                    bestSim = std::max(bestSim, sim);
+        // Pre-compute sorted trigram vectors per effect name per spell
+        std::vector<std::vector<std::vector<uint32_t>>> cachedEffectGrams(n);
+        for (size_t i = 0; i < n; ++i) {
+            for (const auto& ename : effectNames[i]) {
+                auto lower = TreeNLP::ToLower(ename);
+                lower.erase(std::remove_if(lower.begin(), lower.end(),
+                    [](unsigned char c) { return std::isspace(c) != 0; }), lower.end());
+
+                std::vector<uint32_t> grams;
+                if (static_cast<int>(lower.size()) >= 3) {
+                    std::unordered_set<uint32_t> seen;
+                    for (int k = 0; k <= static_cast<int>(lower.size()) - 3; ++k)
+                        seen.insert(packNgram(lower.data() + k, 3));
+                    grams.assign(seen.begin(), seen.end());
+                    std::sort(grams.begin(), grams.end());
                 }
+                cachedEffectGrams[i].push_back(std::move(grams));
             }
-            if (bestSim > 0.3f) {
-                auto keyAB = formIds[i] + ":" + formIds[j];
-                auto keyBA = formIds[j] + ":" + formIds[i];
-                matrix.effectSims[keyAB] = bestSim;
-                matrix.effectSims[keyBA] = bestSim;
+        }
+
+        // Pairwise effect-name affinity using sorted set intersection
+        const auto nSigned = static_cast<int>(n);
+        #pragma omp parallel for schedule(dynamic, 16)
+        for (int i = 0; i < nSigned; ++i) {
+            if (cachedEffectGrams[i].empty()) continue;
+            for (int j = i + 1; j < nSigned; ++j) {
+                if (cachedEffectGrams[j].empty()) continue;
+
+                float bestSim = 0.0f;
+                for (const auto& gramsA : cachedEffectGrams[i]) {
+                    if (gramsA.empty()) continue;
+                    for (const auto& gramsB : cachedEffectGrams[j]) {
+                        if (gramsB.empty()) continue;
+
+                        std::vector<uint32_t> isect;
+                        std::set_intersection(
+                            gramsA.begin(), gramsA.end(),
+                            gramsB.begin(), gramsB.end(),
+                            std::back_inserter(isect));
+
+                        auto unionSize = gramsA.size() + gramsB.size() - isect.size();
+                        float sim = (unionSize > 0)
+                            ? static_cast<float>(isect.size()) / static_cast<float>(unionSize)
+                            : 0.0f;
+                        bestSim = std::max(bestSim, sim);
+                    }
+                }
+                matrix.effectSims[i * nSigned + j] = bestSim;
+                matrix.effectSims[j * nSigned + i] = bestSim;
             }
         }
     }

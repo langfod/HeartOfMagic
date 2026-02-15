@@ -70,13 +70,17 @@ namespace TreeBuilder
     // SIMILARITY MATRIX
     // =========================================================================
 
-    // Pre-computed pairwise similarity scores. Key format: "formIdA:formIdB"
+    // Pre-computed pairwise similarity scores stored as flat arrays
+    // indexed by formId → integer index mapping
     struct SimilarityMatrix {
-        std::unordered_map<std::string, float> textSims;    // TF-IDF cosine
-        std::unordered_map<std::string, float> nameSims;    // char n-gram on names
-        std::unordered_map<std::string, float> effectSims;  // char n-gram on effect names
+        std::vector<float> textSims;    // n*n flat, row-major — TF-IDF cosine
+        std::vector<float> nameSims;    // n*n flat — char n-gram on names
+        std::vector<float> effectSims;  // n*n flat — char n-gram on effect names
 
-        // Get similarity between two spells (returns 0 if not computed)
+        std::unordered_map<std::string, size_t> formIdToIndex;
+        size_t n = 0;
+
+        // Get similarity between two spells (returns 0 if not found)
         float GetTextSim(const std::string& a, const std::string& b) const;
         float GetNameSim(const std::string& a, const std::string& b) const;
         float GetEffectSim(const std::string& a, const std::string& b) const;

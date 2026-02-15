@@ -20,6 +20,9 @@ namespace OpenRouterAPI {
     // Initialize with API key (loaded from config file)
     bool Initialize();
     
+    // Shutdown and cleanup resources
+    void Shutdown();
+    
     // Get current config
     Config& GetConfig();
     

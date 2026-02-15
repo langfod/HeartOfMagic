@@ -2,13 +2,13 @@
 #include "PCH.h"
 #include "OpenRouterAPI.h"
 
-// WinHTTP - included AFTER CommonLib per v4.2.0 requirements
-#include <winhttp.h>
-#include <fstream>
-#include <thread>
-#include <nlohmann/json.hpp>
+#include <curl/curl.h>
 
-#pragma comment(lib, "winhttp.lib")
+#include <fstream>
+#include <nlohmann/json.hpp>
+#include <thread>
+
+
 
 using json = nlohmann::json;
 
@@ -100,10 +100,22 @@ namespace OpenRouterAPI {
 
     static Config s_config;
     static bool s_initialized = false;
+    static bool s_curlInitialized = false;
     static std::filesystem::path s_configPath = "Data/SKSE/Plugins/SpellLearning/openrouter_config.json";
 
     bool Initialize() {
         if (s_initialized) return true;
+
+        // Initialize CURL globally
+        if (!s_curlInitialized) {
+            CURLcode result = curl_global_init(CURL_GLOBAL_ALL);
+            if (result != CURLE_OK) {
+                logger::error("OpenRouterAPI: Failed to initialize CURL: {}", curl_easy_strerror(result));
+                return false;
+            }
+            s_curlInitialized = true;
+            logger::info("OpenRouterAPI: CURL initialized successfully");
+        }
 
         // Create directory if needed
         std::filesystem::create_directories(s_configPath.parent_path());
@@ -133,6 +145,15 @@ namespace OpenRouterAPI {
         return !s_config.apiKey.empty();
     }
 
+    void Shutdown() {
+        if (s_curlInitialized) {
+            curl_global_cleanup();
+            s_curlInitialized = false;
+            logger::info("OpenRouterAPI: CURL cleaned up");
+        }
+        s_initialized = false;
+    }
+
     Config& GetConfig() {
         return s_config;
     }
@@ -157,117 +178,76 @@ namespace OpenRouterAPI {
         }
     }
 
+    // CURL write callback to collect response data
+    static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+        std::string* response = static_cast<std::string*>(userp);
+        size_t totalSize = size * nmemb;
+        response->append(static_cast<char*>(contents), totalSize);
+        return totalSize;
+    }
+
     // Internal HTTP POST function
     static std::string HttpPost(const std::string& host, const std::string& path, 
                                  const std::string& body, const std::string& authHeader) {
-        std::string result;
+        std::string response;
         
-        HINTERNET hSession = WinHttpOpen(
-            L"SpellLearning/1.0",
-            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-            WINHTTP_NO_PROXY_NAME,
-            WINHTTP_NO_PROXY_BYPASS,
-            0
-        );
-
-        if (!hSession) {
-            logger::error("OpenRouterAPI: WinHttpOpen failed: {}", GetLastError());
+        // Initialize CURL handle
+        CURL* curl = curl_easy_init();
+        if (!curl) {
+            logger::error("OpenRouterAPI: Failed to initialize CURL handle");
             return "";
         }
 
-        // Convert host to wide string
-        std::wstring wHost(host.begin(), host.end());
+        // Build the full URL
+        std::string url = "https://" + host + path;
         
-        HINTERNET hConnect = WinHttpConnect(hSession, wHost.c_str(), INTERNET_DEFAULT_HTTPS_PORT, 0);
-        if (!hConnect) {
-            logger::error("OpenRouterAPI: WinHttpConnect failed: {}", GetLastError());
-            WinHttpCloseHandle(hSession);
+        // Set up CURL options
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_POST, 1L);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, body.length());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L); // Disable SSL verification for now
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L); // Disable host verification for now
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L); // 30 second timeout
+        
+        // Set up headers
+        struct curl_slist* headers = nullptr;
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        std::string auth = "Authorization: Bearer " + authHeader;
+        headers = curl_slist_append(headers, auth.c_str());
+        headers = curl_slist_append(headers, "HTTP-Referer: https://github.com/SpellLearning");
+        headers = curl_slist_append(headers, "X-Title: SpellLearning");
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        
+        // Set user agent
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "SpellLearning/1.0");
+        
+        // Perform the request
+        CURLcode res = curl_easy_perform(curl);
+        
+        // Clean up headers
+        curl_slist_free_all(headers);
+        
+        if (res != CURLE_OK) {
+            logger::error("OpenRouterAPI: CURL request failed: {}", curl_easy_strerror(res));
+            curl_easy_cleanup(curl);
             return "";
         }
-
-        // Convert path to wide string
-        std::wstring wPath(path.begin(), path.end());
-
-        HINTERNET hRequest = WinHttpOpenRequest(
-            hConnect,
-            L"POST",
-            wPath.c_str(),
-            NULL,
-            WINHTTP_NO_REFERER,
-            WINHTTP_DEFAULT_ACCEPT_TYPES,
-            WINHTTP_FLAG_SECURE
-        );
-
-        if (!hRequest) {
-            logger::error("OpenRouterAPI: WinHttpOpenRequest failed: {}", GetLastError());
-            WinHttpCloseHandle(hConnect);
-            WinHttpCloseHandle(hSession);
+        
+        // Get HTTP response code
+        long httpCode = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+        
+        curl_easy_cleanup(curl);
+        
+        if (httpCode != 200) {
+            logger::error("OpenRouterAPI: HTTP request failed with code: {}", httpCode);
             return "";
         }
-
-        // Set headers
-        std::wstring headers = L"Content-Type: application/json\r\n";
-        headers += L"Authorization: Bearer ";
-        headers += std::wstring(authHeader.begin(), authHeader.end());
-        headers += L"\r\n";
-        headers += L"HTTP-Referer: https://github.com/SpellLearning\r\n";
-        headers += L"X-Title: SpellLearning\r\n";
-
-        BOOL bResults = WinHttpSendRequest(
-            hRequest,
-            headers.c_str(),
-            static_cast<DWORD>(-1),
-            (LPVOID)body.c_str(),
-            (DWORD)body.length(),
-            (DWORD)body.length(),
-            0
-        );
-
-        if (!bResults) {
-            logger::error("OpenRouterAPI: WinHttpSendRequest failed: {}", GetLastError());
-            WinHttpCloseHandle(hRequest);
-            WinHttpCloseHandle(hConnect);
-            WinHttpCloseHandle(hSession);
-            return "";
-        }
-
-        bResults = WinHttpReceiveResponse(hRequest, NULL);
-        if (!bResults) {
-            logger::error("OpenRouterAPI: WinHttpReceiveResponse failed: {}", GetLastError());
-            WinHttpCloseHandle(hRequest);
-            WinHttpCloseHandle(hConnect);
-            WinHttpCloseHandle(hSession);
-            return "";
-        }
-
-        // Read response
-        DWORD dwSize = 0;
-        DWORD dwDownloaded = 0;
-
-        do {
-            dwSize = 0;
-            if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) {
-                logger::error("OpenRouterAPI: WinHttpQueryDataAvailable failed: {}", GetLastError());
-                break;
-            }
-
-            if (dwSize == 0) break;
-
-            char* buffer = new char[dwSize + 1];
-            ZeroMemory(buffer, dwSize + 1);
-
-            if (WinHttpReadData(hRequest, buffer, dwSize, &dwDownloaded)) {
-                result.append(buffer, dwDownloaded);
-            }
-
-            delete[] buffer;
-        } while (dwSize > 0);
-
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-
-        return result;
+        
+        return response;
     }
 
     // Internal: uses explicit config to avoid racing on s_config from a background thread

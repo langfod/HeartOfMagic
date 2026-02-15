@@ -51,3 +51,7 @@ SKSE/Plugins/SpellLearning/SpellTreeBuilder/python/
 plugin/build/
 *.pex
 Build_Config_Local.ps1
+/Heart of Magic - Test
+nul
+spell_scan_output.json
+/Heart of Magic - Test - Unofficial

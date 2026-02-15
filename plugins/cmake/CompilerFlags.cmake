@@ -10,8 +10,6 @@ if(MSVC)
     # Code generation optimizations
     string(APPEND CMAKE_CXX_FLAGS " /Gy") # Function-level linking (enables dead code elimination)
     string(APPEND CMAKE_CXX_FLAGS " /Gw") # Optimize global data (similar to /Gy for globals)
-    string(APPEND CMAKE_CXX_FLAGS " /arch:AVX") # Use AVX (since 2011) SIMD instructions
-    #string(APPEND CMAKE_CXX_FLAGS " /arch:AVX2")  # Use AVX2 (since 2013) SIMD instructions
 
     # Strict C++ standard conformance flags
     string(APPEND CMAKE_CXX_FLAGS " /Zc:inline")
