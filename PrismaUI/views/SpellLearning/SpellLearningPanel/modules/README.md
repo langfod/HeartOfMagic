@@ -23,7 +23,10 @@ Modular JavaScript architecture for LLM maintainability. Original 8000+ line mon
 | `treeParser.js` | 461 | Tree JSON parsing, validation, cycle detection |
 | `wheelRenderer.js` | 1296 | SVG radial tree rendering engine |
 | `settingsPanel.js` | 1001 | Settings UI initialization and persistence |
-| `treeViewerUI.js` | 618 | Tree viewer, spell details, node selection |
+| `treeViewer/treeViewerCore.js` | 544 | SmartRenderer, tree init, import/export |
+| `treeViewer/treeViewerLoader.js` | 652 | Tree loading (trusted + standard paths) |
+| `treeViewer/treeViewerDetails.js` | 608 | Spell details panel, node selection |
+| `treeViewer/treeViewerFind.js` | 291 | Find-spell search and navigation |
 | `progressionUI.js` | 547 | How-to-Learn panel, learning status badges |
 | `difficultyProfiles.js` | 429 | Profile management, presets, custom profiles |
 | `llmApiSettings.js` | 230 | OpenRouter API configuration UI |
@@ -57,7 +60,10 @@ Modules must load in dependency order before `script.js`:
 
 <!-- 5. UI Panels -->
 <script src="modules/settingsPanel.js"></script>
-<script src="modules/treeViewerUI.js"></script>
+<script src="modules/treeViewer/treeViewerCore.js"></script>
+<script src="modules/treeViewer/treeViewerLoader.js"></script>
+<script src="modules/treeViewer/treeViewerDetails.js"></script>
+<script src="modules/treeViewer/treeViewerFind.js"></script>
 <script src="modules/progressionUI.js"></script>
 <script src="modules/difficultyProfiles.js"></script>
 <script src="modules/llmApiSettings.js"></script>
@@ -90,7 +96,10 @@ treeParser.js         (uses: state.js)
 wheelRenderer.js      (uses: state.js, config.js, colorUtils.js, treeParser.js)
     ↓
 settingsPanel.js      (uses: state.js, constants.js, colorUtils.js, uiHelpers.js)
-treeViewerUI.js       (uses: state.js, wheelRenderer.js, colorUtils.js)
+treeViewer/treeViewerCore.js   (uses: state.js, wheelRenderer.js, canvasRenderer.js)
+treeViewer/treeViewerLoader.js (uses: state.js, treeParser.js, spellCache.js, SmartRenderer)
+treeViewer/treeViewerDetails.js (uses: state.js, treeViewerCore.js)
+treeViewer/treeViewerFind.js   (uses: state.js, treeViewerCore.js)
 progressionUI.js      (uses: state.js, wheelRenderer.js, uiHelpers.js)
 difficultyProfiles.js (uses: state.js, constants.js, uiHelpers.js)
 llmApiSettings.js     (uses: state.js, uiHelpers.js)
