@@ -1,7 +1,7 @@
 # PrismaUI JavaScript Refactoring Plan
 
 **Branch:** `js_refactor`
-**Status:** Phase 4 complete
+**Status:** Phase 5 complete
 
 ## Problem
 
@@ -19,7 +19,7 @@ Split into 9 phases, each independently commitable and testable. Each phase docu
 | 2 | [PHASE-2-SETTINGS-HEART-TREEGEN.md](PHASE-2-SETTINGS-HEART-TREEGEN.md) | settingsPanel.js (partial) | 1,490 | **Done** |
 | 3 | [PHASE-3-SETTINGS-FINAL.md](PHASE-3-SETTINGS-FINAL.md) | settingsPanel.js (final) | 1,860 | **Done** |
 | 4 | [PHASE-4-VISUAL-FIRST-BUILDER.md](PHASE-4-VISUAL-FIRST-BUILDER.md) | visualFirstBuilder.js | 3,686 | **Done** |
-| 5 | [PHASE-5-RENDERERS.md](PHASE-5-RENDERERS.md) | wheelRenderer + canvasRendererV2 | 6,232 | |
+| 5 | [PHASE-5-RENDERERS.md](PHASE-5-RENDERERS.md) | wheelRenderer + canvasRendererV2 | 6,232 | **Done** |
 | 6 | [PHASE-6-PROCEDURAL-PREREQ.md](PHASE-6-PROCEDURAL-PREREQ.md) | proceduralTreeBuilder + prereqMaster | 4,543 | |
 | 7 | [PHASE-7-EDIT-VIEWER-GROWTH.md](PHASE-7-EDIT-VIEWER-GROWTH.md) | editMode + treeViewerUI + treeGrowthTree | 6,291 | |
 | 8 | [PHASE-8-LAYOUT-CALLBACKS.md](PHASE-8-LAYOUT-CALLBACKS.md) | layoutEngine + classicLayout + cppCallbacks + settingsAwareTreeBuilder | 6,144 | |
