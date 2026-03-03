@@ -866,7 +866,14 @@
     <script src="modules/canvasRenderer.js"></script>
     <script src="modules/editMode.js"></script>
     <script src="modules/colorPicker.js"></script>
+    <!-- Settings sub-modules (loaded before core settingsPanel) -->
+    <script src="modules/settings/settingsTheme.js"></script>
+    <script src="modules/settings/settingsModdedXP.js"></script>
+    <!-- Settings core -->
     <script src="modules/settingsPanel.js"></script>
+    <!-- Settings modals (standalone, loaded after) -->
+    <script src="modules/settings/settingsBlacklist.js"></script>
+    <script src="modules/settings/settingsWhitelist.js"></script>
     <script src="modules/treeViewerUI.js"></script>
     <script src="modules/progressionUI.js"></script>
     <script src="modules/settingsPresets.js"></script>
