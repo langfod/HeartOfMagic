@@ -10,7 +10,7 @@
  *
  * Depends on:
  *   classicSettings.js  (ClassicSettings)
- *   classicLayout.js    (ClassicLayout)
+ *   classicLayout*.js   (ClassicLayout — core, grid, spell modules)
  *   classicRenderer.js  (ClassicRenderer)
  *   treePreviewUtils.js (TreePreviewUtils)
  *   treePreview.js      (TreePreview.getOutput)

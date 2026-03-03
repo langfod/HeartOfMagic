@@ -353,7 +353,9 @@ Tree applied
 | `treeGrowthTree.js` | Tree growth mode (trunk/branch) |
 | `classic/classicMain.js` | Classic growth mode |
 | `classic/classicRenderer.js` | Classic mode renderer |
-| `classic/classicLayout.js` | Classic layout engine |
+| `classic/classicLayoutCore.js` | Classic layout core definition & helpers |
+| `classic/classicLayoutGrid.js` | Classic grid layout algorithm |
+| `classic/classicLayoutSpell.js` | Classic placement search & tree sanitization |
 | `classic/classicSettings.js` | Classic mode settings |
 | `classic/classicThemeEngine.js` | Classic theme engine |
 | `tree/treeRenderer.js` | Tree mode renderer |

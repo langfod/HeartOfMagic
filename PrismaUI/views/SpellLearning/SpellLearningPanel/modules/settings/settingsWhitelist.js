@@ -2,7 +2,7 @@
  * Plugin Whitelist Modal
  * UI for managing plugin whitelist (filter which mods' spells appear in trees)
  *
- * Depends on: state.js (settings), cppCallbacks.js (spell data)
+ * Depends on: state.js (settings), cppCallbacksCore.js (spell data)
  */
 
 // =============================================================================

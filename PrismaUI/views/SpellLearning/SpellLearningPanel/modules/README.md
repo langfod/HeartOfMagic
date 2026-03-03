@@ -31,7 +31,9 @@ Modular JavaScript architecture for LLM maintainability. Original 8000+ line mon
 | `difficultyProfiles.js` | 429 | Profile management, presets, custom profiles |
 | `llmApiSettings.js` | 230 | OpenRouter API configuration UI |
 | `buttonHandlers.js` | 264 | Scan, learn, import/export button handlers |
-| `cppCallbacks.js` | 438 | C++ SKSE plugin callback handlers |
+| `cppCallbacksCore.js` | 499 | C++ SKSE callbacks - core (builder, spell data, status, clipboard, tree data) |
+| `cppCallbacksTree.js` | 367 | C++ SKSE callbacks - tree/spell state (growth data, spell info, mastery) |
+| `cppCallbacksState.js` | 447 | C++ SKSE callbacks - game state/lifecycle (save load, panel show/hide) |
 | `llmIntegration.js` | 621 | LLM tree generation, color suggestions |
 | **script.js** | 802 | Main init, tabs, dragging, early learning |
 | **TOTAL** | ~8245 | |
@@ -70,7 +72,9 @@ Modules must load in dependency order before `script.js`:
 <script src="modules/buttonHandlers.js"></script>
 
 <!-- 6. Integrations -->
-<script src="modules/cppCallbacks.js"></script>
+<script src="modules/cppCallbacksCore.js"></script>
+<script src="modules/cppCallbacksTree.js"></script>
+<script src="modules/cppCallbacksState.js"></script>
 <script src="modules/llmIntegration.js"></script>
 
 <!-- 7. Main Application -->
@@ -105,7 +109,9 @@ difficultyProfiles.js (uses: state.js, constants.js, uiHelpers.js)
 llmApiSettings.js     (uses: state.js, uiHelpers.js)
 buttonHandlers.js     (uses: state.js, treeParser.js, wheelRenderer.js, spellCache.js)
     ↓
-cppCallbacks.js       (uses: state.js, treeParser.js, wheelRenderer.js, spellCache.js)
+cppCallbacksCore.js   (uses: state.js, treeParser.js, wheelRenderer.js, spellCache.js)
+cppCallbacksTree.js   (uses: state.js, treeParser.js, wheelRenderer.js, spellCache.js, cppCallbacksCore.js)
+cppCallbacksState.js  (uses: state.js, wheelRenderer.js, cppCallbacksCore.js, cppCallbacksTree.js)
 llmIntegration.js (uses: state.js, growthDSL.js, wheelRenderer.js, colorUtils.js)
     ↓
 script.js             (uses: all modules)
@@ -157,11 +163,13 @@ script.js             (uses: all modules)
 - `loadSettings()` / `saveSettings()` - Config persistence
 - `window.onUnifiedConfigLoaded(data)` - C++ callback
 
-### cppCallbacks.js
-- `window.onScanComplete(data)` - Spell scan callback
-- `window.onTreeDataReceived(data)` - Tree load callback
-- `window.onProgressionDataReceived(data)` - XP data callback
-- `window.onSpellLearned(data)` - Spell learned notification
+### cppCallbacksCore.js / cppCallbacksTree.js / cppCallbacksState.js
+- `window.updateSpellData(json)` - Spell scan callback (Core)
+- `window.updateTreeData(json)` - Tree load callback (Core)
+- `window.updateSpellState(json)` - Spell state change callback (Tree)
+- `window.onPlayerKnownSpells(data)` - Known spells callback (State)
+- `window.onPrismaReady()` - Panel init callback (State)
+- `window.onPanelShowing()` / `window.onPanelHiding()` - Lifecycle (State)
 
 ## Backup Files
 
@@ -174,4 +182,4 @@ script.js             (uses: all modules)
 - **Check dependencies** - Load order matters for global object availability
 - **All modules use globals** - No import/export (browser compatibility)
 - **Settings persistence** - Handled by `settingsPanel.js` via C++ bridge
-- **C++ callbacks** - All `window.on*` functions in `cppCallbacks.js`
+- **C++ callbacks** - All `window.on*` functions in `cppCallbacksCore.js`, `cppCallbacksTree.js`, `cppCallbacksState.js`
