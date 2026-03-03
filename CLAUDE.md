@@ -26,7 +26,8 @@ What are you doing?
 │   └─► Public modder API? → docs/PLAN-PUBLIC-MODDER-API.md
 │
 ├─► Working with PrismaUI frontend?
-│   ├─► JS module structure → PrismaUI/views/SpellLearning/SpellLearningPanel/modules/README.md
+│   ├─► JS module overview & index → docs/SPELL_LEARNING_JAVASCRIPT/README.md
+│   ├─► JS domain references → docs/SPELL_LEARNING_JAVASCRIPT/ (by domain)
 │   └─► Translations → docs/TRANSLATING.md
 │
 ├─► Working with presets?
@@ -41,7 +42,7 @@ What are you doing?
 
 ## Critical Rules (MUST Follow)
 
-1. **600 LOC limit**: Split files when approaching this limit
+1. **600 LOC limit**: Split files when approaching this limit. 600 LOC limit can vary a few lines if needed.
 2. **RE/SKSE types**: ALWAYS read headers from `plugins/external/commonlibsse-ng/` before using
 3. **No AI footers**: NEVER add "Generated with Claude" or similar attribution
 4. **Explore before coding**: ALWAYS search for existing utilities before writing new helpers
@@ -59,7 +60,7 @@ What are you doing?
 - **NEVER** hardcode magic numbers—use named constants
 
 ### Architecture
-- **NEVER** exceed 600 lines in a single file
+- **NEVER** exceed 600 lines in a single file - within reason.
 - **NEVER** create new singleton managers without understanding existing patterns
 - **NEVER** bypass the existing hook patterns (SpellCastHandler, SpellTomeHook, SpellEffectivenessHook)
 
@@ -332,6 +333,7 @@ Did I change the module system?         → Update docs/MODULE_CONTRACTS.md
 Did I change the preset system?         → Update docs/PRESETS.md
 Did I change DEST/ISL compatibility?    → Update docs/DEST-IMPROVEMENTS.md
 Did I change translation/i18n?          → Update docs/TRANSLATING.md
+Did I change PrismaUI JS modules?       → Update docs/SPELL_LEARNING_JAVASCRIPT/ (relevant domain file)
 Did I add a new system?                 → Create new doc AND update decision tree in CLAUDE.md
 ```
 
@@ -353,4 +355,6 @@ Did I add a new system?                 → Create new doc AND update decision t
 | [docs/TRANSLATING.md](docs/TRANSLATING.md) | Translation guide for localizing the mod |
 | [docs/PLAN-PUBLIC-MODDER-API.md](docs/PLAN-PUBLIC-MODDER-API.md) | Public modder API reference and design |
 | [docs/DEST-IMPROVEMENTS.md](docs/DEST-IMPROVEMENTS.md) | DEST compatibility comparison |
+| [docs/SPELL_LEARNING_JAVASCRIPT/](docs/SPELL_LEARNING_JAVASCRIPT/README.md) | PrismaUI JavaScript module reference (index + 8 domain docs) |
+| [docs/refactor/](docs/refactor/README.md) | JS refactoring plan (9 phases, all complete) |
 | [plugins/BookXP/README.md](plugins/addons/BookXP/README.md) | BookXP addon documentation |

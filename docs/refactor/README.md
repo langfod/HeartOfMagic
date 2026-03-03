@@ -1,7 +1,9 @@
 # PrismaUI JavaScript Refactoring Plan
 
 **Branch:** `js_refactor`
-**Status:** Phase 8 complete
+**Status:** All 9 phases complete
+
+**Post-refactor documentation:** [docs/SPELL_LEARNING_JAVASCRIPT/](../SPELL_LEARNING_JAVASCRIPT/README.md) -- complete module reference organized by domain.
 
 ## Problem
 
@@ -23,7 +25,7 @@ Split into 9 phases, each independently commitable and testable. Each phase docu
 | 6 | [PHASE-6-PROCEDURAL-PREREQ.md](PHASE-6-PROCEDURAL-PREREQ.md) | proceduralTreeBuilder + prereqMaster | 4,543 | **Done** |
 | 7 | [PHASE-7-EDIT-VIEWER-GROWTH.md](PHASE-7-EDIT-VIEWER-GROWTH.md) | editMode + treeViewerUI + treeGrowthTree | 6,291 | **Done** |
 | 8 | [PHASE-8-LAYOUT-CALLBACKS.md](PHASE-8-LAYOUT-CALLBACKS.md) | layoutEngine + classicLayout + cppCallbacks + settingsAwareTreeBuilder | 6,144 | **Done** |
-| 9 | [PHASE-9-SCRIPT-GENERATION-LLM.md](PHASE-9-SCRIPT-GENERATION-LLM.md) | script.js + generationModeUI + llmIntegration | 3,771 | |
+| 9 | [PHASE-9-SCRIPT-GENERATION-LLM.md](PHASE-9-SCRIPT-GENERATION-LLM.md) | script.js + generationModeUI + llmIntegration | 3,771 | **Done** |
 
 **Total:** ~35,047 lines reorganized into ~65 new files
 

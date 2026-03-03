@@ -1808,7 +1808,7 @@
     <!-- 
     MODULAR JavaScript Loading
     ==========================
-    Modules are loaded first, then script.js for remaining application logic.
+    Modules are loaded first, then main.js initializes everything.
     All functionality is preserved, just split for LLM maintainability.
     -->
     
@@ -1951,7 +1951,8 @@
     <script src="modules/cppCallbacksTree.js"></script>
     <script src="modules/cppCallbacksState.js"></script>
     <script src="modules/buildProgress.js"></script>
-    <script src="modules/llmIntegration.js"></script>
+    <script src="modules/llmGenerateCore.js"></script>
+    <script src="modules/llmGenerateProcess.js"></script>
     <script src="modules/proceduralTreeConfig.js"></script>
     <script src="modules/proceduralTreeCore.js"></script>
     <script src="modules/proceduralTreeGenerate.js"></script>
@@ -1975,7 +1976,8 @@
     <script src="modules/settingsAwareCore.js"></script>
     <script src="modules/settingsAwareBuilder.js"></script>
 
-    <script src="modules/generationModeUI.js"></script>
+    <script src="modules/generationModeCore.js"></script>
+    <script src="modules/generationModeSchools.js"></script>
 
     <!-- 6.6. Pre Req Master -->
     <script src="modules/prereqMasterScoring.js"></script>
@@ -1985,8 +1987,13 @@
     <!-- 6.7. Tree Animation (build replay) -->
     <script src="modules/treeAnimation.js"></script>
 
-    <!-- 7. Main Application (init, tabs, dragging, early learning settings) -->
-    <script src="script.js"></script>
+    <!-- 7. Panel initialization and chrome (was script.js) -->
+    <script src="modules/growthStyleGenerator.js"></script>
+    <script src="modules/llmColorSuggestion.js"></script>
+    <script src="modules/panelInit.js"></script>
+    <script src="modules/panelChrome.js"></script>
+    <script src="modules/passiveLearningSettings.js"></script>
+    <script src="modules/earlyLearningSettings.js"></script>
 
     <!-- 8. Auto-Test Module -->
     <script src="modules/autoTest.js"></script>
