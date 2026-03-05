@@ -1,9 +1,10 @@
 /**
- * CanvasRenderer Nodes - Node rendering, labels, color utilities, and particles
- * Adds node drawing methods at various LOD levels, label rendering,
- * color helpers, debug grid, and particle core.
+ * CanvasRenderer Nodes - Node rendering, labels, debug grid, and learning path.
+ * Adds node drawing methods at various LOD levels (minimal, simple, full),
+ * mystery nodes, debug grid overlay, learning path animation, and labels.
  *
  * Loaded after: canvasCore.js, canvasRender.js
+ * See also: canvasNodesMisc.js (color utilities, particle core, parseColor)
  */
 
 /**
@@ -604,123 +605,3 @@ CanvasRenderer.renderLabels = function(ctx, cx, cy, cos, sin) {
     }
 };
 
-// =========================================================================
-// COLOR UTILITIES
-// =========================================================================
-
-CanvasRenderer.dimColor = function(color, factor) {
-    var rgb = this.parseColor(color);
-    if (!rgb) return color;
-    return 'rgb(' + Math.round(rgb.r * factor) + ',' +
-                    Math.round(rgb.g * factor) + ',' +
-                    Math.round(rgb.b * factor) + ')';
-};
-
-CanvasRenderer.brightenColor = function(color, factor) {
-    var rgb = this.parseColor(color);
-    if (!rgb) return color;
-    return 'rgb(' + Math.min(255, Math.round(rgb.r + (255 - rgb.r) * (factor - 1))) + ',' +
-                    Math.min(255, Math.round(rgb.g + (255 - rgb.g) * (factor - 1))) + ',' +
-                    Math.min(255, Math.round(rgb.b + (255 - rgb.b) * (factor - 1))) + ')';
-};
-
-CanvasRenderer.blendColors = function(color1, color2, t) {
-    var rgb1 = this.parseColor(color1);
-    var rgb2 = this.parseColor(color2);
-    if (!rgb1 || !rgb2) return color1;
-    return 'rgb(' + Math.round(rgb1.r + (rgb2.r - rgb1.r) * t) + ',' +
-                    Math.round(rgb1.g + (rgb2.g - rgb1.g) * t) + ',' +
-                    Math.round(rgb1.b + (rgb2.b - rgb1.b) * t) + ')';
-};
-
-CanvasRenderer.getInnerAccentColor = function(color) {
-    var rgb = this.parseColor(color);
-    if (!rgb) return '#1a1a2e';
-    return 'rgb(' + Math.round(rgb.r * 0.35) + ',' +
-                    Math.round(rgb.g * 0.3) + ',' +
-                    Math.round(rgb.b * 0.4) + ')';
-};
-
-// =========================================================================
-// PARTICLE CORE (replaces center text when enabled)
-// =========================================================================
-
-CanvasRenderer._initParticleCore = function() {
-    this._coreParticles = [];
-    var count = 35;
-    for (var i = 0; i < count; i++) {
-        var r = Math.random() * 8;
-        var angle = Math.random() * Math.PI * 2;
-        this._coreParticles.push({
-            baseX: Math.cos(angle) * r,
-            baseY: Math.sin(angle) * r,
-            size: 1 + Math.random() * 1.5,
-            flashPhase: Math.random() * Math.PI * 2,
-            flashSpeed: 0.08 + Math.random() * 0.15,
-            jitterAmount: 1.5 + Math.random() * 3
-        });
-    }
-    this._coreFrame = 0;
-    this._coreFlashBoost = 0;
-};
-
-CanvasRenderer._renderParticleCore = function(ctx, pulse) {
-    if (!this._coreParticles) this._initParticleCore();
-
-    this._coreFrame++;
-
-    // Decay heartbeat boost
-    if (this._coreFlashBoost > 0.01) {
-        this._coreFlashBoost *= 0.9;
-    } else {
-        this._coreFlashBoost = 0;
-    }
-
-    var boost = this._coreFlashBoost || 0;
-    var jitterMult = 1 + boost * 3;    // Heartbeat amplifies jitter
-    var speedMult = 1 + boost * 2;     // Heartbeat speeds up flash
-    var frame = this._coreFrame;
-
-    for (var i = 0; i < this._coreParticles.length; i++) {
-        var p = this._coreParticles[i];
-
-        // Vibrate position
-        var jx = p.jitterAmount * jitterMult * (Math.random() - 0.5);
-        var jy = p.jitterAmount * jitterMult * (Math.random() - 0.5);
-        var x = p.baseX + jx;
-        var y = p.baseY + jy;
-
-        // Flash between black and white
-        var flash = Math.sin(frame * p.flashSpeed * speedMult + p.flashPhase);
-        var brightness = Math.round((flash * 0.5 + 0.5) * 255);
-        var alpha = 0.6 + Math.abs(flash) * 0.4;
-
-        // Slight size variation
-        var size = p.size * (0.8 + Math.random() * 0.4);
-
-        ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(' + brightness + ',' + brightness + ',' + brightness + ',' + alpha.toFixed(2) + ')';
-        ctx.fill();
-    }
-};
-
-CanvasRenderer.parseColor = function(color) {
-    if (!color) return null;
-    if (color.startsWith('#')) {
-        return {
-            r: parseInt(color.slice(1, 3), 16),
-            g: parseInt(color.slice(3, 5), 16),
-            b: parseInt(color.slice(5, 7), 16)
-        };
-    }
-    var match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-    if (match) {
-        return {
-            r: parseInt(match[1]),
-            g: parseInt(match[2]),
-            b: parseInt(match[3])
-        };
-    }
-    return null;
-};

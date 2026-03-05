@@ -366,61 +366,9 @@ var ClassicSettings = {
     /** Re-apply tracked state to freshly built DOM elements. @private */
     _refreshDOM: function () {
         this._refreshTierChart();
-    },
-
-    // =========================================================================
-    // SCAN STATUS
-    // =========================================================================
-
-    /**
-     * Called when spell scan data changes.
-     *
-     * @param {boolean} hasSpells - True if spell data is available
-     */
-    updateScanStatus: function (hasSpells) {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updateScanStatus(hasSpells);
-    },
-
-    // =========================================================================
-    // TREE BUILT STATE
-    // =========================================================================
-
-    /**
-     * Update button states after a tree is built or cleared.
-     *
-     * @param {boolean} built - True if a tree has been generated
-     * @param {number} [nodeCount] - Number of nodes in the built tree
-     */
-    setTreeBuilt: function (built, nodeCount, totalPool) {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setTreeBuilt(built, nodeCount, totalPool);
-    },
-
-    // =========================================================================
-    // STATUS TEXT HELPER
-    // =========================================================================
-
-    /**
-     * Set the status text element's content and color.
-     *
-     * @param {string} text - Status message
-     * @param {string} color - CSS color value
-     */
-    setStatusText: function (text, color) {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setStatusText(text, color);
-    },
-
-    // =========================================================================
-    // INTERNAL HELPERS
-    // =========================================================================
-
-    /**
-     * Enable or disable the Build Tree button based on current state.
-     * Requires spells scanned.
-     * @private
-     */
-    _updateBuildButton: function () {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updateBuildButton();
     }
 };
+
+GrowthModeUtils.mixinSettingsDelegation(ClassicSettings, false, true);
 
 console.log('[ClassicSettings] Loaded');

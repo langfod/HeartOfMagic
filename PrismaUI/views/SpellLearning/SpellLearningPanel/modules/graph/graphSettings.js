@@ -141,22 +141,7 @@ var GraphSettings = {
                 onChanged('showAffinity', this.checked);
             });
         }
-    },
-
-    // =========================================================================
-    // STATE UPDATES (delegated to TreeGrowth orchestrator)
-    // =========================================================================
-
-    setTreeBuilt: function (built, nodeCount, totalPool) {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setTreeBuilt(built, nodeCount, totalPool);
-    },
-
-    setStatusText: function (text, color) {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setStatusText(text, color);
-    },
-
-    updateScanStatus: function (hasSpells) {
-        this._hasSpells = hasSpells;
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updateScanStatus(hasSpells);
     }
 };
+
+GrowthModeUtils.mixinSettingsDelegation(GraphSettings, true, false);

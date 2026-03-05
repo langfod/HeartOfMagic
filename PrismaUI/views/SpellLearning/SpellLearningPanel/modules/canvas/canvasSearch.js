@@ -138,30 +138,9 @@ CanvasRenderer.rotateSchoolToTop = function(schoolName) {
 
 CanvasRenderer.animateRotation = function(target) {
     var self = this;
-    var start = this.rotation;
-    var duration = 300;
-    var startTime = performance.now();
-
-    if (this.isAnimating) return;
-    this.isAnimating = true;
-
-    function animate() {
-        var elapsed = performance.now() - startTime;
-        var progress = Math.min(elapsed / duration, 1);
-        var eased = 1 - Math.pow(1 - progress, 3);
-
-        self.rotation = start + (target - start) * eased;
+    ViewTransform.animateRotation(this, target, 300, function() {
         self._needsRender = true;
-
-        if (progress < 1) {
-            requestAnimationFrame(animate);
-        } else {
-            self.rotation = target;
-            self.isAnimating = false;
-        }
-    }
-
-    animate();
+    });
 };
 
 CanvasRenderer.show = function() {
@@ -539,49 +518,7 @@ CanvasRenderer._renderLearningPulses = function(ctx) {
  * Get x,y position along a path given progress (0-1)
  */
 CanvasRenderer._getPositionAlongPath = function(segments, progress, cachedSegLengths, cachedTotalLength) {
-    if (!segments || segments.length === 0) return null;
-
-    // Use pre-cached lengths if available, else compute
-    var totalLength, segmentLengths;
-    if (cachedSegLengths && cachedTotalLength > 0) {
-        segmentLengths = cachedSegLengths;
-        totalLength = cachedTotalLength;
-    } else {
-        totalLength = 0;
-        segmentLengths = [];
-        for (var i = 0; i < segments.length; i++) {
-            var seg = segments[i];
-            var len = seg.length !== undefined ? seg.length : Math.sqrt(
-                (seg.to.x - seg.from.x) * (seg.to.x - seg.from.x) +
-                (seg.to.y - seg.from.y) * (seg.to.y - seg.from.y)
-            );
-            segmentLengths.push(len);
-            totalLength += len;
-        }
-    }
-
-    // Find position
-    var targetDist = progress * totalLength;
-    var distSoFar = 0;
-
-    for (var i = 0; i < segments.length; i++) {
-        var segLen = segmentLengths[i];
-
-        if (distSoFar + segLen >= targetDist) {
-            var segProgress = (targetDist - distSoFar) / segLen;
-            var seg = segments[i];
-            return {
-                x: seg.from.x + (seg.to.x - seg.from.x) * segProgress,
-                y: seg.from.y + (seg.to.y - seg.from.y) * segProgress
-            };
-        }
-
-        distSoFar += segLen;
-    }
-
-    // Return end position
-    var lastSeg = segments[segments.length - 1];
-    return { x: lastSeg.to.x, y: lastSeg.to.y };
+    return ViewTransform.getPositionAlongPath(segments, progress, cachedSegLengths, cachedTotalLength);
 };
 
 window.CanvasRenderer = CanvasRenderer;

@@ -144,27 +144,9 @@ var TreeSettings = {
                 pctSpan.textContent = text;
             }
         }
-    },
-
-    /** Called when spell scan data changes. */
-    updateScanStatus: function (hasSpells) {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updateScanStatus(hasSpells);
-    },
-
-    /** Update button states after a tree is built or cleared. */
-    setTreeBuilt: function (built, nodeCount, totalPool) {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setTreeBuilt(built, nodeCount, totalPool);
-    },
-
-    /** Set the status text element's content and color. */
-    setStatusText: function (text, color) {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setStatusText(text, color);
-    },
-
-    /** Enable or disable the Build Tree button based on current state. @private */
-    _updateBuildButton: function () {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updateBuildButton();
     }
 };
+
+GrowthModeUtils.mixinSettingsDelegation(TreeSettings, false, true);
 
 console.log('[TreeSettings] Loaded');

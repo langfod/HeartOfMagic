@@ -60,39 +60,6 @@ function setTreeStatus(msg) {
 }
 
 // =============================================================================
-// FIELD PRESETS
-// =============================================================================
-
-function applyPreset(presetName) {
-    var presets = {
-        minimal: {
-            editorId: false, magickaCost: false, minimumSkill: false,
-            castingType: false, delivery: false, chargeTime: false,
-            plugin: false, effects: false, effectNames: false, keywords: false
-        },
-        balanced: {
-            editorId: true, magickaCost: true, minimumSkill: false,
-            castingType: false, delivery: false, chargeTime: false,
-            plugin: false, effects: false, effectNames: false, keywords: false
-        },
-        full: {
-            editorId: true, magickaCost: true, minimumSkill: true,
-            castingType: true, delivery: true, chargeTime: true,
-            plugin: true, effects: true, effectNames: false, keywords: true
-        }
-    };
-    
-    var preset = presets[presetName];
-    if (!preset) return;
-    
-    for (var field in preset) {
-        state.fields[field] = preset[field];
-        var checkbox = document.getElementById('field_' + field);
-        if (checkbox) checkbox.checked = preset[field];
-    }
-}
-
-// =============================================================================
 // MINIMIZE & CLOSE
 // =============================================================================
 

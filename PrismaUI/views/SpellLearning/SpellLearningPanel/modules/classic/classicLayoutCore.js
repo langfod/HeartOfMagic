@@ -398,18 +398,11 @@ var ClassicLayout = {
     },
 
     _buildNodeLookup: function (nodes) {
-        var lookup = {};
-        for (var i = 0; i < nodes.length; i++) {
-            if (nodes[i].formId != null) lookup[nodes[i].formId] = nodes[i];
-        }
-        return lookup;
+        return GrowthModeUtils.buildNodeLookup(nodes);
     },
 
     _getSpellData: function () {
-        if (typeof state !== 'undefined' && state.lastSpellData && state.lastSpellData.spells) {
-            return state.lastSpellData.spells;
-        }
-        return null;
+        return GrowthModeUtils.getSpellData();
     },
 
     _findSpell: function (formId, spells) {
@@ -538,12 +531,7 @@ var ClassicLayout = {
     },
 
     _hashString: function (str) {
-        var hash = 0;
-        for (var i = 0; i < str.length; i++) {
-            hash = ((hash << 5) - hash) + str.charCodeAt(i);
-            hash = hash | 0;
-        }
-        return hash;
+        return GrowthModeUtils.hashString(str);
     },
 
     /**

@@ -9,13 +9,7 @@
 // UTILITIES
 // =============================================================================
 
-function seededRandom(seed) {
-    var state = seed || Date.now();
-    return function() {
-        state = (state * 1103515245 + 12345) & 0x7fffffff;
-        return state / 0x7fffffff;
-    };
-}
+// seededRandom() is defined in layoutGenerator.js (loaded before this file)
 
 function shuffle(arr, rng) {
     for (var i = arr.length - 1; i > 0; i--) {

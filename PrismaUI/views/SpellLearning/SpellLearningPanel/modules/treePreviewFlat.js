@@ -452,31 +452,10 @@ var TreePreviewFlat = {
     },
 
     /**
-     * Draw a direction arrow from node edge outward
+     * Draw a direction arrow from node edge outward (delegates to TreePreviewUtils)
      */
     _drawArrow: function(ctx, nx, ny, angle, nodeSize, color) {
-        var arrowLen = 16;
-        var headLen = 6;
-        var headAngle = Math.PI / 6;
-        var sx = nx + Math.cos(angle) * (nodeSize + 2);
-        var sy = ny + Math.sin(angle) * (nodeSize + 2);
-        var ex = sx + Math.cos(angle) * arrowLen;
-        var ey = sy + Math.sin(angle) * arrowLen;
-
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        ctx.lineTo(ex, ey);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(ex, ey);
-        ctx.lineTo(ex - Math.cos(angle - headAngle) * headLen, ey - Math.sin(angle - headAngle) * headLen);
-        ctx.lineTo(ex - Math.cos(angle + headAngle) * headLen, ey - Math.sin(angle + headAngle) * headLen);
-        ctx.closePath();
-        ctx.fillStyle = color;
-        ctx.fill();
+        TreePreviewUtils.drawArrow(ctx, nx, ny, angle, nodeSize, color);
     },
 
     /**
@@ -537,17 +516,16 @@ var TreePreviewFlat = {
     },
 
     /**
-     * Deterministic pseudo-random from seed (consistent per frame)
+     * Deterministic pseudo-random from seed (delegates to TreePreviewUtils)
      */
     _pseudoRandom: function(seed) {
-        var x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
-        return x - Math.floor(x);
+        return TreePreviewUtils.pseudoRandom(seed);
     },
 
     /**
-     * Convert hex color to rgba string
+     * Convert hex color to rgba string (delegates to TreePreviewUtils)
      */
-    _hexToRgba: function(hex, alpha) { return hexToRgba(hex, alpha); },
+    _hexToRgba: function(hex, alpha) { return TreePreviewUtils.hexToRgba(hex, alpha); },
 
     /**
      * Return current settings for external consumption

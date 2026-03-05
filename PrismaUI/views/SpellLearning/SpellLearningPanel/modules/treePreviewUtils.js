@@ -174,6 +174,70 @@ var TreePreviewUtils = {
 
         cacheStore._gridCacheKey = fullKey;
         ctx.drawImage(cacheStore._gridCanvas, -offX, -offY);
+    },
+
+    // =========================================================================
+    // SHARED DRAWING HELPERS (DUP-R5 — extracted from treePreviewSun/Flat)
+    // =========================================================================
+
+    /**
+     * Draw a direction arrow from node edge outward.
+     * Shared by SUN and FLAT preview modes.
+     *
+     * @param {CanvasRenderingContext2D} ctx
+     * @param {number} nx - Node center X
+     * @param {number} ny - Node center Y
+     * @param {number} angle - Arrow direction in radians
+     * @param {number} nodeSize - Node radius
+     * @param {string} color - Stroke/fill color
+     */
+    drawArrow: function(ctx, nx, ny, angle, nodeSize, color) {
+        var arrowLen = 16;
+        var headLen = 6;
+        var headAngle = Math.PI / 6;
+        var sx = nx + Math.cos(angle) * (nodeSize + 2);
+        var sy = ny + Math.sin(angle) * (nodeSize + 2);
+        var ex = sx + Math.cos(angle) * arrowLen;
+        var ey = sy + Math.sin(angle) * arrowLen;
+
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(ex - Math.cos(angle - headAngle) * headLen, ey - Math.sin(angle - headAngle) * headLen);
+        ctx.lineTo(ex - Math.cos(angle + headAngle) * headLen, ey - Math.sin(angle + headAngle) * headLen);
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.fill();
+    },
+
+    /**
+     * Deterministic pseudo-random from seed (consistent per frame).
+     * Shared by SUN and FLAT preview modes.
+     *
+     * @param {number} seed
+     * @returns {number} Value in [0, 1)
+     */
+    pseudoRandom: function(seed) {
+        var x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+        return x - Math.floor(x);
+    },
+
+    /**
+     * Convert hex color to rgba string.
+     * Delegates to global hexToRgba. Shared by SUN and FLAT preview modes.
+     *
+     * @param {string} hex - Hex color string
+     * @param {number} alpha - Alpha value 0-1
+     * @returns {string} rgba() CSS string
+     */
+    hexToRgba: function(hex, alpha) {
+        return hexToRgba(hex, alpha);
     }
 };
 

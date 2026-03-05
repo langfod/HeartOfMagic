@@ -6,55 +6,15 @@
  */
 
 // =========================================================================
-// TOOLTIPS
+// TOOLTIPS (delegates to shared TooltipManager — DUP-R6)
 // =========================================================================
 
 CanvasRenderer._showTooltip = function(node, event) {
-    var tooltip = document.getElementById('tooltip');
-    if (!tooltip) return;
-
-    // Progressive reveal logic (same as WheelRenderer/details panel)
-    var _tCanonId = (typeof getCanonicalFormId === 'function') ? getCanonicalFormId(node) : node.formId;
-    var progress = (typeof state !== 'undefined' && state.spellProgress) ? (state.spellProgress[_tCanonId] || {}) : {};
-    var progressPercent = progress.required > 0 ? (progress.xp / progress.required) * 100 : 0;
-    var playerHasSpell = progress.unlocked || node.state === 'unlocked';
-
-    var showFullInfo = playerHasSpell || (typeof settings !== 'undefined' && settings.cheatMode);
-    var isRootWithReveal = node.isRoot && (typeof settings !== 'undefined' && settings.showRootSpellNames);
-    var isLearning = node.state === 'learning';
-    var isLocked = node.state === 'locked';
-    var revealThreshold = (typeof settings !== 'undefined' && settings.revealName !== undefined) ? settings.revealName : 10;
-    var showName = showFullInfo || isLearning || (!isLocked && progressPercent >= revealThreshold) || isRootWithReveal;
-    var showDetails = node.state !== 'locked' || (typeof settings !== 'undefined' && settings.cheatMode);
-
-    var nameText = showName ? (node.name || node.formId) : '???';
-    var infoText;
-    if (node.state === 'locked') {
-        infoText = 'Unlock prerequisites first';
-    } else if (showDetails) {
-        infoText = node.school + ' \u2022 ' + (node.level || '?') + ' \u2022 ' + (node.cost || '?') + ' magicka';
-    } else {
-        infoText = node.school + ' \u2022 Progress: ' + Math.round(progressPercent) + '%';
-    }
-
-    var nameEl = tooltip.querySelector('.tooltip-name');
-    var infoEl = tooltip.querySelector('.tooltip-info');
-    var stateEl = tooltip.querySelector('.tooltip-state');
-    if (nameEl) nameEl.textContent = nameText;
-    if (infoEl) infoEl.textContent = infoText;
-    if (stateEl) {
-        stateEl.textContent = node.state;
-        stateEl.className = 'tooltip-state ' + node.state;
-    }
-
-    tooltip.classList.remove('hidden');
-    tooltip.style.left = (event.clientX + 15) + 'px';
-    tooltip.style.top = (event.clientY + 15) + 'px';
+    TooltipManager.show(node, event);
 };
 
 CanvasRenderer._hideTooltip = function() {
-    var tooltip = document.getElementById('tooltip');
-    if (tooltip) tooltip.classList.add('hidden');
+    TooltipManager.hide();
 };
 
 // =========================================================================
@@ -62,28 +22,9 @@ CanvasRenderer._hideTooltip = function() {
 // =========================================================================
 
 CanvasRenderer.findNodeAt = function(worldX, worldY) {
-    var cellX = Math.floor(worldX / this._gridCellSize);
-    var cellY = Math.floor(worldY / this._gridCellSize);
-
-    for (var dx = -1; dx <= 1; dx++) {
-        for (var dy = -1; dy <= 1; dy++) {
-            var key = (cellX + dx) + ',' + (cellY + dy);
-            var cell = this._nodeGrid[key];
-            if (!cell) continue;
-
-            for (var i = 0; i < cell.length; i++) {
-                var node = cell[i];
-                var dist = Math.sqrt(Math.pow(node.x - worldX, 2) + Math.pow(node.y - worldY, 2));
-                var hitRadius = node.state === 'unlocked' ? 14 : 10;
-
-                if (dist <= hitRadius) {
-                    return node;
-                }
-            }
-        }
-    }
-
-    return null;
+    return SpatialIndex.findAt(this._spatialIndex, worldX, worldY, function(n) {
+        return n.state === 'unlocked' ? 14 : 10;
+    });
 };
 
 CanvasRenderer.findGlobeAt = function(worldX, worldY) {

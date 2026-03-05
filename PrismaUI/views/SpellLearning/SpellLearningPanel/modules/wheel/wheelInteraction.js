@@ -74,33 +74,10 @@ WheelRenderer.rotateSchoolToTop = function(schoolName) {
 };
 
 WheelRenderer.animateRotation = function(target) {
-    if (this.isAnimating) return;
-
     var self = this;
-    var start = this.rotation;
-    var startTime = performance.now();
-    var duration = TREE_CONFIG.animation.rotateDuration;
-
-    this.isAnimating = true;
-
-    function animate(time) {
-        var elapsed = time - startTime;
-        var progress = Math.min(elapsed / duration, 1);
-        var eased = 1 - Math.pow(1 - progress, 3);
-
-        self.rotation = start + (target - start) * eased;
+    ViewTransform.animateRotation(this, target, TREE_CONFIG.animation.rotateDuration, function() {
         self.updateTransform();
-
-        if (progress < 1) {
-            requestAnimationFrame(animate);
-        } else {
-            self.rotation = target;
-            self.isAnimating = false;
-            self.updateTransform();
-        }
-    }
-
-    requestAnimationFrame(animate);
+    });
 };
 
 // =============================================================================
@@ -150,49 +127,11 @@ WheelRenderer.selectNode = function(node) {
 };
 
 WheelRenderer.showTooltip = function(node, event) {
-    var tooltip = document.getElementById('tooltip');
-
-    // Get progress for this node
-    var progressPercent = this.getNodeXPProgress(node);
-
-    // Check if player has spell (via early learning) or it's fully unlocked
-    var _tCanonId = (typeof getCanonicalFormId === 'function') ? getCanonicalFormId(node) : node.formId;
-    var progress = state.spellProgress[_tCanonId] || {};
-    var playerHasSpell = progress.unlocked || node.state === 'unlocked';
-
-    // Progressive reveal logic (same as details panel)
-    var showFullInfo = playerHasSpell || settings.cheatMode;
-    // Show name if: full info, reached reveal threshold, available (learnable), OR root node with showRootSpellNames enabled
-    var isRootWithReveal = node.isRoot && settings.showRootSpellNames;
-    var isLearning = node.state === 'learning';
-    var isLocked = node.state === 'locked';
-    var showName = showFullInfo || isLearning || (!isLocked && progressPercent >= settings.revealName) || isRootWithReveal;
-    var showDetails = node.state !== 'locked' || settings.cheatMode;
-
-    var nameText = showName ? (node.name || node.formId) : '???';
-    var infoText;
-    if (node.state === 'locked') {
-        infoText = 'Unlock prerequisites first';
-    } else if (showDetails) {
-        infoText = node.school + ' • ' + (node.level || '?') + ' • ' + (node.cost || '?') + ' magicka';
-    } else {
-        infoText = node.school + ' • Progress: ' + progressPercent + '%';
-    }
-
-    tooltip.querySelector('.tooltip-name').textContent = nameText;
-    tooltip.querySelector('.tooltip-info').textContent = infoText;
-
-    var stateEl = tooltip.querySelector('.tooltip-state');
-    stateEl.textContent = node.state;
-    stateEl.className = 'tooltip-state ' + node.state;
-
-    tooltip.classList.remove('hidden');
-    tooltip.style.left = (event.clientX + 15) + 'px';
-    tooltip.style.top = (event.clientY + 15) + 'px';
+    TooltipManager.show(node, event);
 };
 
 WheelRenderer.hideTooltip = function() {
-    document.getElementById('tooltip').classList.add('hidden');
+    TooltipManager.hide();
 };
 
 // =============================================================================

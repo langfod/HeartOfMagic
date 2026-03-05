@@ -118,13 +118,7 @@ var CanvasRenderer = {
     // SELF-CONTAINED SCHOOL COLORS (no TREE_CONFIG dependency)
     // =========================================================================
 
-    _defaultSchoolColors: {
-        'Destruction': '#ef4444',
-        'Restoration': '#facc15',
-        'Alteration': '#22c55e',
-        'Conjuration': '#a855f7',
-        'Illusion': '#38bdf8'
-    },
+    _defaultSchoolColors: ColorUtils.defaultSchoolColors,
 
     /**
      * Get school color - checks settings first, then defaults
@@ -151,72 +145,14 @@ var CanvasRenderer = {
      * Called once at startup - shapes are reused for all nodes
      */
     _initShapePaths: function() {
-        this._shapePaths = {};
-
-        // Diamond - Destruction (aggressive, sharp)
-        var diamond = new Path2D();
-        diamond.moveTo(0, -1);
-        diamond.lineTo(1, 0);
-        diamond.lineTo(0, 1);
-        diamond.lineTo(-1, 0);
-        diamond.closePath();
-        this._shapePaths['Destruction'] = diamond;
-
-        // Circle - Restoration (healing, soft) - NOT oval!
-        var circle = new Path2D();
-        circle.arc(0, 0, 1, 0, Math.PI * 2);
-        this._shapePaths['Restoration'] = circle;
-
-        // Hexagon - Alteration (transformation)
-        var hexagon = new Path2D();
-        var hexW = 0.9;
-        var hexH = 0.5;
-        hexagon.moveTo(0, -1);
-        hexagon.lineTo(hexW, -hexH);
-        hexagon.lineTo(hexW, hexH);
-        hexagon.lineTo(0, 1);
-        hexagon.lineTo(-hexW, hexH);
-        hexagon.lineTo(-hexW, -hexH);
-        hexagon.closePath();
-        this._shapePaths['Alteration'] = hexagon;
-
-        // Pentagon - Conjuration (summoning, mystical)
-        var pentagon = new Path2D();
-        for (var i = 0; i < 5; i++) {
-            var angle = (i * 72 - 90) * Math.PI / 180;
-            var x = Math.cos(angle);
-            var y = Math.sin(angle);
-            if (i === 0) {
-                pentagon.moveTo(x, y);
-            } else {
-                pentagon.lineTo(x, y);
-            }
-        }
-        pentagon.closePath();
-        this._shapePaths['Conjuration'] = pentagon;
-
-        // Triangle - Illusion (tip pointing INWARD toward origin)
-        // Since nodes are placed radially, "inward" means toward (0,0)
-        // We draw a downward-pointing triangle, but it will be drawn at each node's position
-        // pointing toward center due to how canvas coordinates work
-        var triangle = new Path2D();
-        triangle.moveTo(0, 1);       // Tip pointing down (toward origin when node is above center)
-        triangle.lineTo(-0.85, -0.6); // Top-left
-        triangle.lineTo(0.85, -0.6);  // Top-right
-        triangle.closePath();
-        this._shapePaths['Illusion'] = triangle;
-
-        // Default circle for unknown schools
-        this._shapePaths['default'] = circle;
-
-        console.log('[CanvasRenderer] Path2D cache initialized for', Object.keys(this._shapePaths).length, 'shapes');
+        this._shapePaths = ShapeDefinitions.getPath2DCache();
     },
 
     /**
      * Get cached Path2D for a school
      */
     _getShapePath: function(school) {
-        return this._shapePaths[school] || this._shapePaths['default'];
+        return ShapeDefinitions.getPath2D(school);
     },
 
     // =========================================================================
@@ -592,60 +528,19 @@ var CanvasRenderer = {
     },
 
     /**
-     * Build discovery mode visibility set
-     * Shows: unlocked, available, and locked nodes ONE STEP from available/unlocked
+     * Build discovery mode visibility set.
+     * Delegates to shared DiscoveryVisibility module (DUP-R5).
      */
     _buildDiscoveryVisibility: function() {
         if (!settings.discoveryMode || settings.cheatMode) {
             this._discoveryVisibleIds = null;
             return;
         }
-
-        var visible = new Set();
-        var availableOrUnlockedIds = new Set();
-
-        // First pass: collect unlocked, learning, and available nodes
-        for (var i = 0; i < this.nodes.length; i++) {
-            var node = this.nodes[i];
-            if (node.state === 'unlocked' || node.state === 'learning' || node.state === 'available') {
-                visible.add(node.id);
-                if (node.formId) visible.add(node.formId);
-                availableOrUnlockedIds.add(node.id);
-                if (node.formId) availableOrUnlockedIds.add(node.formId);
-            }
-        }
-
-        // Second pass: find locked nodes ONE STEP away from visible
-        for (var i = 0; i < this.edges.length; i++) {
-            var edge = this.edges[i];
-            var fromVisible = availableOrUnlockedIds.has(edge.from);
-            var toVisible = availableOrUnlockedIds.has(edge.to);
-
-            if (fromVisible && !toVisible) {
-                visible.add(edge.to);
-            }
-            if (toVisible && !fromVisible) {
-                visible.add(edge.from);
-            }
-        }
-
-        this._discoveryVisibleIds = visible;
+        this._discoveryVisibleIds = DiscoveryVisibility.build(this.nodes, this.edges);
     },
 
     buildSpatialIndex: function() {
-        this._nodeGrid = {};
-
-        for (var i = 0; i < this.nodes.length; i++) {
-            var node = this.nodes[i];
-            var cellX = Math.floor(node.x / this._gridCellSize);
-            var cellY = Math.floor(node.y / this._gridCellSize);
-            var key = cellX + ',' + cellY;
-
-            if (!this._nodeGrid[key]) {
-                this._nodeGrid[key] = [];
-            }
-            this._nodeGrid[key].push(node);
-        }
+        this._spatialIndex = SpatialIndex.build(this.nodes, this._gridCellSize);
     },
 
     // =========================================================================
@@ -653,19 +548,7 @@ var CanvasRenderer = {
     // =========================================================================
 
     screenToWorld: function(screenX, screenY) {
-        var cx = this._width / 2;
-        var cy = this._height / 2;
-
-        var x = (screenX - cx - this.panX) / this.zoom;
-        var y = (screenY - cy - this.panY) / this.zoom;
-
-        // Undo rotation
-        var rotRad = -this.rotation * Math.PI / 180;
-        var cos = Math.cos(rotRad);
-        var sin = Math.sin(rotRad);
-        var worldX = x * cos - y * sin;
-        var worldY = x * sin + y * cos;
-
-        return { x: worldX, y: worldY };
+        var rotRad = this.rotation * Math.PI / 180;
+        return ViewTransform.screenToWorld(screenX, screenY, this.panX, this.panY, this.zoom, rotRad, this._width, this._height);
     }
 };

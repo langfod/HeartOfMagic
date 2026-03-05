@@ -54,7 +54,7 @@ modules/
 | `TreeParser` | treeParser.js | Tree JSON parsing, validation, cycle detection |
 | `WheelRenderer` | wheel/wheelCore.js | SVG wheel rendering engine |
 | `CanvasRenderer` | canvas/canvasCore.js | Canvas 2D rendering engine |
-| `WebGLRenderer` | webglRenderer.js | GPU-accelerated WebGL 2.0 renderer |
+| `WebGLRenderer` | webglRenderer.js + webglRendererBuffers.js + webglRendererDraw.js | GPU-accelerated WebGL 2.0 renderer |
 | `LayoutEngine` | layoutEngineCore.js | Layout position engine singleton |
 | `GROWTH_DSL` | growthDSL.js | Procedural tree visual DSL |
 | `GROWTH_BEHAVIORS` | growthBehaviors.js | Per-school growth behavior definitions |
@@ -62,6 +62,14 @@ modules/
 | `EditMode` | editModeCore.js | Edit mode state and toolbar |
 | `TreeGrowth` | treeGrowth.js | Growth mode orchestrator |
 | `BuildProgress` | buildProgress.js | Build progress modal |
+| `ViewTransform` | viewTransform.js | Coordinate transform utilities (screen↔world, rotation, path interpolation) |
+| `SpatialIndex` | spatialIndex.js | Grid-based spatial hash for node hit testing |
+| `PanZoomController` | panZoomController.js | Factory for reusable mouse-driven pan/zoom handlers |
+| `GrowthRenderShared` | growthRenderShared.js | Shared growth renderer constants and shape primitives |
+| `DiscoveryVisibility` | discoveryVisibility.js | Discovery mode visibility set builder |
+| `TooltipManager` | tooltipManager.js | Unified tooltip show/hide with progressive reveal |
+| `ShapeDefinitions` | shapeDefinitions.js | Canonical shape vertices (diamond, hexagon, pentagon, etc.) |
+| `GrowthModeUtils` | growthModeUtils.js | Shared growth mode lifecycle (applyTree, buildTree, zoomToFit) |
 
 ## Script Load Order
 
@@ -72,21 +80,22 @@ Scripts are loaded via `<script>` tags in dependency order. The canonical order 
 1. **Locale** -- `lang/locale.js`, `lang/en.js`, dynamic locale script, `modules/i18n.js`
 2. **Foundation** -- `constants.js`, `state.js`, `config.js`
 3. **Layout Engine** -- `edgeScoring.js`, `shapeProfiles.js`, `layoutEngineCore.js`, `layoutEngineGrid.js`, `layoutEngineUtils.js`, `layoutEngineRadial.js`
-4. **Core Utilities** -- `spellCache.js`, `colorUtils.js`, `uiHelpers.js`, `growthDSL.js`, `treeParser.js`
-5. **Renderers** -- `wheel/*`, `starfield.js`, `globe3D.js`, `canvas/*`, `trustedRenderer.js`
-6. **Edit Mode** -- `editModeCore.js`, `editModeTools.js`, `editModeOps.js`, `colorPicker.js`
-7. **Settings** -- `settings/*` (13 files in dependency order)
-8. **Tree Viewer** -- `treeViewer/*` (4 files)
-9. **UI Components** -- `progressionUI.js`, `settingsPresets.js`, `scannerPresets.js`, `easyMode.js`, `llmApiSettings.js`, `buttonHandlers.js`
-10. **Tree Preview** -- `treePreviewUtils.js`, `sunGrid*.js` (4 files), `treePreviewSun.js`, `treePreviewFlat.js`, `treePreview.js`, `treeCore.js`
-11. **Growth Modes** -- `classic/*`, `tree/*`, `graph/*`, `oracle/*`, `thematic/*`, `treeGrowth.js`
-12. **C++ Callbacks** -- `cppCallbacksCore.js`, `cppCallbacksTree.js`, `cppCallbacksState.js`, `buildProgress.js`
-13. **Tree Building** -- `llmGenerateCore.js`, `llmGenerateProcess.js`, `proceduralTree*.js`, `layoutGenerator.js`, `growthBehaviors.js`, `visualFirst/*`, `llmTreeFeatures.js`, `settingsAware*.js`
-14. **Generation Mode** -- `generationModeCore.js`, `generationModeSchools.js`, `prereqMaster*.js`
-15. **Panel Chrome** -- `treeAnimation.js`, `growthStyleGenerator.js`, `llmColorSuggestion.js`, `panelInit.js`, `panelChrome.js`, `passiveLearningSettings.js`, `earlyLearningSettings.js`
-16. **WebGL** -- `webglShaders.js`, `webglShapes.js`, `webglRenderer.js`
-17. **Testing** -- `autoTest.js`, `unificationTest.js`
-18. **Entry Point** -- `main.js` (must be LAST)
+4. **Core Utilities** -- `spellCache.js`, `colorUtils.js`, `discoveryVisibility.js`, `tooltipManager.js`, `uiHelpers.js`, `growthDSL.js`, `treeParser.js`
+5. **Shared Infrastructure** -- `shapeDefinitions.js`, `viewTransform.js`, `spatialIndex.js`, `panZoomController.js`
+6. **Renderers** -- `wheel/*`, `starfield.js`, `globe3D.js`, `globe3DParticles.js`, `canvas/*`, `trustedRenderer.js`
+7. **Edit Mode** -- `editModeCore.js`, `editModeTools.js`, `editModeOps.js`, `colorPicker.js`
+8. **Settings** -- `settings/*` (13 files in dependency order)
+9. **Tree Viewer** -- `treeViewer/*` (4 files)
+10. **UI Components** -- `progressionUI.js`, `settingsPresets.js`, `scannerPresets.js`, `easyMode.js`, `llmApiSettings.js`, `buttonHandlers.js`
+11. **Tree Preview** -- `treePreviewUtils.js`, `sunGrid*.js` (4 files), `treePreviewSun.js`, `treePreviewFlat.js`, `treePreview.js`, `treeCore.js`
+12. **Growth Modes** -- `growthModeUtils.js`, `growthRenderShared.js`, `classic/*`, `tree/*`, `graph/*`, `oracle/*`, `thematic/*`, `treeGrowth.js`
+13. **C++ Callbacks** -- `cppCallbacksCore.js`, `cppCallbacksTree.js`, `cppCallbacksState.js`, `buildProgress.js`
+14. **Tree Building** -- `llmGenerateCore.js`, `llmGenerateProcess.js`, `proceduralTree*.js`, `layoutGenerator.js`, `growthBehaviors.js`, `visualFirst/*`, `llmTreeFeatures.js`, `settingsAware*.js`
+15. **Generation Mode** -- `generationModeCore.js`, `generationModeSchools.js`, `prereqMaster*.js`
+16. **Panel Chrome** -- `treeAnimation.js`, `growthStyleGenerator.js`, `llmColorSuggestion.js`, `panelInit.js`, `panelChrome.js`, `passiveLearningSettings.js`, `earlyLearningSettings.js`
+17. **WebGL** -- `webglShaders.js`, `webglShapes.js`, `webglRenderer.js`, `webglRendererBuffers.js`, `webglRendererDraw.js`
+18. **Testing** -- `autoTest.js`, `unificationTest.js`
+19. **Entry Point** -- `main.js` (must be LAST)
 
 ## Module Patterns
 

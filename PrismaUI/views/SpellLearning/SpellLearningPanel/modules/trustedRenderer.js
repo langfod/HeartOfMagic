@@ -35,14 +35,8 @@ var TrustedRenderer = {
     _width: 800,
     _height: 600,
 
-    // Known school colors (matching CanvasRendererV2)
-    _knownSchoolColors: {
-        'Destruction': '#ef4444',
-        'Restoration': '#facc15',
-        'Alteration': '#22c55e',
-        'Conjuration': '#a855f7',
-        'Illusion': '#38bdf8'
-    },
+    // Known school colors (delegated to shared ColorUtils)
+    _knownSchoolColors: ColorUtils.defaultSchoolColors,
     // Fallback for unknown schools
     _defaultColors: [
         '#4a7c4a', '#4a6a9e', '#8a7040', '#9e4a4a', '#7a4a8a',

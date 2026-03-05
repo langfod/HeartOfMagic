@@ -11,7 +11,7 @@
  *   GraphRenderer.renderAffinityOverlay(ctx, cx, cy, affinityPairs, opacity);
  *   GraphRenderer.renderRootMarker(ctx, x, y, color, radius);
  *
- * Depends on: (none — self-contained)
+ * Depends on: growthRenderShared.js (GrowthRenderShared — shared shape/size constants)
  */
 
 var GraphRenderer = {
@@ -20,21 +20,9 @@ var GraphRenderer = {
     // SIZE MULTIPLIERS PER SKILL LEVEL
     // =========================================================================
 
-    _sizeTable: {
-        'Novice':     0.8,
-        'Apprentice': 1.0,
-        'Adept':      1.2,
-        'Expert':     1.4,
-        'Master':     1.8
-    },
+    _sizeTable: GrowthRenderShared.SIZE_TABLE,
 
-    _brightnessTable: {
-        'Novice':     0.3,
-        'Apprentice': 0.5,
-        'Adept':      0.8,
-        'Expert':     1.2,
-        'Master':     1.8
-    },
+    _brightnessTable: GrowthRenderShared.BRIGHTNESS_TABLE,
 
     // =========================================================================
     // EDGE RENDERING
@@ -167,22 +155,19 @@ var GraphRenderer = {
         // Glow
         ctx.beginPath();
         var gr = r * 1.8;
-        ctx.moveTo(x, y - gr); ctx.lineTo(x + gr, y); ctx.lineTo(x, y + gr); ctx.lineTo(x - gr, y);
-        ctx.closePath();
+        GrowthRenderShared.drawDiamond(ctx, x, y, gr);
         ctx.fillStyle = this._hexToRgba(color, opacity * 0.12 * bright);
         ctx.fill();
 
         // Body
         ctx.beginPath();
-        ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y);
-        ctx.closePath();
+        GrowthRenderShared.drawDiamond(ctx, x, y, r);
         ctx.fillStyle = this._hexToRgba(color, opacity * 0.6 * Math.min(bright, 1.2));
         ctx.fill();
 
         // Border
         ctx.beginPath();
-        ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y);
-        ctx.closePath();
+        GrowthRenderShared.drawDiamond(ctx, x, y, r);
         ctx.strokeStyle = this._hexToRgba(color, opacity * 0.9);
         ctx.lineWidth = 0.8;
         ctx.stroke();
@@ -221,14 +206,7 @@ var GraphRenderer = {
     },
 
     _starPath: function (ctx, cx, cy, outerR, innerR, points) {
-        var step = Math.PI / points;
-        ctx.moveTo(cx, cy - outerR);
-        for (var i = 0; i < 2 * points; i++) {
-            var r = (i % 2 === 0) ? outerR : innerR;
-            var angle = -Math.PI / 2 + (i + 1) * step;
-            ctx.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
-        }
-        ctx.closePath();
+        GrowthRenderShared.drawStar(ctx, cx, cy, outerR, innerR, points);
     },
 
     // =========================================================================

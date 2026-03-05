@@ -137,9 +137,7 @@ function saveScannerPreset(name) {
     }
 
     // Save active preset name to unified config
-    if (typeof autoSaveSettings === 'function') {
-        autoSaveSettings();
-    }
+    _scannerAutoSave();
 
     updateScannerPresetsUI();
     console.log('[ScannerPresets] Saved preset file:', name);
@@ -261,9 +259,7 @@ function applyScannerPreset(name) {
     _activeScannerPreset = name;
     updateScannerPresetsUI();
 
-    if (typeof autoSaveSettings === 'function') {
-        autoSaveSettings();
-    }
+    _scannerAutoSave();
 
     console.log('[ScannerPresets] Applied preset:', name);
 }
@@ -273,46 +269,14 @@ function applyScannerPreset(name) {
 // =============================================================================
 
 function deleteScannerPreset(name, deleteBtn) {
-    if (!scannerPresets[name]) return;
-
-    // Cannot delete the default (oldest) preset
-    if (name === _getDefaultPresetKey()) return;
-
-    // Second-click confirmation: first click arms, second click deletes
-    if (!deleteBtn || deleteBtn.getAttribute('data-armed') !== 'true') {
-        // Arm the button — change to red confirm state
-        if (deleteBtn) {
-            deleteBtn.setAttribute('data-armed', 'true');
-            deleteBtn.classList.add('armed');
-            deleteBtn.title = 'Click again to confirm delete';
-            // Auto-disarm after 2 seconds
-            setTimeout(function() {
-                deleteBtn.removeAttribute('data-armed');
-                deleteBtn.classList.remove('armed');
-                deleteBtn.title = 'Delete preset';
-            }, 2000);
-        }
-        return;
-    }
-
-    delete scannerPresets[name];
-
-    // Delete the preset file via C++
-    if (window.callCpp) {
-        window.callCpp('DeletePreset', JSON.stringify({ type: 'scanner', name: name }));
-    }
-
-    if (_activeScannerPreset === name) {
-        _activeScannerPreset = '';
-    }
-
-    updateScannerPresetsUI();
-
-    if (typeof autoSaveSettings === 'function') {
-        autoSaveSettings();
-    }
-
-    console.log('[ScannerPresets] Deleted preset file:', name);
+    PresetBase.handleDelete(deleteBtn, name, scannerPresets, SCANNER_PRESET_DEFAULT_NAME, 'scanner', {
+        getDefaultKey: _getDefaultPresetKey,
+        getActiveKey: function() { return _activeScannerPreset; },
+        setActiveKey: function(v) { _activeScannerPreset = v; },
+        onDefaultReset: '',
+        onUpdateUI: updateScannerPresetsUI,
+        onAutoSave: _scannerAutoSave
+    });
 }
 
 // =============================================================================
@@ -320,54 +284,13 @@ function deleteScannerPreset(name, deleteBtn) {
 // =============================================================================
 
 function renameScannerPreset(oldName, newName) {
-    if (!newName || newName.trim() === '' || !scannerPresets[oldName]) return;
-    newName = newName.trim();
-
-    if (newName === oldName) return;
-
-    // Cannot rename away from "Default"
-    if (oldName === _getDefaultPresetKey()) {
-        updateScannerPresetsUI();
-        return;
-    }
-
-    // Cannot rename to "Default" (reserved)
-    if (newName.toLowerCase() === SCANNER_PRESET_DEFAULT_NAME.toLowerCase()) {
-        updateScannerPresetsUI();
-        return;
-    }
-
-    // Check duplicate
-    if (scannerPresets[newName]) {
-        if (!confirm(t('scannerPresets.overwriteConfirm', {name: newName}))) {
-            updateScannerPresetsUI();
-            return;
-        }
-        delete scannerPresets[newName];
-    }
-
-    var preset = scannerPresets[oldName];
-    preset.name = newName;
-    scannerPresets[newName] = preset;
-    delete scannerPresets[oldName];
-
-    // Delete old file, save new file
-    if (window.callCpp) {
-        window.callCpp('DeletePreset', JSON.stringify({ type: 'scanner', name: oldName }));
-        window.callCpp('SavePreset', JSON.stringify({ type: 'scanner', name: newName, data: preset }));
-    }
-
-    if (_activeScannerPreset === oldName) {
-        _activeScannerPreset = newName;
-    }
-
-    updateScannerPresetsUI();
-
-    if (typeof autoSaveSettings === 'function') {
-        autoSaveSettings();
-    }
-
-    console.log('[ScannerPresets] Renamed preset:', oldName, '->', newName);
+    PresetBase.handleRename(oldName, newName, scannerPresets, SCANNER_PRESET_DEFAULT_NAME, 'scanner', 'scannerPresets.overwriteConfirm', {
+        getDefaultKey: _getDefaultPresetKey,
+        getActiveKey: function() { return _activeScannerPreset; },
+        setActiveKey: function(v) { _activeScannerPreset = v; },
+        onUpdateUI: updateScannerPresetsUI,
+        onAutoSave: _scannerAutoSave
+    });
 }
 
 // =============================================================================
@@ -386,141 +309,17 @@ function updateScannerPresetsUI() {
     if (divider) divider.style.display = keys.length > 0 ? '' : 'none';
     chipsContainer.style.display = keys.length > 0 ? '' : 'none';
 
-    // Rebuild chips
-    chipsContainer.innerHTML = '';
-
-    // Find the oldest preset (default) — it cannot be deleted
-    var defaultKey = _getDefaultPresetKey();
-
-    for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        var preset = scannerPresets[key];
-        var chipName = preset.name || key;
-        var isDefault = (key === defaultKey);
-
-        var chip = document.createElement('div');
-        chip.className = 'scanner-preset-chip';
-        if (key === _activeScannerPreset) {
-            chip.className += ' active';
+    PresetBase.renderChips(chipsContainer, scannerPresets, _activeScannerPreset, SCANNER_PRESET_DEFAULT_NAME, {
+        onApply: applyScannerPreset,
+        onSave: saveScannerPreset,
+        onDelete: deleteScannerPreset,
+        onInlineRename: function(k, span) {
+            PresetBase.startInlineRename(k, span, scannerPresets, renameScannerPreset);
         }
-        if (isDefault) {
-            chip.className += ' default';
-        }
-
-        var nameSpan = document.createElement('span');
-        nameSpan.className = 'scanner-preset-name';
-        nameSpan.textContent = chipName;
-        nameSpan.setAttribute('data-preset', key);
-
-        // Single click to apply (reset to baseline)
-        nameSpan.addEventListener('click', (function(k) {
-            return function() {
-                applyScannerPreset(k);
-            };
-        })(key));
-
-        // Double click to rename (not on Default)
-        if (!isDefault) {
-            nameSpan.addEventListener('dblclick', (function(k, span) {
-                return function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    _startInlineRename(k, span);
-                };
-            })(key, nameSpan));
-        }
-
-        chip.appendChild(nameSpan);
-
-        // Show update button on the active preset (overwrite with current settings)
-        if (key === _activeScannerPreset) {
-            var updateBtn = document.createElement('span');
-            updateBtn.className = 'scanner-preset-update';
-            updateBtn.innerHTML = '&#8635;';
-            updateBtn.title = 'Update preset with current settings';
-            updateBtn.addEventListener('click', (function(k) {
-                return function(e) {
-                    e.stopPropagation();
-                    saveScannerPreset(k);
-                };
-            })(key));
-            chip.appendChild(updateBtn);
-        }
-
-        // Only show delete button on non-default presets
-        if (!isDefault) {
-            var deleteBtn = document.createElement('span');
-            deleteBtn.className = 'scanner-preset-delete';
-            deleteBtn.textContent = '\u00d7';
-            deleteBtn.title = 'Delete preset';
-            deleteBtn.addEventListener('click', (function(k, btn) {
-                return function(e) {
-                    e.stopPropagation();
-                    deleteScannerPreset(k, btn);
-                };
-            })(key, deleteBtn));
-            chip.appendChild(deleteBtn);
-        }
-
-        chipsContainer.appendChild(chip);
-    }
+    });
 
     // Sync easy mode chips
     if (typeof updateEasyPresetChips === 'function') updateEasyPresetChips();
-}
-
-// =============================================================================
-// INLINE RENAME
-// =============================================================================
-
-function _startInlineRename(presetKey, nameSpan) {
-    var currentName = scannerPresets[presetKey] ? scannerPresets[presetKey].name : presetKey;
-    var chip = nameSpan.parentElement;
-
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'scanner-preset-rename';
-    input.value = currentName;
-
-    // Estimate width from current text
-    input.style.width = Math.max(60, currentName.length * 7) + 'px';
-
-    nameSpan.style.display = 'none';
-    chip.insertBefore(input, nameSpan);
-    input.focus();
-    input.select();
-
-    var committed = false;
-
-    function commit() {
-        if (committed) return;
-        committed = true;
-
-        var newName = input.value.trim();
-        if (input.parentElement) {
-            input.parentElement.removeChild(input);
-        }
-        nameSpan.style.display = '';
-
-        if (newName && newName !== currentName) {
-            renameScannerPreset(presetKey, newName);
-        }
-    }
-
-    input.addEventListener('blur', commit);
-    input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            commit();
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            committed = true;
-            if (input.parentElement) {
-                input.parentElement.removeChild(input);
-            }
-            nameSpan.style.display = '';
-        }
-    });
 }
 
 // =============================================================================
@@ -534,13 +333,18 @@ var SCANNER_PRESET_DEFAULT_NAME = 'Default';
  * The default preset cannot be deleted.
  */
 function _getDefaultPresetKey() {
-    var keys = Object.keys(scannerPresets);
-    for (var i = 0; i < keys.length; i++) {
-        if (keys[i].toLowerCase() === SCANNER_PRESET_DEFAULT_NAME.toLowerCase()) {
-            return keys[i];
-        }
+    return PresetBase.getDefaultKey(scannerPresets, SCANNER_PRESET_DEFAULT_NAME);
+}
+
+/**
+ * Auto-save helper — uses scheduleAutoSave (debounced) if available, else autoSaveSettings.
+ */
+function _scannerAutoSave() {
+    if (typeof scheduleAutoSave === 'function') {
+        scheduleAutoSave();
+    } else if (typeof autoSaveSettings === 'function') {
+        autoSaveSettings();
     }
-    return null;
 }
 
 /**
