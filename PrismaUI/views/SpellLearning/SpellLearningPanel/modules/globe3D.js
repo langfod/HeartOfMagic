@@ -163,10 +163,18 @@ var Globe3D = {
         this._minScale = minScale;
         this._maxScale = maxScale;
 
-        // Depth sort (back to front)
-        this.particles.sort(function(a, b) {
-            return a.z - b.z;
-        });
+        // Depth sort (back to front) — insertion sort is O(n) for nearly-sorted data
+        // (particle z-values change only slightly per frame due to incremental rotation)
+        var parts = this.particles;
+        for (var si = 1; si < parts.length; si++) {
+            var tmp = parts[si];
+            var j = si - 1;
+            while (j >= 0 && parts[j].z > tmp.z) {
+                parts[j + 1] = parts[j];
+                j--;
+            }
+            parts[j + 1] = tmp;
+        }
     },
 
     /**

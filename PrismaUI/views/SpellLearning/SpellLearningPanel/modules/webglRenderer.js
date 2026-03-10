@@ -39,12 +39,15 @@ var WebGLRenderer = {
     // Spatial index for hit detection
     _nodeGrid: null,
     _gridCellSize: 50,
-    
+
     // Performance
     _rafId: null,
     _needsRender: true,
     _needsLabelRender: true,
     _lastRenderTime: 0,
+    _cachedRect: null,        // cached getBoundingClientRect result
+    _hoverPending: false,     // RAF gate for hover detection
+    _pendingHoverEvent: null, // latest mousemove event awaiting hover check
     
     // Node lookup
     _nodeMap: null,
@@ -281,22 +284,38 @@ var WebGLRenderer = {
             this._needsRender = true;
             this._needsLabelRender = true;
         } else {
-            // Hover detection
-            var rect = this.canvas.getBoundingClientRect();
-            var world = this.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-            var node = this.findNodeAt(world.x, world.y);
-            
-            if (node !== this.hoveredNode) {
-                this.hoveredNode = node;
-                this.canvas.style.cursor = node ? 'pointer' : 'grab';
-                this._needsRender = true;
-                this._nodeDataDirty = true;
-                
-                if (node && typeof WheelRenderer !== 'undefined' && WheelRenderer.showTooltip) {
-                    WheelRenderer.showTooltip(node, e);
-                } else if (typeof WheelRenderer !== 'undefined' && WheelRenderer.hideTooltip) {
-                    WheelRenderer.hideTooltip();
-                }
+            // Hover detection — gate behind RAF to avoid per-event getBoundingClientRect + findNodeAt
+            this._pendingHoverEvent = e;
+            if (!this._hoverPending) {
+                this._hoverPending = true;
+                var self = this;
+                requestAnimationFrame(function() {
+                    self._hoverPending = false;
+                    var he = self._pendingHoverEvent;
+                    if (!he) return;
+                    self._pendingHoverEvent = null;
+
+                    // Use cached rect (invalidated on resize/scroll)
+                    if (!self._cachedRect) {
+                        self._cachedRect = self.canvas.getBoundingClientRect();
+                    }
+                    var rect = self._cachedRect;
+                    var world = self.screenToWorld(he.clientX - rect.left, he.clientY - rect.top);
+                    var node = self.findNodeAt(world.x, world.y);
+
+                    if (node !== self.hoveredNode) {
+                        self.hoveredNode = node;
+                        self.canvas.style.cursor = node ? 'pointer' : 'grab';
+                        self._needsRender = true;
+                        self._nodeDataDirty = true;
+
+                        if (node && typeof WheelRenderer !== 'undefined' && WheelRenderer.showTooltip) {
+                            WheelRenderer.showTooltip(node, he);
+                        } else if (typeof WheelRenderer !== 'undefined' && WheelRenderer.hideTooltip) {
+                            WheelRenderer.hideTooltip();
+                        }
+                    }
+                });
             }
         }
     },
@@ -311,9 +330,12 @@ var WebGLRenderer = {
         var zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
         var newZoom = this.zoom * zoomFactor;
         newZoom = Math.max(0.1, Math.min(5, newZoom));
-        
-        // Zoom toward mouse position
-        var rect = this.canvas.getBoundingClientRect();
+
+        // Zoom toward mouse position — use cached rect
+        if (!this._cachedRect) {
+            this._cachedRect = this.canvas.getBoundingClientRect();
+        }
+        var rect = this._cachedRect;
         var mouseX = e.clientX - rect.left - rect.width / 2;
         var mouseY = e.clientY - rect.top - rect.height / 2;
         
@@ -329,7 +351,10 @@ var WebGLRenderer = {
     },
     
     onClick: function(e) {
-        var rect = this.canvas.getBoundingClientRect();
+        if (!this._cachedRect) {
+            this._cachedRect = this.canvas.getBoundingClientRect();
+        }
+        var rect = this._cachedRect;
         var world = this.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
         var clickedNode = this.findNodeAt(world.x, world.y);
         

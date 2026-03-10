@@ -90,6 +90,7 @@ function generateSimpleSchoolTree(schoolName, spells, config) {
     });
 
     var placedPositions = [];
+    var placementGrid = new PlacementGrid(gridCfg.minNodeSpacing);
     var centerAngle = sliceInfo.centerAngle;
     var halfSector = sliceInfo.halfSector;
 
@@ -121,7 +122,7 @@ function generateSimpleSchoolTree(schoolName, spells, config) {
 
             var minSpacing = gridCfg.minNodeSpacing;
             var attempts = 0;
-            while (attempts < 10 && hasOverlap(x, y, placedPositions, minSpacing)) {
+            while (attempts < 10 && hasOverlap(x, y, placedPositions, minSpacing, placementGrid)) {
                 nodeRadius += minSpacing * 0.5;
                 x = Math.cos(rad) * nodeRadius;
                 y = Math.sin(rad) * nodeRadius;
@@ -137,6 +138,7 @@ function generateSimpleSchoolTree(schoolName, spells, config) {
             if (tier === 0) node.isRoot = true;
 
             placedPositions.push({ x: x, y: y });
+            placementGrid.add(x, y);
         });
     }
 

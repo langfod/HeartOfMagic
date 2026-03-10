@@ -1,12 +1,12 @@
 # JavaScript Audit: Performance Opportunities
 
 **Date:** 2026-03-03
-**Last verified:** 2026-03-09 (all critical + high-priority findings fixed)
+**Last verified:** 2026-03-09 (all critical + high + medium-priority findings fixed)
 **Scope:** `PrismaUI/views/SpellLearning/SpellLearningPanel/modules/` (~120 files, ~72k lines)
 
 ## Executive Summary
 
-42 performance findings were identified across 10 anti-pattern categories. **All 4 critical findings and all 10 high-priority findings have been fixed** (2026-03-09). See `PERF_HIGH_PROGRESS.md` for detailed change notes.
+42 performance findings were identified across 10 anti-pattern categories. **All 4 critical, all 10 high-priority, and all 9 medium-priority findings have been fixed** (2026-03-09). See `PERF_HIGH_PROGRESS.md` and `PERF_MEDIUM_PROGRESS.md` for detailed change notes.
 
 1. ~~WebGL buffer recreation every frame~~ — **FIXED**
 2. ~~Missing element/theme caching in edge scoring~~ — **FIXED**
@@ -141,73 +141,77 @@
 
 ## Medium-Priority Findings
 
-### PERF-M1: WebGL Hover Detection Without Throttle
+### PERF-M1: WebGL Hover Detection Without Throttle — FIXED
 
 **File:** `webglRenderer.js:274-297`
 
-`onMouseMove` calls `getBoundingClientRect()` (can trigger layout reflow) and `findNodeAt()` on every mousemove event (60-120+ per second).
+~~`onMouseMove` calls `getBoundingClientRect()` (can trigger layout reflow) and `findNodeAt()` on every mousemove event (60-120+ per second).~~
 
-**Fix:** Cache bounding rect, gate hover behind RAF flag.
+**Fixed:** Hover detection gated behind `requestAnimationFrame`. `getBoundingClientRect()` result cached in `_cachedRect` (invalidated on `updateCanvasSize`). Only one hover check per frame. `onWheel` and `onClick` also use cached rect.
 
-### PERF-M2: Depth Sorting Particle Array Every Frame
+### PERF-M2: Depth Sorting Particle Array Every Frame — FIXED
 
 **File:** `globe3D.js:~173`
 
-`Array.sort` is O(n log n) and allocates internally. 200 particles at 60fps = 12,000 sorts per second.
+~~`Array.sort` is O(n log n) and allocates internally. 200 particles at 60fps = 12,000 sorts per second.~~
 
-**Fix:** Use insertion sort (efficient for nearly-sorted data) or Z-bucketing.
+**Fixed:** Replaced with insertion sort. O(n) for nearly-sorted data — particle z-values change by at most a few positions per frame.
 
-### PERF-M3: indexOf for Membership Checks
+### PERF-M3: indexOf for Membership Checks — FIXED
 
 **File:** `treeParser.js:179, 191, 199, 366, 369`
 
-Linear search in arrays for prerequisite/children membership. Compounds to O(n*k) in loops.
+~~Linear search in arrays for prerequisite/children membership. Compounds to O(n*k) in loops.~~
 
-**Fix:** Use Set for bulk membership operations.
+**Fixed:** Edge existence checks use `edgeSet` object with `from>to` keys (O(1)). Orphan-fixing uses object-set membership. `updateNodeConnections` in `proceduralTreeLayout.js` uses `childSets`/`prereqSets` objects.
 
-### PERF-M4: STOP_WORDS.indexOf in Hot Path
+### PERF-M4: STOP_WORDS.indexOf in Hot Path — FIXED (High-Priority H3)
 
 **File:** `proceduralTreeCore.js:49`
 
-Linear scan per word during theme discovery. 300 spells * 10 words * 50 stop words = 150,000 comparisons.
+~~Linear scan per word during theme discovery. 300 spells * 10 words * 50 stop words = 150,000 comparisons.~~
 
-**Fix:** Convert `STOP_WORDS` to a Set.
+**Fixed:** `STOP_WORDS_SET` object lookup (O(1)) added in high-priority H3 pass.
 
-### PERF-M5: String Key Generation in Layout Hot Paths
+### PERF-M5: String Key Generation in Layout Hot Paths — FIXED
 
 **File:** `layoutEngineRadial.js:139-151`
 
-String concatenation (`tier + '_' + slotIndex`) for hash keys in BFS. 300+ nodes = 1000+ string allocations.
+~~String concatenation (`tier + '_' + slotIndex`) for hash keys in BFS. 300+ nodes = 1000+ string allocations.~~
 
-**Fix:** Use numeric key: `tier * 10000 + slotIndex`.
+**Fixed:** `_posKey(tier, slotIndex)` helper returns `tier * 100000 + slotIndex` (numeric). All ~20 occurrences replaced.
 
-### PERF-M6: WebGL renderNodes Recalculates ALL Node Data on View-Only Changes
+### PERF-M6: WebGL renderNodes Recalculates ALL Node Data on View-Only Changes — FIXED (Critical C1)
 
-**File:** `webglRenderer.js:876-975` (shifted from original 966-1065 after dedup refactoring)
+**File:** `webglRendererDraw.js`
 
-When only pan/zoom/rotation changes (most frames), the node instance data hasn't changed. But `renderNodes` re-groups by shape, rebuilds all Float32Arrays, and re-uploads.
+~~When only pan/zoom/rotation changes (most frames), the node instance data hasn't changed. But `renderNodes` re-groups by shape, rebuilds all Float32Arrays, and re-uploads.~~
 
-**Fix:** Separate "data dirty" from "view dirty". Only update view matrix when transform changes.
+**Fixed:** `_nodeDataDirty` flag added in critical C1 pass. Pan/zoom only sets `_needsRender`.
 
-### PERF-M7: Stale _cachedPosMap in prereqMasterScoring
+### PERF-M7: Stale _cachedPosMap in prereqMasterScoring — FIXED
 
 **File:** `prereqMasterScoring.js:84-95`
 
-Module-level cache never cleared. After tree regeneration, stale positions used for distance calculations.
+~~Module-level cache never cleared. After tree regeneration, stale positions used for distance calculations.~~
 
-**Fix:** Add invalidation mechanism or generation counter.
+**Fixed:** `_cachedPosMap` cleared inside `_clearDescendantCache()`, which runs at the start of every lock evaluation pass.
 
-### PERF-M8: Redundant Triple-Dirty Cascade
+### PERF-M8: Redundant Triple-Dirty Cascade — FIXED
 
 **File:** `treePreview.js:389-394`
 
-`_markDirty()` cascades to both TreeCore AND TreeGrowth, potentially causing redundant redraws from a single interaction.
+~~`_markDirty()` cascades to both TreeCore AND TreeGrowth, potentially causing redundant redraws from a single interaction.~~
 
-### PERF-M9: hasOverlap Linear Scan Per Placement
+**Fixed:** `_markDirty(cascade)` parameter added. Pan/zoom/resize calls pass no argument (no cascade). Data/mode/settings changes pass `true` (cascades to TreeCore + TreeGrowth). Updated all 8+ external callers.
 
-**File:** `proceduralTreeCore.js:762-771`
+### PERF-M9: hasOverlap Linear Scan Per Placement — FIXED
 
-O(n) per call with up to 10 retries per node placement.
+**File:** `proceduralTreeLayout.js:356-369`
+
+~~O(n) per call with up to 10 retries per node placement.~~
+
+**Fixed:** `PlacementGrid` spatial hash class (`add`/`hasNearby`) with 3×3 cell neighborhood queries. `hasOverlap` uses grid when provided. Both `assignGridPositions` and `generateSimpleSchoolTree` create and use `PlacementGrid`. Reduces O(10n²) to O(10n).
 
 ---
 
@@ -233,15 +237,15 @@ Linear scan of all root nodes (typically 5-8) on mousemove. Negligible impact.
 
 | Anti-Pattern | Critical | High | Medium | Low |
 |---|---|---|---|---|
-| Object allocation in render loops | ~~1~~ **0 (fixed)** | 2 | 2 | 0 |
-| Missing requestAnimationFrame | 0 | 1 | 0 | 0 |
-| O(n^2)+ traversals | ~~2~~ **0 (fixed)** | 5 | 2 | 0 |
-| Missing caching/memoization | ~~1~~ **0 (fixed)** | 2 | 2 | 0 |
-| Inefficient event handlers | 0 | 0 | 1 | 1 |
-| Expensive string operations | 0 | 0 | 2 | 0 |
-| Redundant computation/redraws | 0 | 0 | 3 | 0 |
+| Object allocation in render loops | ~~1~~ **0 (fixed)** | ~~2~~ **0 (fixed)** | ~~2~~ **0 (fixed)** | 0 |
+| Missing requestAnimationFrame | 0 | ~~1~~ **0 (fixed)** | 0 | 0 |
+| O(n^2)+ traversals | ~~2~~ **0 (fixed)** | ~~5~~ **0 (fixed)** | ~~2~~ **0 (fixed)** | 0 |
+| Missing caching/memoization | ~~1~~ **0 (fixed)** | ~~2~~ **0 (fixed)** | ~~2~~ **0 (fixed)** | 0 |
+| Inefficient event handlers | 0 | 0 | ~~1~~ **0 (fixed)** | 1 |
+| Expensive string operations | 0 | 0 | ~~2~~ **0 (fixed)** | 0 |
+| Redundant computation/redraws | 0 | 0 | ~~3~~ **0 (fixed)** | 0 |
 | Dead code | 0 | 0 | 0 | 1 |
-| **Total** | **~~4~~ 0 (all fixed)** | **10** | **12** | **2** |
+| **Total** | **0 (all fixed)** | **0 (all fixed)** | **0 (all fixed)** | **2** |
 
 ---
 

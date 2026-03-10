@@ -231,12 +231,18 @@ var TreeParser = {
                 }
             });
 
+            // Build edge lookup set for O(1) existence checks
+            var edgeSet = {};
+
             // Build edges from children
             this.nodes.forEach(function(node) {
+                // Build O(1) prereq membership for this node's children
                 node.children.forEach(function(childId) {
                     var child = self.nodes.get(childId);
                     if (child) {
+                        var edgeKey = node.id + '>' + childId;
                         self.edges.push({ from: node.id, to: childId });
+                        edgeSet[edgeKey] = true;
                         // Never add prerequisites to root nodes - they are independent starting points
                         if (!child.isRoot && child.prerequisites.indexOf(node.id) === -1) {
                             child.prerequisites.push(node.id);
@@ -250,12 +256,11 @@ var TreeParser = {
                 node.prerequisites.forEach(function(prereqId) {
                     var parent = self.nodes.get(prereqId);
                     if (parent) {
-                        var edgeExists = self.edges.some(function(e) {
-                            return e.from === prereqId && e.to === node.id;
-                        });
-                        if (!edgeExists) {
+                        var edgeKey = prereqId + '>' + node.id;
+                        if (!edgeSet[edgeKey]) {
                             logTreeParser('Adding missing edge: ' + prereqId + ' -> ' + node.id);
                             self.edges.push({ from: prereqId, to: node.id });
+                            edgeSet[edgeKey] = true;
                             if (parent.children.indexOf(node.id) === -1) {
                                 parent.children.push(node.id);
                             }
@@ -425,10 +430,20 @@ var TreeParser = {
             
             logTreeParser('Connecting orphan ' + orphanId + ' (tier ' + orphanTier + ') to ' + bestParent.id);
             
-            if (bestParent.children.indexOf(orphanId) === -1) {
+            // Build membership sets for O(1) dedup check
+            var childSet = {};
+            for (var ci = 0; ci < bestParent.children.length; ci++) {
+                childSet[bestParent.children[ci]] = true;
+            }
+            var prereqSet = {};
+            for (var pi = 0; pi < orphan.prerequisites.length; pi++) {
+                prereqSet[orphan.prerequisites[pi]] = true;
+            }
+
+            if (!childSet[orphanId]) {
                 bestParent.children.push(orphanId);
             }
-            if (orphan.prerequisites.indexOf(bestParent.id) === -1) {
+            if (!prereqSet[bestParent.id]) {
                 orphan.prerequisites.push(bestParent.id);
             }
             self.edges.push({ from: bestParent.id, to: orphanId });

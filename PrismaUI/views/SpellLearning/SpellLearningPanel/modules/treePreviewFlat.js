@@ -90,7 +90,7 @@ var TreePreviewFlat = {
     bindEvents: function() {
         var self = this;
         var B = TreePreviewUtils.bindInput;
-        var dirty = function() { if (typeof TreePreview !== 'undefined') TreePreview._markDirty(); };
+        var dirty = function() { if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true); };
 
         B('tpFlatLength', function(v) { self.settings.linePoints = v; dirty(); });
         B('tpFlatNodeSize', function(v) { self.settings.nodeSize = v; dirty(); });
@@ -110,7 +110,7 @@ var TreePreviewFlat = {
                     if (b) b.classList.remove('active');
                 });
                 this.classList.add('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         });
 
@@ -122,7 +122,7 @@ var TreePreviewFlat = {
                 self.settings.direction = 'horizontal';
                 btnH.classList.add('active');
                 if (btnV) btnV.classList.remove('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         }
         if (btnV) {
@@ -130,7 +130,7 @@ var TreePreviewFlat = {
                 self.settings.direction = 'vertical';
                 btnV.classList.add('active');
                 if (btnH) btnH.classList.remove('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         }
 
@@ -142,7 +142,7 @@ var TreePreviewFlat = {
                 self.settings.proportional = false;
                 btnEqual.classList.add('active');
                 if (btnProp) btnProp.classList.remove('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         }
         if (btnProp) {
@@ -150,7 +150,7 @@ var TreePreviewFlat = {
                 self.settings.proportional = true;
                 btnProp.classList.add('active');
                 if (btnEqual) btnEqual.classList.remove('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         }
     },

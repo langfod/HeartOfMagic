@@ -388,7 +388,7 @@ window.onPanelShowing = function() {
     // Resume TreePreview if it was visible before hiding
     if (typeof TreePreview !== 'undefined' && TreePreview._visible) {
         TreePreview._startRenderLoop();
-        TreePreview._markDirty();
+        TreePreview._markDirty(true);
     }
 
     // Re-fetch progress and known spells from C++ to catch any XP gained while panel was hidden

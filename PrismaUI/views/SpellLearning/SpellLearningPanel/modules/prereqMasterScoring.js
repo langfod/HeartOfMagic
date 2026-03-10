@@ -83,6 +83,10 @@ function getTierName(node) {
  */
 var _cachedPosMap = null;
 
+function _clearPosMapCache() {
+    _cachedPosMap = null;
+}
+
 function _getLayoutPosMap() {
     if (_cachedPosMap) return _cachedPosMap;
     if (typeof TreeGrowth !== 'undefined' && TreeGrowth.modes && TreeGrowth.activeMode) {
@@ -158,6 +162,7 @@ var _descendantCache = {};
 function _clearDescendantCache() {
     _descendantCache = {};
     _reachableWithoutCache = {};
+    _cachedPosMap = null;  // Also clear stale position map
 }
 
 function _isDescendant(spellId, candidateId, allNodes) {

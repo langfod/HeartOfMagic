@@ -39,6 +39,9 @@ WebGLRenderer.updateCanvasSize = function() {
     // Update WebGL viewport
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
+    // Invalidate cached rect (size/position changed)
+    this._cachedRect = null;
+
     this._needsRender = true;
     this._needsLabelRender = true;
 };

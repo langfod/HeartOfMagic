@@ -120,7 +120,7 @@ var TreePreviewSun = {
     bindEvents: function() {
         var self = this;
         var B = TreePreviewUtils.bindInput;
-        var dirty = function() { if (typeof TreePreview !== 'undefined') TreePreview._markDirty(); };
+        var dirty = function() { if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true); };
 
         B('tpSunRingTier', function(v) { self.settings.ringTier = v; dirty(); });
         B('tpSunNodeSize', function(v) { self.settings.nodeSize = v; dirty(); });
@@ -142,7 +142,7 @@ var TreePreviewSun = {
                     if (b) b.classList.remove('active');
                 });
                 this.classList.add('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         });
 
@@ -158,7 +158,7 @@ var TreePreviewSun = {
                     if (b) b.classList.remove('active');
                 });
                 this.classList.add('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         });
 
@@ -170,7 +170,7 @@ var TreePreviewSun = {
                 self.settings.proportional = false;
                 btnEqual.classList.add('active');
                 if (btnProp) btnProp.classList.remove('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         }
         if (btnProp) {
@@ -178,7 +178,7 @@ var TreePreviewSun = {
                 self.settings.proportional = true;
                 btnProp.classList.add('active');
                 if (btnEqual) btnEqual.classList.remove('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         }
     },

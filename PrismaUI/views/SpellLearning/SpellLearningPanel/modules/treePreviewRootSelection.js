@@ -215,7 +215,7 @@ TreePreview._selectRoot = function(spell) {
     }
 
     this.hideRootSelectionModal();
-    this._markDirty();
+    this._markDirty(true);
 };
 
 TreePreview._clearRoot = function(rootKey) {
@@ -229,7 +229,7 @@ TreePreview._clearRoot = function(rootKey) {
     }
 
     this.hideRootSelectionModal();
-    this._markDirty();
+    this._markDirty(true);
 };
 
 // =========================================================================

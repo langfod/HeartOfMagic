@@ -250,7 +250,7 @@ function applyScannerPreset(name) {
 
     // --- Mark all canvases dirty ---
     if (typeof TreePreview !== 'undefined' && TreePreview._markDirty) {
-        TreePreview._markDirty();
+        TreePreview._markDirty(true);
     }
     if (typeof TreeGrowth !== 'undefined' && TreeGrowth._markDirty) {
         TreeGrowth._markDirty();

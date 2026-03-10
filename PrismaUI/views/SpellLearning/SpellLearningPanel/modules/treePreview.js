@@ -187,7 +187,7 @@ var TreePreview = {
         this._visible = true;
         this._updateCanvasSize();
         this._startRenderLoop();
-        this._markDirty();
+        this._markDirty(true);
     },
 
     hide: function() {
@@ -220,7 +220,7 @@ var TreePreview = {
         // Load the mode's settings panel
         this._loadModeSettings(mode);
 
-        this._markDirty();
+        this._markDirty(true);
     },
 
     _loadModeSettings: function(mode) {
@@ -318,19 +318,21 @@ var TreePreview = {
     // RENDER LOOP
     // =========================================================================
 
-    _markDirty: function() {
+    _markDirty: function(cascade) {
         this._needsRender = true;
         this._idleFrames = 0;
         // Restart the RAF loop if it has stopped due to idling
         if (!this._rafRunning) {
             this._startRenderLoop();
         }
-        // Also notify downstream sections that depend on our output
-        if (typeof TreeCore !== 'undefined' && TreeCore._markDirty) {
-            TreeCore._markDirty();
-        }
-        if (typeof TreeGrowth !== 'undefined' && TreeGrowth._markDirty) {
-            TreeGrowth._markDirty();
+        // Only notify downstream sections on data/mode changes (not pan/zoom/resize)
+        if (cascade) {
+            if (typeof TreeCore !== 'undefined' && TreeCore._markDirty) {
+                TreeCore._markDirty();
+            }
+            if (typeof TreeGrowth !== 'undefined' && TreeGrowth._markDirty) {
+                TreeGrowth._markDirty();
+            }
         }
     },
 

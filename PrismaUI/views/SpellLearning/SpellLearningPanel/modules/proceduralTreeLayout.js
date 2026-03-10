@@ -82,6 +82,7 @@ function assignGridPositions(treeData) {
 
         // Track placed positions to avoid overlap
         var placedPositions = [];
+        var placementGrid = new PlacementGrid(gridCfg.minNodeSpacing);
 
         // Place nodes tier by tier
         for (var tier = 0; tier <= maxTier; tier++) {
@@ -126,7 +127,7 @@ function assignGridPositions(treeData) {
                 // Check for overlap and nudge if needed
                 var minSpacing = gridCfg.minNodeSpacing;
                 var attempts = 0;
-                while (attempts < 10 && hasOverlap(x, y, placedPositions, minSpacing)) {
+                while (attempts < 10 && hasOverlap(x, y, placedPositions, minSpacing, placementGrid)) {
                     // Nudge outward slightly
                     nodeRadius += minSpacing * 0.5;
                     x = Math.cos(rad) * nodeRadius;
@@ -147,6 +148,7 @@ function assignGridPositions(treeData) {
                 }
 
                 placedPositions.push({ x: x, y: y });
+                placementGrid.add(x, y);
             });
         }
 
@@ -338,15 +340,25 @@ function updateNodeConnections(nodes, nodeById, edges) {
         n.prerequisites = [];
     });
 
+    // Use object-sets for O(1) dedup instead of indexOf
+    var childSets = {};
+    var prereqSets = {};
+    nodes.forEach(function(n) {
+        childSets[n.formId] = {};
+        prereqSets[n.formId] = {};
+    });
+
     edges.forEach(function(e) {
         var fromNode = nodeById[e.from];
         var toNode = nodeById[e.to];
 
         if (fromNode && toNode) {
-            if (fromNode.children.indexOf(e.to) === -1) {
+            if (!childSets[e.from][e.to]) {
+                childSets[e.from][e.to] = true;
                 fromNode.children.push(e.to);
             }
-            if (toNode.prerequisites.indexOf(e.from) === -1) {
+            if (!prereqSets[e.to][e.from]) {
+                prereqSets[e.to][e.from] = true;
                 toNode.prerequisites.push(e.from);
             }
         }
@@ -356,9 +368,14 @@ function updateNodeConnections(nodes, nodeById, edges) {
 /**
  * Check if a position overlaps with any placed positions.
  * Uses squared distance to avoid Math.sqrt.
+ * When a PlacementGrid is provided, queries 3x3 cell neighborhood (O(1) amortized).
+ * Falls back to linear scan when grid is null (for backward compat).
  */
-function hasOverlap(x, y, placedPositions, minSpacing) {
+function hasOverlap(x, y, placedPositions, minSpacing, grid) {
     var minSpacingSq = minSpacing * minSpacing;
+    if (grid) {
+        return grid.hasNearby(x, y, minSpacingSq);
+    }
     for (var i = 0; i < placedPositions.length; i++) {
         var p = placedPositions[i];
         var dx = x - p.x;
@@ -367,3 +384,38 @@ function hasOverlap(x, y, placedPositions, minSpacing) {
     }
     return false;
 }
+
+/**
+ * Spatial hash grid for incremental overlap checking.
+ * @param {number} cellSize - grid cell edge length (should match minSpacing)
+ */
+function PlacementGrid(cellSize) {
+    this.cellSize = cellSize;
+    this.cells = {};
+}
+
+PlacementGrid.prototype.add = function(x, y) {
+    var cx = Math.floor(x / this.cellSize);
+    var cy = Math.floor(y / this.cellSize);
+    var key = cx * 100000 + cy;
+    if (!this.cells[key]) this.cells[key] = [];
+    this.cells[key].push(x, y);  // flat array: [x0,y0, x1,y1, ...]
+};
+
+PlacementGrid.prototype.hasNearby = function(x, y, minDistSq) {
+    var cx = Math.floor(x / this.cellSize);
+    var cy = Math.floor(y / this.cellSize);
+    for (var dx = -1; dx <= 1; dx++) {
+        for (var dy = -1; dy <= 1; dy++) {
+            var key = (cx + dx) * 100000 + (cy + dy);
+            var cell = this.cells[key];
+            if (!cell) continue;
+            for (var i = 0; i < cell.length; i += 2) {
+                var ddx = x - cell[i];
+                var ddy = y - cell[i + 1];
+                if (ddx * ddx + ddy * ddy < minDistSq) return true;
+            }
+        }
+    }
+    return false;
+};

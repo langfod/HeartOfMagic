@@ -21,6 +21,11 @@
 // TREE-LEVEL POSITION APPLICATION
 // =============================================================================
 
+/** Numeric position key: avoids string concat in hot BFS loops. */
+function _posKey(tier, slotIndex) {
+    return tier * 100000 + slotIndex;
+}
+
 /**
  * Apply positions to all nodes in a tree structure.
  * This is the main integration point for settingsAwareTreeBuilder.
@@ -139,7 +144,7 @@ LayoutEngine.applyPositionsToTree = function(treeData, options) {
         var shapeMaskedSet = {};
         var maskedCount = 0;
         allGridPositions.forEach(function(pos) {
-            var key = pos.tier + '_' + pos.slotIndex;
+            var key = _posKey(pos.tier, pos.slotIndex);
             if (pos.tier === 0) { shapeMaskedSet[key] = true; maskedCount++; return; }
             var depthNorm = maxTierUsed > 0 ? pos.tier / maxTierUsed : 0;
             var slotsInTier = pos.slotsInTier || 3;
@@ -179,12 +184,12 @@ LayoutEngine.applyPositionsToTree = function(treeData, options) {
 
         // Helper: mark a position and its adjacent slots as used
         function markPositionUsed(pos) {
-            usedPositions.add(pos.tier + '_' + pos.slotIndex);
+            usedPositions.add(_posKey(pos.tier, pos.slotIndex));
 
             // Mark adjacent slots on same tier as spacing-reserved
             for (var skip = 1; skip <= skipFactor; skip++) {
-                usedPositions.add(pos.tier + '_' + (pos.slotIndex + skip));
-                usedPositions.add(pos.tier + '_' + (pos.slotIndex - skip));
+                usedPositions.add(_posKey(pos.tier, pos.slotIndex + skip));
+                usedPositions.add(_posKey(pos.tier, pos.slotIndex - skip));
             }
         }
 
@@ -248,12 +253,12 @@ LayoutEngine.applyPositionsToTree = function(treeData, options) {
 
             // Mark closest tier-0 grid slot as used so children don't land on top of root
             var closestSlot = tier0Positions.filter(function(p) {
-                return !usedPositions.has(p.tier + '_' + p.slotIndex);
+                return !usedPositions.has(_posKey(p.tier, p.slotIndex));
             }).sort(function(a, b) {
                 return Math.abs(a.angle - targetAngle) - Math.abs(b.angle - targetAngle);
             })[0];
             if (closestSlot) {
-                usedPositions.add(closestSlot.tier + '_' + closestSlot.slotIndex);
+                usedPositions.add(_posKey(closestSlot.tier, closestSlot.slotIndex));
             }
             tierFillCounts[0] = (tierFillCounts[0] || 0) + 1;
             processedFormIds.add(rn.formId);
@@ -362,13 +367,13 @@ LayoutEngine.applyPositionsToTree = function(treeData, options) {
             var allCandidatePositions = validPositions.filter(function(p) {
                 return p.tier >= childTier &&
                        p.tier <= childTier + tierSearchRange &&
-                       !usedPositions.has(p.tier + '_' + p.slotIndex);
+                       !usedPositions.has(_posKey(p.tier, p.slotIndex));
             });
 
             // CRITICAL: Pre-filter to on-mask positions only.
             // This FORCES nodes into the shape's silhouette instead of soft-penalizing.
             var onMaskCandidates = allCandidatePositions.filter(function(p) {
-                return shapeMaskedSet[p.tier + '_' + p.slotIndex];
+                return shapeMaskedSet[_posKey(p.tier, p.slotIndex)];
             });
 
             // Use on-mask positions when available; fall back to all only when exhausted
@@ -403,7 +408,7 @@ LayoutEngine.applyPositionsToTree = function(treeData, options) {
 
             // === SCORE POSITIONS ===
             var scoredPositions = availablePositions.map(function(pos) {
-                if (usedPositions.has(pos.tier + '_' + pos.slotIndex)) return null;
+                if (usedPositions.has(_posKey(pos.tier, pos.slotIndex))) return null;
 
                 var angleDiff = Math.abs(pos.angle - targetAngle);
                 var tierDiff = Math.abs(pos.tier - childTier);
@@ -422,7 +427,7 @@ LayoutEngine.applyPositionsToTree = function(treeData, options) {
                 }
 
                 // Shape mask preference: very heavily penalize off-shape positions
-                if (!shapeMaskedSet[pos.tier + '_' + pos.slotIndex]) {
+                if (!shapeMaskedSet[_posKey(pos.tier, pos.slotIndex)]) {
                     score += 800;
                 }
 
@@ -438,12 +443,12 @@ LayoutEngine.applyPositionsToTree = function(treeData, options) {
             if (!selected && scoredPositions.length === 0) {
                 // First try on-mask positions across ALL tiers
                 var allAvailable = validPositions.filter(function(p) {
-                    return p.tier >= 1 && !usedPositions.has(p.tier + '_' + p.slotIndex);
+                    return p.tier >= 1 && !usedPositions.has(_posKey(p.tier, p.slotIndex));
                 });
 
                 // CRITICAL: Try on-mask positions first in fallback too
                 var fallbackOnMask = allAvailable.filter(function(p) {
-                    return shapeMaskedSet[p.tier + '_' + p.slotIndex];
+                    return shapeMaskedSet[_posKey(p.tier, p.slotIndex)];
                 });
                 if (fallbackOnMask.length > 0) {
                     allAvailable = fallbackOnMask;
@@ -486,7 +491,7 @@ LayoutEngine.applyPositionsToTree = function(treeData, options) {
                         }
 
                         // Shape mask preference — strong even in fallback
-                        if (!shapeMaskedSet[pos.tier + '_' + pos.slotIndex]) {
+                        if (!shapeMaskedSet[_posKey(pos.tier, pos.slotIndex)]) {
                             score += 500;
                         }
 
@@ -525,7 +530,7 @@ LayoutEngine.applyPositionsToTree = function(treeData, options) {
                 childNode.angle = bestPos.angle;
                 childNode._gridTier = bestPos.tier;
                 childNode._fromLayoutEngine = true;
-                childNode._gridSlot = bestPos.tier + '_' + bestPos.slotIndex;
+                childNode._gridSlot = _posKey(bestPos.tier, bestPos.slotIndex);
                 childNode._isInterpolated = bestPos.isInterpolated || false;
 
                 if (!bestPos.isInterpolated) {
