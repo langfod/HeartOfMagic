@@ -90,7 +90,7 @@ var TreePreviewFlat = {
     bindEvents: function() {
         var self = this;
         var B = TreePreviewUtils.bindInput;
-        var dirty = function() { if (typeof TreePreview !== 'undefined') TreePreview._markDirty(); };
+        var dirty = function() { if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true); };
 
         B('tpFlatLength', function(v) { self.settings.linePoints = v; dirty(); });
         B('tpFlatNodeSize', function(v) { self.settings.nodeSize = v; dirty(); });
@@ -110,7 +110,7 @@ var TreePreviewFlat = {
                     if (b) b.classList.remove('active');
                 });
                 this.classList.add('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         });
 
@@ -122,7 +122,7 @@ var TreePreviewFlat = {
                 self.settings.direction = 'horizontal';
                 btnH.classList.add('active');
                 if (btnV) btnV.classList.remove('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         }
         if (btnV) {
@@ -130,7 +130,7 @@ var TreePreviewFlat = {
                 self.settings.direction = 'vertical';
                 btnV.classList.add('active');
                 if (btnH) btnH.classList.remove('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         }
 
@@ -142,7 +142,7 @@ var TreePreviewFlat = {
                 self.settings.proportional = false;
                 btnEqual.classList.add('active');
                 if (btnProp) btnProp.classList.remove('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         }
         if (btnProp) {
@@ -150,7 +150,7 @@ var TreePreviewFlat = {
                 self.settings.proportional = true;
                 btnProp.classList.add('active');
                 if (btnEqual) btnEqual.classList.remove('active');
-                if (typeof TreePreview !== 'undefined') TreePreview._markDirty();
+                if (typeof TreePreview !== 'undefined') TreePreview._markDirty(true);
             });
         }
     },
@@ -452,31 +452,10 @@ var TreePreviewFlat = {
     },
 
     /**
-     * Draw a direction arrow from node edge outward
+     * Draw a direction arrow from node edge outward (delegates to TreePreviewUtils)
      */
     _drawArrow: function(ctx, nx, ny, angle, nodeSize, color) {
-        var arrowLen = 16;
-        var headLen = 6;
-        var headAngle = Math.PI / 6;
-        var sx = nx + Math.cos(angle) * (nodeSize + 2);
-        var sy = ny + Math.sin(angle) * (nodeSize + 2);
-        var ex = sx + Math.cos(angle) * arrowLen;
-        var ey = sy + Math.sin(angle) * arrowLen;
-
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        ctx.lineTo(ex, ey);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(ex, ey);
-        ctx.lineTo(ex - Math.cos(angle - headAngle) * headLen, ey - Math.sin(angle - headAngle) * headLen);
-        ctx.lineTo(ex - Math.cos(angle + headAngle) * headLen, ey - Math.sin(angle + headAngle) * headLen);
-        ctx.closePath();
-        ctx.fillStyle = color;
-        ctx.fill();
+        TreePreviewUtils.drawArrow(ctx, nx, ny, angle, nodeSize, color);
     },
 
     /**
@@ -537,17 +516,16 @@ var TreePreviewFlat = {
     },
 
     /**
-     * Deterministic pseudo-random from seed (consistent per frame)
+     * Deterministic pseudo-random from seed (delegates to TreePreviewUtils)
      */
     _pseudoRandom: function(seed) {
-        var x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
-        return x - Math.floor(x);
+        return TreePreviewUtils.pseudoRandom(seed);
     },
 
     /**
-     * Convert hex color to rgba string
+     * Convert hex color to rgba string (delegates to TreePreviewUtils)
      */
-    _hexToRgba: function(hex, alpha) { return hexToRgba(hex, alpha); },
+    _hexToRgba: function(hex, alpha) { return TreePreviewUtils.hexToRgba(hex, alpha); },
 
     /**
      * Return current settings for external consumption

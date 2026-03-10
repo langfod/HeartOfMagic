@@ -10,7 +10,7 @@
  *   ClassicRenderer.renderNodes(ctx, cx, cy, nodes, schoolColor, opacity, nodeRadius);
  *   ClassicRenderer.renderRootMarker(ctx, x, y, color, radius);
  *
- * Depends on: nothing (self-contained utility)
+ * Depends on: growthRenderShared.js (GrowthRenderShared — shared shape/size constants)
  */
 
 var ClassicRenderer = {
@@ -19,23 +19,11 @@ var ClassicRenderer = {
     // SIZE MULTIPLIERS PER SKILL LEVEL
     // =========================================================================
 
-    _sizeTable: {
-        'Novice':     0.8,
-        'Apprentice': 1.0,
-        'Adept':      1.2,
-        'Expert':     1.4,
-        'Master':     1.8
-    },
+    _sizeTable: GrowthRenderShared.SIZE_TABLE,
 
     // Brightness multiplier per skill level (Novice dimmest → Master brightest)
     // Values above 1.0 intentionally push opacity past the base ghost opacity
-    _brightnessTable: {
-        'Novice':     0.3,
-        'Apprentice': 0.5,
-        'Adept':      0.8,
-        'Expert':     1.2,
-        'Master':     1.8
-    },
+    _brightnessTable: GrowthRenderShared.BRIGHTNESS_TABLE,
 
     // =========================================================================
     // EDGE RENDERING
@@ -194,14 +182,7 @@ var ClassicRenderer = {
 
     /** Add shape sub-path without beginPath/fill/stroke (for batching) */
     _addShapePath: function (ctx, level, x, y, size) {
-        if (level === 'Adept' || level === 'Expert') {
-            this._drawDiamond(ctx, x, y, size);
-        } else if (level === 'Master') {
-            this._drawStar(ctx, x, y, size, size * 0.5, 5);
-        } else {
-            ctx.moveTo(x + size, y);
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-        }
+        GrowthRenderShared.addShapePath(ctx, x, y, size, level);
     },
 
     _fillShape: function (ctx, level, x, y, size) {
@@ -250,11 +231,7 @@ var ClassicRenderer = {
      * @param {number} size - Half-diagonal length
      */
     _drawDiamond: function (ctx, x, y, size) {
-        ctx.moveTo(x, y - size);
-        ctx.lineTo(x + size, y);
-        ctx.lineTo(x, y + size);
-        ctx.lineTo(x - size, y);
-        ctx.closePath();
+        GrowthRenderShared.drawDiamond(ctx, x, y, size);
     },
 
     /**
@@ -268,26 +245,7 @@ var ClassicRenderer = {
      * @param {number} [points] - Number of star points (default 5)
      */
     _drawStar: function (ctx, x, y, outerR, innerR, points) {
-        points = points || 5;
-        var step = Math.PI / points;
-        var angle = -Math.PI / 2; // start pointing up
-        var i;
-
-        ctx.moveTo(
-            x + Math.cos(angle) * outerR,
-            y + Math.sin(angle) * outerR
-        );
-
-        for (i = 0; i < points * 2; i++) {
-            angle += step;
-            var r = (i % 2 === 0) ? innerR : outerR;
-            ctx.lineTo(
-                x + Math.cos(angle) * r,
-                y + Math.sin(angle) * r
-            );
-        }
-
-        ctx.closePath();
+        GrowthRenderShared.drawStar(ctx, x, y, outerR, innerR, points);
     },
 
     /**

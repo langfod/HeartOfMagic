@@ -49,4 +49,5 @@ plugin/build/
 Build_Config_Local.ps1
 nul
 spell_scan_output.json
+/old_docs/
 /plugins/external/papyrus-compiler

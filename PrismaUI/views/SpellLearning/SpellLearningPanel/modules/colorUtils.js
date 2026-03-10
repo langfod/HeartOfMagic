@@ -327,3 +327,140 @@ function updateSchoolColorPickerUI() {
         container.innerHTML = '<span class="setting-desc">Scan spells to detect schools</span>';
     }
 }
+
+// =============================================================================
+// ColorUtils — Shared color parsing and manipulation (DUP-R1, DUP-R2)
+//
+// Consolidates duplicated parseColor/dimColor/brightenColor/innerAccent
+// from wheelRender.js, canvasNodes.js, canvasRender.js, webglRenderer.js,
+// starfield.js, globe3D.js, trustedRenderer.js.
+// =============================================================================
+
+var ColorUtils = {
+
+    /**
+     * Default school color lookup. Single source of truth replacing
+     * CanvasRenderer._defaultSchoolColors and TrustedRenderer._knownSchoolColors.
+     */
+    defaultSchoolColors: {
+        'Destruction': '#ef4444',
+        'Restoration': '#facc15',
+        'Alteration': '#22c55e',
+        'Conjuration': '#a855f7',
+        'Illusion': '#38bdf8'
+    },
+
+    /**
+     * Parse any color string (hex #RGB/#RRGGBB, rgb(), rgba()) into {r, g, b}.
+     * Returns null if the input can't be parsed.
+     *
+     * @param {string} color
+     * @returns {{r: number, g: number, b: number}|null}
+     */
+    parse: function (color) {
+        if (!color) return null;
+        if (color.charAt(0) === '#') {
+            var hex = color.replace('#', '');
+            if (hex.length === 3) {
+                return {
+                    r: parseInt(hex.charAt(0) + hex.charAt(0), 16),
+                    g: parseInt(hex.charAt(1) + hex.charAt(1), 16),
+                    b: parseInt(hex.charAt(2) + hex.charAt(2), 16)
+                };
+            }
+            return {
+                r: parseInt(hex.substr(0, 2), 16),
+                g: parseInt(hex.substr(2, 2), 16),
+                b: parseInt(hex.substr(4, 2), 16)
+            };
+        }
+        // rgb(r,g,b) or rgba(r,g,b,a)
+        var match = color.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+        if (match) {
+            return {
+                r: parseInt(match[1], 10),
+                g: parseInt(match[2], 10),
+                b: parseInt(match[3], 10)
+            };
+        }
+        return null;
+    },
+
+    /**
+     * Dim a color by a factor (0-1). Returns 'rgb(r,g,b)' string.
+     *
+     * @param {string} color - Hex or rgb() string
+     * @param {number} factor - Multiplier (0.4 = 40% brightness)
+     * @returns {string}
+     */
+    dim: function (color, factor) {
+        var rgb = ColorUtils.parse(color);
+        if (!rgb) return color;
+        return 'rgb(' + Math.round(rgb.r * factor) + ',' +
+                        Math.round(rgb.g * factor) + ',' +
+                        Math.round(rgb.b * factor) + ')';
+    },
+
+    /**
+     * Brighten a color toward white. Returns 'rgb(r,g,b)' string.
+     *
+     * @param {string} color - Hex or rgb() string
+     * @param {number} factor - Multiplier (1.0 = same, 1.3 = 30% brighter)
+     * @returns {string}
+     */
+    brighten: function (color, factor) {
+        var rgb = ColorUtils.parse(color);
+        if (!rgb) return color;
+        return 'rgb(' + Math.min(255, Math.round(rgb.r + (255 - rgb.r) * (factor - 1))) + ',' +
+                        Math.min(255, Math.round(rgb.g + (255 - rgb.g) * (factor - 1))) + ',' +
+                        Math.min(255, Math.round(rgb.b + (255 - rgb.b) * (factor - 1))) + ')';
+    },
+
+    /**
+     * Get inner accent color (darker, slightly hue-shifted).
+     * Used for inner node fills to create depth. Returns 'rgb(r,g,b)' string.
+     *
+     * @param {string} color - Hex or rgb() string
+     * @returns {string}
+     */
+    innerAccent: function (color) {
+        var rgb = ColorUtils.parse(color);
+        if (!rgb) return '#1a1a2e';
+        return 'rgb(' + Math.round(rgb.r * 0.35) + ',' +
+                        Math.round(rgb.g * 0.3) + ',' +
+                        Math.round(rgb.b * 0.4) + ')';
+    },
+
+    /**
+     * Blend two colors. Returns 'rgb(r,g,b)' string.
+     *
+     * @param {string} color1 - Start color
+     * @param {string} color2 - End color
+     * @param {number} t - Blend factor (0 = color1, 1 = color2)
+     * @returns {string}
+     */
+    blend: function (color1, color2, t) {
+        var rgb1 = ColorUtils.parse(color1);
+        var rgb2 = ColorUtils.parse(color2);
+        if (!rgb1 || !rgb2) return color1;
+        return 'rgb(' + Math.round(rgb1.r + (rgb2.r - rgb1.r) * t) + ',' +
+                        Math.round(rgb1.g + (rgb2.g - rgb1.g) * t) + ',' +
+                        Math.round(rgb1.b + (rgb2.b - rgb1.b) * t) + ')';
+    },
+
+    /**
+     * Get the canonical school color. Checks settings.schoolColors first,
+     * then falls back to the default palette.
+     *
+     * @param {string} schoolName
+     * @returns {string} Hex color string
+     */
+    getSchoolColor: function (schoolName) {
+        if (typeof settings !== 'undefined' && settings.schoolColors && settings.schoolColors[schoolName]) {
+            return settings.schoolColors[schoolName];
+        }
+        return ColorUtils.defaultSchoolColors[schoolName] || '#888888';
+    }
+};
+
+window.ColorUtils = ColorUtils;

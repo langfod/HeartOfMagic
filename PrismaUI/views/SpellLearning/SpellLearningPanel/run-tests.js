@@ -51,10 +51,18 @@ loadModule('state', './modules/state.js');
 loadModule('config', './modules/config.js');
 loadModule('edgeScoring', './modules/edgeScoring.js');
 loadModule('shapeProfiles', './modules/shapeProfiles.js');
-loadModule('layoutEngine', './modules/layoutEngine.js');
+loadModule('layoutEngineCore', './modules/layoutEngineCore.js');
+loadModule('layoutEngineBehavior', './modules/layoutEngineBehavior.js');
+loadModule('layoutEngineGrid', './modules/layoutEngineGrid.js');
+loadModule('layoutEngineUtils', './modules/layoutEngineUtils.js');
+loadModule('layoutEngineRadial', './modules/layoutEngineRadial.js');
+loadModule('growthBehaviorProfiles', './modules/growthBehaviorProfiles.js');
 loadModule('growthBehaviors', './modules/growthBehaviors.js');
 loadModule('growthDSL', './modules/growthDSL.js');
-loadModule('settingsAwareTreeBuilder', './modules/settingsAwareTreeBuilder.js');
+loadModule('settingsAwareCore', './modules/settingsAwareCore.js');
+loadModule('settingsAwareSetup', './modules/settingsAwareSetup.js');
+loadModule('settingsAwareBuilder', './modules/settingsAwareBuilder.js');
+loadModule('settingsAwareBuilderEntry', './modules/settingsAwareBuilderEntry.js');
 
 // Mock WheelRenderer minimally
 global.WheelRenderer = {

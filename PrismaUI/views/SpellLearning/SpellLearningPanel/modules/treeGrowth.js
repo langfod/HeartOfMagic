@@ -37,12 +37,7 @@ var TreeGrowth = {
     zoom: 1,
     panX: 0,
     panY: 0,
-    _isPanning: false,
-    _panStartX: 0,
-    _panStartY: 0,
-    _pendingPanX: 0,
-    _pendingPanY: 0,
-    _panRafPending: false,
+    _pzController: null,
 
     // Render loop
     _needsRender: false,
@@ -297,63 +292,16 @@ var TreeGrowth = {
 
     _setupEvents: function() {
         var self = this;
-        var canvas = this.canvas;
 
-        canvas.addEventListener('mousedown', function(e) {
-            if (e.button === 0 || e.button === 2) {
-                self._isPanning = true;
-                self._panStartX = e.clientX - self.panX;
-                self._panStartY = e.clientY - self.panY;
-                canvas.style.cursor = 'grabbing';
-            }
+        this._pzController = PanZoomController.create({
+            getPan: function() { return { x: self.panX, y: self.panY }; },
+            setPan: function(x, y) { self.panX = x; self.panY = y; },
+            getZoom: function() { return self.zoom; },
+            setZoom: function(z) { self.zoom = z; },
+            onRedraw: function() { self._markDirty(); },
+            centerOrigin: true
         });
-
-        canvas.addEventListener('mousemove', function(e) {
-            if (!self._isPanning) return;
-
-            self._pendingPanX = e.clientX - self._panStartX;
-            self._pendingPanY = e.clientY - self._panStartY;
-
-            if (!self._panRafPending) {
-                self._panRafPending = true;
-                requestAnimationFrame(function() {
-                    self._panRafPending = false;
-                    self.panX = self._pendingPanX;
-                    self.panY = self._pendingPanY;
-                    self._markDirty();
-                });
-            }
-        });
-
-        document.addEventListener('mouseup', function() {
-            if (self._isPanning) {
-                self._isPanning = false;
-                if (self.canvas) self.canvas.style.cursor = 'grab';
-            }
-        });
-
-        canvas.addEventListener('wheel', function(e) {
-            e.preventDefault();
-            var zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-            var newZoom = self.zoom * zoomFactor;
-            newZoom = Math.max(0.1, Math.min(5, newZoom));
-
-            var rect = canvas.getBoundingClientRect();
-            var mouseX = e.clientX - rect.left - rect.width / 2;
-            var mouseY = e.clientY - rect.top - rect.height / 2;
-
-            self.panX = mouseX - (mouseX - self.panX) * (newZoom / self.zoom);
-            self.panY = mouseY - (mouseY - self.panY) * (newZoom / self.zoom);
-            self.zoom = newZoom;
-
-            self._markDirty();
-        }, { passive: false });
-
-        canvas.addEventListener('contextmenu', function(e) {
-            e.preventDefault();
-        });
-
-        canvas.style.cursor = 'grab';
+        this._pzController.attach(this.canvas);
     },
 
     // =========================================================================

@@ -402,7 +402,11 @@
     <!-- Unified modules -->
     <script src="modules/edgeScoring.js"></script>
     <script src="modules/shapeProfiles.js"></script>
-    <script src="modules/layoutEngine.js"></script>
+    <script src="modules/layoutEngineCore.js"></script>
+    <script src="modules/layoutEngineBehavior.js"></script>
+    <script src="modules/layoutEngineGrid.js"></script>
+    <script src="modules/layoutEngineUtils.js"></script>
+    <script src="modules/layoutEngineRadial.js"></script>
 
     <!-- Dependencies -->
     <script src="modules/spellCache.js"></script>
@@ -412,17 +416,40 @@
     <!-- Tree building -->
     <script src="modules/growthDSL.js"></script>
     <script src="modules/treeParser.js"></script>
+    <script src="modules/treeParserOrphans.js"></script>
 
-    <!-- Renderers -->
-    <script src="modules/wheelRenderer.js"></script>
+    <!-- Wheel (SVG) renderer -->
+    <script src="modules/wheel/wheelCore.js"></script>
+    <script src="modules/wheel/wheelLayout.js"></script>
+    <script src="modules/wheel/wheelLayoutHelpers.js"></script>
+    <script src="modules/wheel/wheelRender.js"></script>
+    <script src="modules/wheel/wheelRenderNodes.js"></script>
+    <script src="modules/wheel/wheelChrome.js"></script>
+    <script src="modules/wheel/wheelInteraction.js"></script>
+    <script src="modules/wheel/wheelGrowthDSL.js"></script>
     <script src="modules/starfield.js"></script>
 
     <!-- More tree building modules -->
+    <script src="modules/layoutGeneratorShapes.js"></script>
     <script src="modules/layoutGenerator.js"></script>
 
+    <script src="modules/growthBehaviorProfiles.js"></script>
     <script src="modules/growthBehaviors.js"></script>
-    <script src="modules/visualFirstBuilder.js"></script>
-    <script src="modules/settingsAwareTreeBuilder.js"></script>
+    <script src="modules/visualFirst/vfConstants.js"></script>
+    <script src="modules/visualFirst/vfThematic.js"></script>
+    <script src="modules/visualFirst/vfHelpers.js"></script>
+    <script src="modules/visualFirst/vfEdgeBuilding.js"></script>
+    <script src="modules/visualFirst/vfFuzzyGrouping.js"></script>
+    <script src="modules/visualFirst/vfPrereqLinks.js"></script>
+    <script src="modules/visualFirst/vfAlternatePaths.js"></script>
+    <script src="modules/visualFirst/vfOrganicHelpers.js"></script>
+    <script src="modules/visualFirst/vfOrganicGrowth.js"></script>
+    <script src="modules/visualFirst/vfOrganicGrowthParent.js"></script>
+    <script src="modules/visualFirst/vfBuilder.js"></script>
+    <script src="modules/settingsAwareCore.js"></script>
+    <script src="modules/settingsAwareSetup.js"></script>
+    <script src="modules/settingsAwareBuilder.js"></script>
+    <script src="modules/settingsAwareBuilderEntry.js"></script>
 
     <!-- Test page logic -->
     <script>

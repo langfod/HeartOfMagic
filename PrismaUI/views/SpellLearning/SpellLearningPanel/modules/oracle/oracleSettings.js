@@ -466,39 +466,9 @@ var OracleSettings = {
         dot.style.background = color;
         label.textContent = text;
         label.style.color = color;
-    },
-
-    // =========================================================================
-    // SCAN STATUS
-    // =========================================================================
-
-    updateScanStatus: function (hasSpells) {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updateScanStatus(hasSpells);
-    },
-
-    // =========================================================================
-    // TREE BUILT STATE
-    // =========================================================================
-
-    setTreeBuilt: function (built, nodeCount, totalPool) {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setTreeBuilt(built, nodeCount, totalPool);
-    },
-
-    // =========================================================================
-    // STATUS TEXT
-    // =========================================================================
-
-    setStatusText: function (text, color) {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setStatusText(text, color);
-    },
-
-    // =========================================================================
-    // INTERNAL HELPERS
-    // =========================================================================
-
-    _updateBuildButton: function () {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updateBuildButton();
     }
 };
+
+GrowthModeUtils.mixinSettingsDelegation(OracleSettings, false, true);
 
 console.log('[OracleSettings] Loaded');

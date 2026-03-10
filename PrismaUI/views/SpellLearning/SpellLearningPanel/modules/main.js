@@ -1,20 +1,11 @@
 /**
  * SpellLearning Main Entry Point
- * 
+ *
  * Initializes all modules and sets up event listeners.
  * This should be loaded LAST after all other modules.
- * 
- * Load order:
- * 1. constants.js - Default prompts, profiles, palettes
- * 2. config.js - TREE_CONFIG
- * 3. state.js - settings, state objects
- * 4. spellCache.js - SpellCache
- * 5. colorUtils.js - Color management
- * 6. uiHelpers.js - UI utilities
- * 7. growthDSL.js - Growth recipe system
- * 8. treeParser.js - TreeParser
- * 9. script.js - WheelRenderer and all app logic (temporary until fully modularized)
- * 10. main.js - This file (initialization)
+ *
+ * All application logic is fully modularized -- see modules/README.md
+ * for the complete module list and load order.
  */
 
 // =============================================================================

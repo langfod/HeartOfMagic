@@ -28,14 +28,16 @@ var TreeAnimation = {
 
     // Phase 1: Node playback state
     _currentIdx: 0,
-    _intervalId: null,
+    _rafId: null,
     _speed: 30,
     _playing: false,
     _newestAge: 0,
+    _lastFrameTime: 0,
+    _accumulator: 0,
 
     // Phase 2: Chain animation state
     _chains: null,       // [{fromX, fromY, toX, toY, progress, done}]
-    _chainIntervalId: null,
+    _chainRafId: null,
     _chainSpeed: 20,     // ms per tick
     _chainGrowRate: 0.03, // progress per tick (0..1)
     _lockedNodes: null,  // [{x, y, color}] — nodes that got lock badges
@@ -370,44 +372,64 @@ var TreeAnimation = {
         if (this._nodes.length > 500) batchSize = 3;
         else if (this._nodes.length > 200) batchSize = 2;
 
-        this._intervalId = setInterval(function() {
-            self._currentIdx += batchSize;
-            self._newestAge = 0;
+        this._lastFrameTime = 0;
+        this._accumulator = 0;
 
-            if (self._currentIdx >= self._nodes.length) {
-                self._currentIdx = self._nodes.length;
-                clearInterval(self._intervalId);
-                self._intervalId = null;
-                console.log('[TreeAnimation] Phase 1 (nodes) complete');
+        var stepPhase1 = function(timestamp) {
+            if (!self._playing || self._phase !== 'nodes') return;
 
-                // Transition to Phase 2: chains
-                // Re-capture chains in case PRM finished while Phase 1 was playing
-                if (!self._chains || self._chains.length === 0) {
-                    self._captureChains();
-                }
-                if (self._chains && self._chains.length > 0) {
-                    self._startChainPhase();
-                } else {
-                    // PRM may still be processing — wait for it (timeout after 30s)
-                    self._phase = 'waiting_chains';
-                    self._playing = false;
-                    console.log('[TreeAnimation] Phase 1 done, waiting for PRM locks...');
-                    self._chainWaitTimer = setTimeout(function() {
-                        if (self._phase === 'waiting_chains') {
-                            self._phase = 'done';
-                            console.log('[TreeAnimation] Chain wait timed out, finishing');
-                            if (typeof PreReqMaster !== 'undefined' && PreReqMaster.renderPreview) {
-                                PreReqMaster.renderPreview();
+            if (self._lastFrameTime === 0) self._lastFrameTime = timestamp;
+            var delta = timestamp - self._lastFrameTime;
+            self._lastFrameTime = timestamp;
+            self._accumulator += delta;
+
+            var stepped = false;
+            while (self._accumulator >= self._speed && self._currentIdx < self._nodes.length) {
+                self._accumulator -= self._speed;
+                self._currentIdx += batchSize;
+                stepped = true;
+            }
+
+            if (stepped) {
+                self._newestAge = 0;
+
+                if (self._currentIdx >= self._nodes.length) {
+                    self._currentIdx = self._nodes.length;
+                    self._rafId = null;
+                    console.log('[TreeAnimation] Phase 1 (nodes) complete');
+
+                    if (!self._chains || self._chains.length === 0) {
+                        self._captureChains();
+                    }
+                    if (self._chains && self._chains.length > 0) {
+                        self._startChainPhase();
+                    } else {
+                        self._phase = 'waiting_chains';
+                        self._playing = false;
+                        console.log('[TreeAnimation] Phase 1 done, waiting for PRM locks...');
+                        self._chainWaitTimer = setTimeout(function() {
+                            if (self._phase === 'waiting_chains') {
+                                self._phase = 'done';
+                                console.log('[TreeAnimation] Chain wait timed out, finishing');
+                                if (typeof PreReqMaster !== 'undefined' && PreReqMaster.renderPreview) {
+                                    PreReqMaster.renderPreview();
+                                }
                             }
-                        }
-                    }, 30000);
+                        }, 30000);
+                    }
+                }
+
+                if (typeof PreReqMaster !== 'undefined' && PreReqMaster.renderPreview) {
+                    PreReqMaster.renderPreview();
                 }
             }
 
-            if (typeof PreReqMaster !== 'undefined' && PreReqMaster.renderPreview) {
-                PreReqMaster.renderPreview();
+            if (self._phase === 'nodes') {
+                self._rafId = requestAnimationFrame(stepPhase1);
             }
-        }, this._speed);
+        };
+
+        this._rafId = requestAnimationFrame(stepPhase1);
 
         if (typeof PreReqMaster !== 'undefined' && PreReqMaster.renderPreview) {
             PreReqMaster.renderPreview();
@@ -425,44 +447,65 @@ var TreeAnimation = {
         console.log('[TreeAnimation] Phase 2: animating ' + this._chains.length + ' chains');
 
         var self = this;
-        this._chainIntervalId = setInterval(function() {
-            var allDone = true;
+        var lastTime = 0;
+        var chainAccum = 0;
 
-            for (var i = 0; i < self._chains.length; i++) {
-                var chain = self._chains[i];
-                if (chain.done) continue;
+        var stepPhase2 = function(timestamp) {
+            if (!self._playing || self._phase !== 'chains') return;
 
-                chain.progress += self._chainGrowRate;
-                if (chain.progress >= 1) {
-                    chain.progress = 1;
-                    chain.done = true;
-                } else {
-                    allDone = false;
+            if (lastTime === 0) lastTime = timestamp;
+            var delta = timestamp - lastTime;
+            lastTime = timestamp;
+            chainAccum += delta;
+
+            var stepped = false;
+            while (chainAccum >= self._chainSpeed) {
+                chainAccum -= self._chainSpeed;
+                stepped = true;
+
+                var allDone = true;
+                for (var i = 0; i < self._chains.length; i++) {
+                    var chain = self._chains[i];
+                    if (chain.done) continue;
+
+                    chain.progress += self._chainGrowRate;
+                    if (chain.progress >= 1) {
+                        chain.progress = 1;
+                        chain.done = true;
+                    } else {
+                        allDone = false;
+                    }
+                }
+
+                if (allDone) {
+                    self._chainRafId = null;
+                    self._playing = false;
+                    self._phase = 'done';
+                    console.log('[TreeAnimation] Phase 2 (chains) complete');
+                    break;
                 }
             }
 
-            if (allDone) {
-                clearInterval(self._chainIntervalId);
-                self._chainIntervalId = null;
-                self._playing = false;
-                self._phase = 'done';
-                console.log('[TreeAnimation] Phase 2 (chains) complete');
-            }
-
-            if (typeof PreReqMaster !== 'undefined' && PreReqMaster.renderPreview) {
+            if (stepped && typeof PreReqMaster !== 'undefined' && PreReqMaster.renderPreview) {
                 PreReqMaster.renderPreview();
             }
-        }, this._chainSpeed);
+
+            if (self._phase === 'chains') {
+                self._chainRafId = requestAnimationFrame(stepPhase2);
+            }
+        };
+
+        this._chainRafId = requestAnimationFrame(stepPhase2);
     },
 
     stop: function() {
-        if (this._intervalId) {
-            clearInterval(this._intervalId);
-            this._intervalId = null;
+        if (this._rafId) {
+            cancelAnimationFrame(this._rafId);
+            this._rafId = null;
         }
-        if (this._chainIntervalId) {
-            clearInterval(this._chainIntervalId);
-            this._chainIntervalId = null;
+        if (this._chainRafId) {
+            cancelAnimationFrame(this._chainRafId);
+            this._chainRafId = null;
         }
         if (this._retryTimerId) {
             clearTimeout(this._retryTimerId);

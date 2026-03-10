@@ -308,11 +308,7 @@ function saveSettingsPreset(name) {
     updateSettingsPresetsUI();
 
     // Save active preset name to unified config
-    if (typeof scheduleAutoSave === 'function') {
-        scheduleAutoSave();
-    } else if (typeof autoSaveSettings === 'function') {
-        autoSaveSettings();
-    }
+    _settingsAutoSave();
 
     console.log('[SettingsPresets] Saved preset file:', name);
 }
@@ -412,11 +408,7 @@ function applySettingsPreset(name) {
     _activeSettingsPreset = name;
     updateSettingsPresetsUI();
 
-    if (typeof scheduleAutoSave === 'function') {
-        scheduleAutoSave();
-    } else if (typeof autoSaveSettings === 'function') {
-        autoSaveSettings();
-    }
+    _settingsAutoSave();
 
     console.log('[SettingsPresets] Applied preset:', name);
 }
@@ -426,46 +418,14 @@ function applySettingsPreset(name) {
 // =============================================================================
 
 function deleteSettingsPreset(name, deleteBtn) {
-    if (!settingsPresets[name]) return;
-
-    // Cannot delete the default preset
-    if (name === _getDefaultSettingsPresetKey()) return;
-
-    // Second-click confirmation
-    if (!deleteBtn || deleteBtn.getAttribute('data-armed') !== 'true') {
-        if (deleteBtn) {
-            deleteBtn.setAttribute('data-armed', 'true');
-            deleteBtn.classList.add('armed');
-            deleteBtn.title = 'Click again to confirm delete';
-            setTimeout(function() {
-                deleteBtn.removeAttribute('data-armed');
-                deleteBtn.classList.remove('armed');
-                deleteBtn.title = 'Delete preset';
-            }, 2000);
-        }
-        return;
-    }
-
-    delete settingsPresets[name];
-
-    // Delete the preset file via C++
-    if (window.callCpp) {
-        window.callCpp('DeletePreset', JSON.stringify({ type: 'settings', name: name }));
-    }
-
-    if (_activeSettingsPreset === name) {
-        _activeSettingsPreset = SETTINGS_PRESET_DEFAULT_NAME;
-    }
-
-    updateSettingsPresetsUI();
-
-    if (typeof scheduleAutoSave === 'function') {
-        scheduleAutoSave();
-    } else if (typeof autoSaveSettings === 'function') {
-        autoSaveSettings();
-    }
-
-    console.log('[SettingsPresets] Deleted preset file:', name);
+    PresetBase.handleDelete(deleteBtn, name, settingsPresets, SETTINGS_PRESET_DEFAULT_NAME, 'settings', {
+        getDefaultKey: _getDefaultSettingsPresetKey,
+        getActiveKey: function() { return _activeSettingsPreset; },
+        setActiveKey: function(v) { _activeSettingsPreset = v; },
+        onDefaultReset: SETTINGS_PRESET_DEFAULT_NAME,
+        onUpdateUI: updateSettingsPresetsUI,
+        onAutoSave: _settingsAutoSave
+    });
 }
 
 // =============================================================================
@@ -473,56 +433,13 @@ function deleteSettingsPreset(name, deleteBtn) {
 // =============================================================================
 
 function renameSettingsPreset(oldName, newName) {
-    if (!newName || newName.trim() === '' || !settingsPresets[oldName]) return;
-    newName = newName.trim();
-
-    if (newName === oldName) return;
-
-    // Cannot rename Default
-    if (oldName === _getDefaultSettingsPresetKey()) {
-        updateSettingsPresetsUI();
-        return;
-    }
-
-    // Cannot rename to "Default" (reserved)
-    if (newName.toLowerCase() === SETTINGS_PRESET_DEFAULT_NAME.toLowerCase()) {
-        updateSettingsPresetsUI();
-        return;
-    }
-
-    // Check duplicate
-    if (settingsPresets[newName]) {
-        if (!confirm(t('settingsPresets.overwriteConfirm', {name: newName}))) {
-            updateSettingsPresetsUI();
-            return;
-        }
-        delete settingsPresets[newName];
-    }
-
-    var preset = settingsPresets[oldName];
-    preset.name = newName;
-    settingsPresets[newName] = preset;
-    delete settingsPresets[oldName];
-
-    // Delete old file, save new file
-    if (window.callCpp) {
-        window.callCpp('DeletePreset', JSON.stringify({ type: 'settings', name: oldName }));
-        window.callCpp('SavePreset', JSON.stringify({ type: 'settings', name: newName, data: preset }));
-    }
-
-    if (_activeSettingsPreset === oldName) {
-        _activeSettingsPreset = newName;
-    }
-
-    updateSettingsPresetsUI();
-
-    if (typeof scheduleAutoSave === 'function') {
-        scheduleAutoSave();
-    } else if (typeof autoSaveSettings === 'function') {
-        autoSaveSettings();
-    }
-
-    console.log('[SettingsPresets] Renamed preset:', oldName, '->', newName);
+    PresetBase.handleRename(oldName, newName, settingsPresets, SETTINGS_PRESET_DEFAULT_NAME, 'settings', 'settingsPresets.overwriteConfirm', {
+        getDefaultKey: _getDefaultSettingsPresetKey,
+        getActiveKey: function() { return _activeSettingsPreset; },
+        setActiveKey: function(v) { _activeSettingsPreset = v; },
+        onUpdateUI: updateSettingsPresetsUI,
+        onAutoSave: _settingsAutoSave
+    });
 }
 
 // =============================================================================
@@ -541,133 +458,12 @@ function updateSettingsPresetsUI() {
     if (divider) divider.style.display = keys.length > 0 ? '' : 'none';
     chipsContainer.style.display = keys.length > 0 ? '' : 'none';
 
-    // Rebuild chips
-    chipsContainer.innerHTML = '';
-
-    var defaultKey = _getDefaultSettingsPresetKey();
-
-    for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        var preset = settingsPresets[key];
-        var chipName = preset.name || key;
-        var isDefault = (key === defaultKey);
-
-        var chip = document.createElement('div');
-        chip.className = 'scanner-preset-chip';
-        if (key === _activeSettingsPreset) {
-            chip.className += ' active';
-        }
-        if (isDefault) {
-            chip.className += ' default';
-        }
-
-        var nameSpan = document.createElement('span');
-        nameSpan.className = 'scanner-preset-name';
-        nameSpan.textContent = chipName;
-        nameSpan.setAttribute('data-preset', key);
-
-        // Single click to apply
-        nameSpan.addEventListener('click', (function(k) {
-            return function() {
-                applySettingsPreset(k);
-            };
-        })(key));
-
-        // Double click to rename (not on Default)
-        if (!isDefault) {
-            nameSpan.addEventListener('dblclick', (function(k, span) {
-                return function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    _startSettingsInlineRename(k, span);
-                };
-            })(key, nameSpan));
-        }
-
-        chip.appendChild(nameSpan);
-
-        // Update button on active preset
-        if (key === _activeSettingsPreset) {
-            var updateBtn = document.createElement('span');
-            updateBtn.className = 'scanner-preset-update';
-            updateBtn.innerHTML = '&#8635;';
-            updateBtn.title = 'Update preset with current settings';
-            updateBtn.addEventListener('click', (function(k) {
-                return function(e) {
-                    e.stopPropagation();
-                    saveSettingsPreset(k);
-                };
-            })(key));
-            chip.appendChild(updateBtn);
-        }
-
-        // Delete button (not on Default)
-        if (!isDefault) {
-            var deleteBtn = document.createElement('span');
-            deleteBtn.className = 'scanner-preset-delete';
-            deleteBtn.textContent = '\u00d7';
-            deleteBtn.title = 'Delete preset';
-            deleteBtn.addEventListener('click', (function(k, btn) {
-                return function(e) {
-                    e.stopPropagation();
-                    deleteSettingsPreset(k, btn);
-                };
-            })(key, deleteBtn));
-            chip.appendChild(deleteBtn);
-        }
-
-        chipsContainer.appendChild(chip);
-    }
-}
-
-// =============================================================================
-// INLINE RENAME
-// =============================================================================
-
-function _startSettingsInlineRename(presetKey, nameSpan) {
-    var currentName = settingsPresets[presetKey] ? settingsPresets[presetKey].name : presetKey;
-    var chip = nameSpan.parentElement;
-
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'scanner-preset-rename';
-    input.value = currentName;
-    input.style.width = Math.max(60, currentName.length * 7) + 'px';
-
-    nameSpan.style.display = 'none';
-    chip.insertBefore(input, nameSpan);
-    input.focus();
-    input.select();
-
-    var committed = false;
-
-    function commit() {
-        if (committed) return;
-        committed = true;
-
-        var newName = input.value.trim();
-        if (input.parentElement) {
-            input.parentElement.removeChild(input);
-        }
-        nameSpan.style.display = '';
-
-        if (newName && newName !== currentName) {
-            renameSettingsPreset(presetKey, newName);
-        }
-    }
-
-    input.addEventListener('blur', commit);
-    input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            commit();
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            committed = true;
-            if (input.parentElement) {
-                input.parentElement.removeChild(input);
-            }
-            nameSpan.style.display = '';
+    PresetBase.renderChips(chipsContainer, settingsPresets, _activeSettingsPreset, SETTINGS_PRESET_DEFAULT_NAME, {
+        onApply: applySettingsPreset,
+        onSave: saveSettingsPreset,
+        onDelete: deleteSettingsPreset,
+        onInlineRename: function(k, span) {
+            PresetBase.startInlineRename(k, span, settingsPresets, renameSettingsPreset);
         }
     });
 }
@@ -680,156 +476,18 @@ function _startSettingsInlineRename(presetKey, nameSpan) {
  * Returns the key of the default preset (named "Default", case-insensitive).
  */
 function _getDefaultSettingsPresetKey() {
-    var keys = Object.keys(settingsPresets);
-    for (var i = 0; i < keys.length; i++) {
-        if (keys[i].toLowerCase() === SETTINGS_PRESET_DEFAULT_NAME.toLowerCase()) {
-            return keys[i];
-        }
-    }
-    return null;
+    return PresetBase.getDefaultKey(settingsPresets, SETTINGS_PRESET_DEFAULT_NAME);
 }
 
-// =============================================================================
-// UI UPDATE — PROGRESSION SETTINGS
-// (Moved from difficultyProfiles.js)
-// =============================================================================
-
-function updateProgressionSettingsUI() {
-    // Helper to update slider fill visual
-    function updateSliderFill(slider) {
-        if (!slider) return;
-        var percent = (slider.value - slider.min) / (slider.max - slider.min) * 100;
-        slider.style.setProperty('--slider-fill', percent + '%');
-    }
-
-    // Global multiplier
-    var globalMultSlider = document.getElementById('xpGlobalMultiplierSlider');
-    var globalMultValue = document.getElementById('xpGlobalMultiplierValue');
-    if (globalMultSlider) {
-        globalMultSlider.value = settings.xpGlobalMultiplier;
-        updateSliderFill(globalMultSlider);
-        if (globalMultValue) globalMultValue.textContent = 'x' + settings.xpGlobalMultiplier;
-    }
-
-    // XP multipliers
-    var xpDirectSlider = document.getElementById('xpDirectSlider');
-    var xpDirectValue = document.getElementById('xpDirectValue');
-    if (xpDirectSlider) {
-        xpDirectSlider.value = settings.xpMultiplierDirect;
-        updateSliderFill(xpDirectSlider);
-        if (xpDirectValue) xpDirectValue.textContent = settings.xpMultiplierDirect + '%';
-    }
-
-    var xpSchoolSlider = document.getElementById('xpSchoolSlider');
-    var xpSchoolValue = document.getElementById('xpSchoolValue');
-    if (xpSchoolSlider) {
-        xpSchoolSlider.value = settings.xpMultiplierSchool;
-        updateSliderFill(xpSchoolSlider);
-        if (xpSchoolValue) xpSchoolValue.textContent = settings.xpMultiplierSchool + '%';
-    }
-
-    var xpAnySlider = document.getElementById('xpAnySlider');
-    var xpAnyValue = document.getElementById('xpAnyValue');
-    if (xpAnySlider) {
-        xpAnySlider.value = settings.xpMultiplierAny;
-        updateSliderFill(xpAnySlider);
-        if (xpAnyValue) xpAnyValue.textContent = settings.xpMultiplierAny + '%';
-    }
-
-    // Tier XP inputs
-    var tierInputs = {
-        'xpNoviceInput': settings.xpNovice,
-        'xpApprenticeInput': settings.xpApprentice,
-        'xpAdeptInput': settings.xpAdept,
-        'xpExpertInput': settings.xpExpert,
-        'xpMasterInput': settings.xpMaster
-    };
-    for (var inputId in tierInputs) {
-        var input = document.getElementById(inputId);
-        if (input) input.value = tierInputs[inputId];
-    }
-
-    // Reveal sliders
-    var revealSliders = [
-        { sliderId: 'revealNameSlider', valueId: 'revealNameValue', setting: settings.revealName },
-        { sliderId: 'revealEffectsSlider', valueId: 'revealEffectsValue', setting: settings.revealEffects },
-        { sliderId: 'revealDescSlider', valueId: 'revealDescValue', setting: settings.revealDescription }
-    ];
-    for (var r = 0; r < revealSliders.length; r++) {
-        var cfg = revealSliders[r];
-        var slider = document.getElementById(cfg.sliderId);
-        var valueEl = document.getElementById(cfg.valueId);
-        if (slider) {
-            slider.value = cfg.setting;
-            updateSliderFill(slider);
-            if (valueEl) valueEl.textContent = cfg.setting + '%';
-        }
-    }
-
-    // XP caps
-    var capSliders = [
-        { sliderId: 'xpCapAnySlider', valueId: 'xpCapAnyValue', setting: settings.xpCapAny },
-        { sliderId: 'xpCapSchoolSlider', valueId: 'xpCapSchoolValue', setting: settings.xpCapSchool },
-        { sliderId: 'xpCapDirectSlider', valueId: 'xpCapDirectValue', setting: settings.xpCapDirect }
-    ];
-    for (var c = 0; c < capSliders.length; c++) {
-        var cap = capSliders[c];
-        var capSlider = document.getElementById(cap.sliderId);
-        var capValue = document.getElementById(cap.valueId);
-        if (capSlider) {
-            capSlider.value = cap.setting;
-            updateSliderFill(capSlider);
-            if (capValue) capValue.textContent = cap.setting + '%';
-        }
-    }
-
-    // Learning mode toggle
-    setSegmentedToggleValue('learningModeToggle', settings.learningMode);
-
-    // Update spell tome learning UI if function exists
-    if (typeof updateSpellTomeLearningUI === 'function') {
-        updateSpellTomeLearningUI();
+/**
+ * Auto-save helper — prefers debounced scheduleAutoSave over direct autoSaveSettings.
+ */
+function _settingsAutoSave() {
+    if (typeof scheduleAutoSave === 'function') {
+        scheduleAutoSave();
+    } else if (typeof autoSaveSettings === 'function') {
+        autoSaveSettings();
     }
 }
-
-// =============================================================================
-// CLEAR TREE (moved from difficultyProfiles.js)
-// =============================================================================
-
-function clearTree() {
-    console.log('[SpellLearning] Clearing tree data');
-
-    state.treeData = null;
-    state.selectedNode = null;
-    state.spellInfoCache = {};
-    state.learningTargets = {};
-
-    if (typeof SmartRenderer !== 'undefined') {
-        SmartRenderer.clear();
-    } else if (typeof WheelRenderer !== 'undefined') {
-        WheelRenderer.clear();
-    }
-
-    var emptyState = document.getElementById('empty-state');
-    if (emptyState) emptyState.classList.remove('hidden');
-
-    var treeActions = document.getElementById('tree-actions');
-    if (treeActions) treeActions.classList.add('hidden');
-
-    var detailsPanel = document.getElementById('details-panel');
-    if (detailsPanel) detailsPanel.classList.add('hidden');
-
-    var totalCount = document.getElementById('total-count');
-    if (totalCount) totalCount.textContent = '0';
-    var unlockedCount = document.getElementById('unlocked-count');
-    if (unlockedCount) unlockedCount.textContent = '0';
-
-    if (typeof setTreeStatus === 'function') {
-        setTreeStatus('Tree cleared - ready for new generation');
-    }
-    if (typeof updateScanStatus === 'function') updateScanStatus(t('status.treeCleared'));
-}
-
-window.clearTree = clearTree;
 
 console.log('[SettingsPresets] Loaded');

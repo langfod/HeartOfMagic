@@ -33,6 +33,9 @@ var Starfield = {
     // Twinkle phase accumulator
     _twinklePhase: 0,
 
+    // Cached RNG closures keyed by tile seed (avoids closure creation per tile per frame)
+    _rngCache: {},
+
     // Parallax layer definitions
     // depth: 0 = fixed to screen, 1 = fixed to world
     _layers: [
@@ -44,15 +47,19 @@ var Starfield = {
     /**
      * Seeded pseudo-random number generator (mulberry32)
      * Returns a function that produces deterministic floats [0, 1)
+     * The returned function has a .reset() method to restart the sequence.
      */
     _seededRng: function(seed) {
-        var s = seed | 0;
-        return function() {
+        var original = seed | 0;
+        var s = original;
+        var fn = function() {
             s = (s + 0x6D2B79F5) | 0;
             var t = Math.imul(s ^ (s >>> 15), 1 | s);
             t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
             return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
         };
+        fn.reset = function() { s = original; };
+        return fn;
     },
 
     /**
@@ -127,6 +134,7 @@ var Starfield = {
         this.update();
 
         var rgb = this.color;
+        var rgbPrefix = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',';
 
         for (var i = 0; i < this.stars.length; i++) {
             var star = this.stars[i];
@@ -135,7 +143,7 @@ var Starfield = {
 
             ctx.beginPath();
             ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + opacity.toFixed(2) + ')';
+            ctx.fillStyle = rgbPrefix + opacity.toFixed(2) + ')';
             ctx.fill();
         }
     },
@@ -158,6 +166,7 @@ var Starfield = {
      */
     _renderLayer: function(ctx, camX, camY, canvasW, canvasH, layer, starsPerTile) {
         var rgb = this.color;
+        var rgbPrefix = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',';
         var tileSize = 500;
         var layerStars = Math.max(1, Math.round(starsPerTile * layer.densityMul));
 
@@ -184,7 +193,13 @@ var Starfield = {
             for (var ty = tileMinY; ty <= tileMaxY; ty++) {
                 // Unique deterministic seed per tile per layer
                 var tileSeed = (this.seed + layer.seedOffset) * 73856093 + tx * 19349663 + ty * 83492791;
-                var rng = this._seededRng(tileSeed);
+                var rng = this._rngCache[tileSeed];
+                if (!rng) {
+                    rng = this._seededRng(tileSeed);
+                    this._rngCache[tileSeed] = rng;
+                } else {
+                    rng.reset();
+                }
 
                 for (var si = 0; si < layerStars; si++) {
                     // IMPORTANT: Always consume ALL rng() calls per star, even if
@@ -211,7 +226,7 @@ var Starfield = {
 
                     ctx.beginPath();
                     ctx.arc(screenX, screenY, size, 0, Math.PI * 2);
-                    ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + opacity.toFixed(2) + ')';
+                    ctx.fillStyle = rgbPrefix + opacity.toFixed(2) + ')';
                     ctx.fill();
                 }
             }
@@ -238,6 +253,11 @@ var Starfield = {
 
         this._twinklePhase += this.twinkleSpeed;
 
+        // Prune RNG cache if it grows too large (user panned far)
+        if (Object.keys(this._rngCache).length > 500) {
+            this._rngCache = {};
+        }
+
         // Derive camera world position from pan/zoom.
         // This is approximately zoom-independent: pure zooming barely
         // changes the world center, so stars stay put.
@@ -258,13 +278,9 @@ var Starfield = {
      */
     setColor: function(hex) {
         if (!hex) return;
-        var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-        if (result) {
-            this.color = {
-                r: parseInt(result[1], 16),
-                g: parseInt(result[2], 16),
-                b: parseInt(result[3], 16)
-            };
+        var rgb = ColorUtils.parse(hex);
+        if (rgb) {
+            this.color = rgb;
         }
     },
 

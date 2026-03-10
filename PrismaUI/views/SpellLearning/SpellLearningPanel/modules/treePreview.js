@@ -29,14 +29,7 @@ var TreePreview = {
     zoom: 1,
     panX: 0,
     panY: 0,
-    _isPanning: false,
-    _panStartX: 0,
-    _panStartY: 0,
-    _pendingPanX: 0,
-    _pendingPanY: 0,
-    _panRafPending: false,
-    _mouseDownX: 0,
-    _mouseDownY: 0,
+    _pzController: null,
 
     // Root selection
     _rootSelectionSchool: null,
@@ -194,7 +187,7 @@ var TreePreview = {
         this._visible = true;
         this._updateCanvasSize();
         this._startRenderLoop();
-        this._markDirty();
+        this._markDirty(true);
     },
 
     hide: function() {
@@ -227,7 +220,7 @@ var TreePreview = {
         // Load the mode's settings panel
         this._loadModeSettings(mode);
 
-        this._markDirty();
+        this._markDirty(true);
     },
 
     _loadModeSettings: function(mode) {
@@ -302,95 +295,44 @@ var TreePreview = {
         var self = this;
         var canvas = this.canvas;
 
-        canvas.addEventListener('mousedown', function(e) {
-            if (e.button === 0 || e.button === 2) {
-                self._isPanning = true;
-                self._panStartX = e.clientX - self.panX;
-                self._panStartY = e.clientY - self.panY;
-                self._mouseDownX = e.clientX;
-                self._mouseDownY = e.clientY;
-                canvas.style.cursor = 'grabbing';
-            }
+        this._pzController = PanZoomController.create({
+            getPan: function() { return { x: self.panX, y: self.panY }; },
+            setPan: function(x, y) { self.panX = x; self.panY = y; },
+            getZoom: function() { return self.zoom; },
+            setZoom: function(z) { self.zoom = z; },
+            onRedraw: function() { self._markDirty(); },
+            onClick: function(e) { self._handleClick(e); },
+            centerOrigin: true
         });
+        this._pzController.attach(canvas);
 
+        // Hover detection (not handled by pan/zoom controller)
         canvas.addEventListener('mousemove', function(e) {
-            if (!self._isPanning) {
-                // Hover cursor: pointer if over a root node, grab otherwise
-                var hit = self._hitTestRootNode(e);
-                canvas.style.cursor = hit ? 'pointer' : 'grab';
-                return;
-            }
-
-            self._pendingPanX = e.clientX - self._panStartX;
-            self._pendingPanY = e.clientY - self._panStartY;
-
-            if (!self._panRafPending) {
-                self._panRafPending = true;
-                requestAnimationFrame(function() {
-                    self._panRafPending = false;
-                    self.panX = self._pendingPanX;
-                    self.panY = self._pendingPanY;
-                    self._markDirty();
-                });
-            }
+            if (self._pzController.isDragging()) return;
+            var hit = self._hitTestRootNode(e);
+            canvas.style.cursor = hit ? 'pointer' : 'grab';
         });
-
-        document.addEventListener('mouseup', function(e) {
-            if (self._isPanning) {
-                self._isPanning = false;
-
-                // Click vs pan: if mouse moved < 5px, it's a click
-                var dx = e.clientX - self._mouseDownX;
-                var dy = e.clientY - self._mouseDownY;
-                if (Math.sqrt(dx * dx + dy * dy) < 5) {
-                    self._handleClick(e);
-                }
-
-                if (self.canvas) self.canvas.style.cursor = 'grab';
-            }
-        });
-
-        canvas.addEventListener('wheel', function(e) {
-            e.preventDefault();
-            var zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-            var newZoom = self.zoom * zoomFactor;
-            newZoom = Math.max(0.1, Math.min(5, newZoom));
-
-            var rect = canvas.getBoundingClientRect();
-            var mouseX = e.clientX - rect.left - rect.width / 2;
-            var mouseY = e.clientY - rect.top - rect.height / 2;
-
-            self.panX = mouseX - (mouseX - self.panX) * (newZoom / self.zoom);
-            self.panY = mouseY - (mouseY - self.panY) * (newZoom / self.zoom);
-            self.zoom = newZoom;
-
-            self._markDirty();
-        }, { passive: false });
-
-        canvas.addEventListener('contextmenu', function(e) {
-            e.preventDefault();
-        });
-
-        canvas.style.cursor = 'grab';
     },
 
     // =========================================================================
     // RENDER LOOP
     // =========================================================================
 
-    _markDirty: function() {
+    _markDirty: function(cascade) {
         this._needsRender = true;
         this._idleFrames = 0;
         // Restart the RAF loop if it has stopped due to idling
         if (!this._rafRunning) {
             this._startRenderLoop();
         }
-        // Also notify downstream sections that depend on our output
-        if (typeof TreeCore !== 'undefined' && TreeCore._markDirty) {
-            TreeCore._markDirty();
-        }
-        if (typeof TreeGrowth !== 'undefined' && TreeGrowth._markDirty) {
-            TreeGrowth._markDirty();
+        // Only notify downstream sections on data/mode changes (not pan/zoom/resize)
+        if (cascade) {
+            if (typeof TreeCore !== 'undefined' && TreeCore._markDirty) {
+                TreeCore._markDirty();
+            }
+            if (typeof TreeGrowth !== 'undefined' && TreeGrowth._markDirty) {
+                TreeGrowth._markDirty();
+            }
         }
     },
 
@@ -551,326 +493,12 @@ var TreePreview = {
         return null;
     },
 
-    /** Handle a click (not a pan) on the preview canvas. */
-    _handleClick: function(e) {
-        var hitNode = this._hitTestRootNode(e);
-        if (hitNode && hitNode.school) {
-            this.showRootSelectionModal(hitNode.school, hitNode.rootIndex || 0);
-        }
-    },
+    // _handleClick, showRootSelectionModal, hideRootSelectionModal,
+    // _renderRootSelectionList, _setupRootSelectionListeners, _selectRoot,
+    // _clearRoot, _renderSelectedRootOverlays, _flattenSelectedRoots,
+    // getOutput — defined in treePreviewRootSelection.js
 
-    // =========================================================================
-    // ROOT SELECTION MODAL (reuses #spawn-spell-modal)
-    // =========================================================================
-
-    showRootSelectionModal: function(school, rootIndex) {
-        this._rootSelectionSchool = school;
-        this._rootSelectionIndex = rootIndex || 0;
-
-        var modal = document.getElementById('spawn-spell-modal');
-        if (!modal) {
-            console.warn('[TreePreview] #spawn-spell-modal not found');
-            return;
-        }
-
-        // Update title
-        var title = modal.querySelector('.modal-header h3');
-        if (title) {
-            var label = 'Select Root \u2014 ' + school;
-            if (this._rootSelectionIndex > 0) {
-                label += ' #' + (this._rootSelectionIndex + 1);
-            }
-            title.textContent = label;
-        }
-
-        // Load primed spells for this school
-        if (typeof getPrimedSpellsForSchool === 'function') {
-            this._rootSelectionSpells = getPrimedSpellsForSchool(school);
-        } else {
-            this._rootSelectionSpells = [];
-        }
-
-        // Show modal
-        modal.classList.remove('hidden');
-
-        // Focus search
-        var searchInput = document.getElementById('spawn-search');
-        if (searchInput) {
-            searchInput.value = '';
-            searchInput.focus();
-        }
-
-        // Render initial list
-        this._renderRootSelectionList('');
-
-        // Set up listeners
-        this._setupRootSelectionListeners();
-    },
-
-    hideRootSelectionModal: function() {
-        var modal = document.getElementById('spawn-spell-modal');
-        if (modal) {
-            modal.classList.add('hidden');
-        }
-        this._rootSelectionSchool = null;
-        this._rootSelectionIndex = 0;
-
-        // Restore original title
-        var title = modal ? modal.querySelector('.modal-header h3') : null;
-        if (title) {
-            title.textContent = 'Spawn Spell Node';
-        }
-    },
-
-    _renderRootSelectionList: function(searchTerm) {
-        var spellList = document.getElementById('spawn-spell-list');
-        if (!spellList) return;
-
-        var self = this;
-        var school = this._rootSelectionSchool;
-        searchTerm = (searchTerm || '').toLowerCase();
-
-        // Filter by search term
-        var filtered = this._rootSelectionSpells.filter(function(spell) {
-            if (!searchTerm) return true;
-            var nameMatch = (spell.name || '').toLowerCase().indexOf(searchTerm) !== -1;
-            var idMatch = (spell.formId || '').toLowerCase().indexOf(searchTerm) !== -1;
-            var levelMatch = (spell.skillLevel || spell.level || '').toLowerCase().indexOf(searchTerm) !== -1;
-            return nameMatch || idMatch || levelMatch;
-        });
-
-        // Sort alphabetically
-        filtered.sort(function(a, b) {
-            return (a.name || '').localeCompare(b.name || '');
-        });
-
-        // Limit results
-        filtered = filtered.slice(0, 50);
-
-        // Check current selection (indexed by school:rootIndex)
-        var rootKey = this._rootKey(school, this._rootSelectionIndex);
-        var currentRoot = settings.selectedRoots ? settings.selectedRoots[rootKey] : null;
-        var currentFormId = currentRoot ? currentRoot.formId : null;
-
-        if (filtered.length === 0 && !searchTerm) {
-            spellList.innerHTML = '<div class="spawn-no-results">No primed spells for ' + school + '</div>';
-            return;
-        }
-        if (filtered.length === 0) {
-            spellList.innerHTML = '<div class="spawn-no-results">No matching spells</div>';
-            return;
-        }
-
-        spellList.innerHTML = '';
-        filtered.forEach(function(spell) {
-            var isSelected = spell.formId === currentFormId;
-            var item = document.createElement('div');
-            item.className = 'spawn-spell-item' + (isSelected ? ' on-tree' : '');
-            item.dataset.formId = spell.formId;
-
-            var badge = isSelected ? '<span class="spawn-on-tree-badge">CURRENT</span>' : '';
-            item.innerHTML =
-                '<div class="spawn-spell-name">' + (spell.name || spell.formId) + badge + '</div>' +
-                '<div class="spawn-spell-info">' +
-                    '<span>' + (spell.skillLevel || spell.level || '') + '</span>' +
-                    '<span style="opacity:0.5">' + (spell.formId || '') + '</span>' +
-                '</div>';
-
-            item.addEventListener('click', function() {
-                self._selectRoot(spell);
-            });
-
-            spellList.appendChild(item);
-        });
-    },
-
-    _setupRootSelectionListeners: function() {
-        var self = this;
-        var modal = document.getElementById('spawn-spell-modal');
-        if (!modal) return;
-
-        // Clone search input to remove old listeners
-        var searchInput = document.getElementById('spawn-search');
-        if (searchInput) {
-            var newInput = searchInput.cloneNode(true);
-            searchInput.parentNode.replaceChild(newInput, searchInput);
-            newInput.addEventListener('input', function() {
-                self._renderRootSelectionList(this.value);
-            });
-        }
-
-        // Close button
-        var closeBtn = document.getElementById('spawn-modal-close');
-        if (closeBtn) {
-            closeBtn.onclick = function() { self.hideRootSelectionModal(); };
-        }
-
-        // Cancel button — repurpose as "Clear Selection" if a root is selected
-        var cancelBtn = document.getElementById('spawn-cancel');
-        if (cancelBtn) {
-            var rootKey = this._rootKey(this._rootSelectionSchool, this._rootSelectionIndex);
-            var hasSelection = settings.selectedRoots && settings.selectedRoots[rootKey];
-            if (hasSelection) {
-                cancelBtn.textContent = 'Clear Selection';
-                cancelBtn.onclick = function() {
-                    self._clearRoot(rootKey);
-                };
-            } else {
-                cancelBtn.textContent = 'Cancel';
-                cancelBtn.onclick = function() { self.hideRootSelectionModal(); };
-            }
-        }
-
-        // Backdrop click
-        var backdrop = modal.querySelector('.modal-backdrop');
-        if (backdrop) {
-            backdrop.onclick = function() { self.hideRootSelectionModal(); };
-        }
-    },
-
-    _selectRoot: function(spell) {
-        var school = this._rootSelectionSchool;
-        if (!school) return;
-
-        if (!settings.selectedRoots) {
-            settings.selectedRoots = {};
-        }
-
-        var rootKey = this._rootKey(school, this._rootSelectionIndex);
-        settings.selectedRoots[rootKey] = {
-            formId: spell.formId,
-            name: spell.name || spell.formId,
-            school: school,
-            rootIndex: this._rootSelectionIndex,
-            plugin: spell.plugin || '',
-            localFormId: typeof getLocalFormId === 'function' ? getLocalFormId(spell.formId) : spell.formId
-        };
-
-        console.log('[TreePreview] Selected root for ' + rootKey + ': ' + spell.name + ' (' + spell.formId + ')');
-
-        if (typeof autoSaveSettings === 'function') {
-            autoSaveSettings();
-        }
-
-        this.hideRootSelectionModal();
-        this._markDirty();
-    },
-
-    _clearRoot: function(rootKey) {
-        if (settings.selectedRoots && settings.selectedRoots[rootKey]) {
-            delete settings.selectedRoots[rootKey];
-            console.log('[TreePreview] Cleared root selection for ' + rootKey);
-
-            if (typeof autoSaveSettings === 'function') {
-                autoSaveSettings();
-            }
-        }
-
-        this.hideRootSelectionModal();
-        this._markDirty();
-    },
-
-    // =========================================================================
-    // SELECTED ROOT VISUAL OVERLAYS
-    // =========================================================================
-
-    _renderSelectedRootOverlays: function(ctx, w, h, modeModule) {
-        if (!settings.selectedRoots) return;
-        if (!modeModule || !modeModule._lastRenderData) return;
-        var rootNodes = modeModule._lastRenderData.rootNodes;
-        if (!rootNodes || rootNodes.length === 0) return;
-
-        var nodeSize = modeModule.settings ? (modeModule.settings.nodeSize || 6) : 6;
-
-        for (var i = 0; i < rootNodes.length; i++) {
-            var n = rootNodes[i];
-            var rootKey = this._rootKey(n.school, n.rootIndex);
-            var sel = settings.selectedRoots[rootKey];
-            if (!sel) continue;
-
-            var nx = n.x + w / 2;
-            var ny = n.y + h / 2;
-
-            // Gold selection ring
-            ctx.beginPath();
-            ctx.arc(nx, ny, nodeSize + 5, 0, Math.PI * 2);
-            ctx.strokeStyle = '#b8a878';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
-            // Outer glow
-            ctx.beginPath();
-            ctx.arc(nx, ny, nodeSize + 8, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(184, 168, 120, 0.25)';
-            ctx.lineWidth = 3;
-            ctx.stroke();
-
-            // Spell name label below the node
-            ctx.font = '9px sans-serif';
-            ctx.fillStyle = '#b8a878';
-            ctx.textAlign = 'center';
-            ctx.fillText(sel.name || sel.formId, nx, ny + nodeSize + 18);
-        }
-    },
-
-    // =========================================================================
-    // DATA OUTPUT — Universal format for downstream sections
-    // =========================================================================
-
-    /**
-     * Convert indexed selectedRoots ("School:0", "School:1") to per-school
-     * format for the C++ builder. Returns { school: { formId, ... } } using
-     * the first root (index 0) as primary, plus a "all_roots" array per school.
-     */
-    _flattenSelectedRoots: function() {
-        var roots = settings.selectedRoots || {};
-        var result = {};
-        var allRoots = {};
-        var keys = Object.keys(roots);
-        for (var i = 0; i < keys.length; i++) {
-            var key = keys[i];
-            var entry = roots[key];
-            var school = entry.school || key.split(':')[0];
-            if (!allRoots[school]) allRoots[school] = [];
-            allRoots[school].push(entry);
-            // Use the lowest-indexed root as the primary for the builder
-            var idx = entry.rootIndex || 0;
-            if (!result[school] || idx < (result[school]._idx || 0)) {
-                result[school] = entry;
-                result[school]._idx = idx;
-            }
-        }
-        // Clean up temp _idx and attach all_roots
-        var schools = Object.keys(result);
-        for (var j = 0; j < schools.length; j++) {
-            delete result[schools[j]]._idx;
-        }
-        // Attach full list as separate key for future multi-root support
-        result._allRoots = allRoots;
-        return result;
-    },
-
-    getOutput: function() {
-        var modeModule = this.modes[this.activeMode];
-        if (!modeModule) return null;
-        var gridData = modeModule.getGridData ? modeModule.getGridData() : null;
-        var lastData = modeModule._lastRenderData;
-        if (!lastData) return null;
-
-        var self = this;
-        return {
-            mode: gridData ? gridData.mode : self.activeMode,
-            schools: gridData ? gridData.schools : [],
-            rootNodes: lastData.rootNodes || [],
-            grid: gridData ? gridData.grid : null,
-            gridPoints: gridData ? (gridData.gridPoints || []) : [],
-            schoolData: self.schoolData || {},
-            selectedRoots: settings.selectedRoots || {},
-            renderGrid: function(ctx, w, h) {
-                modeModule.render(ctx, w, h, self.schoolData);
-            }
-        };
-    }
+    _placeholder: true
 };
 
 // Now register any mode modules that loaded before us

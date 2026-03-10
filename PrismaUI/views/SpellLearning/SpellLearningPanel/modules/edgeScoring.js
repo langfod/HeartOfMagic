@@ -9,6 +9,7 @@
  * Exports (global):
  * - EdgeScoring.scoreEdge(fromSpell, toSpell, settings)
  * - EdgeScoring.detectSpellElement(spell)
+ * - EdgeScoring.clearElementCache()
  * - EdgeScoring.hasElementConflict(spell1, spell2)
  * - EdgeScoring.hasSameElement(spell1, spell2)
  * - EdgeScoring.getSpellTier(spell)
@@ -146,8 +147,13 @@ var TIER_MAP = {
 // ELEMENT DETECTION
 // =============================================================================
 
+/** @type {Object<string, string|null>} formId -> detected element, cleared on tree rebuild */
+var _elementCache = {};
+
 /**
  * Detect the element/theme of a spell.
+ * Results are cached per formId to avoid redundant text processing.
+ *
  * Priority:
  *   1. TF-IDF discovered themes (via window._nlpFuzzyData)
  *   2. LLM cache
@@ -158,6 +164,11 @@ var TIER_MAP = {
  */
 function detectSpellElement(spell) {
     if (!spell) return null;
+
+    var cacheKey = spell.formId;
+    if (cacheKey && _elementCache.hasOwnProperty(cacheKey)) {
+        return _elementCache[cacheKey];
+    }
 
     // === PRIORITY 1: TF-IDF Theme Discovery ===
     // Dynamic discovery is more accurate than hardcoded keywords
@@ -175,7 +186,8 @@ function detectSpellElement(spell) {
                         entry === spell.editorId ||
                         entry === spell.name ||
                         (typeof entry === 'object' && entry.formId === spell.formId)) {
-                        return themeName;  // Return discovered theme
+                        if (cacheKey) _elementCache[cacheKey] = themeName;
+                        return themeName;
                     }
                 }
             }
@@ -186,6 +198,7 @@ function detectSpellElement(spell) {
     if (typeof getCachedElement === 'function' && spell.formId) {
         var cached = getCachedElement(spell.formId);
         if (cached !== null && cached !== undefined) {
+            if (cacheKey) _elementCache[cacheKey] = cached;
             return cached;
         }
     }
@@ -213,11 +226,20 @@ function detectSpellElement(spell) {
         var kwList = keywords[element];
         for (var i = 0; i < kwList.length; i++) {
             if (text.indexOf(kwList[i]) >= 0) {
+                if (cacheKey) _elementCache[cacheKey] = element;
                 return element;
             }
         }
     }
+    if (cacheKey) _elementCache[cacheKey] = null;
     return null;
+}
+
+/**
+ * Clear the element detection cache. Call on tree rebuild.
+ */
+function clearElementCache() {
+    _elementCache = {};
 }
 
 /**
@@ -452,6 +474,7 @@ var EdgeScoring = {
     // Element detection
     ELEMENT_KEYWORDS: ELEMENT_KEYWORDS,
     detectSpellElement: detectSpellElement,
+    clearElementCache: clearElementCache,
     hasElementConflict: hasElementConflict,
     hasSameElement: hasSameElement,
 
@@ -469,6 +492,7 @@ var EdgeScoring = {
 // Global exports for direct access
 window.EdgeScoring = EdgeScoring;
 window.detectSpellElement = detectSpellElement;
+window.clearElementCache = clearElementCache;
 window.hasElementConflict = hasElementConflict;
 window.hasSameElement = hasSameElement;
 window.getSpellTier = getSpellTier;

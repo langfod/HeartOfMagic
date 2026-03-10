@@ -191,42 +191,9 @@ var ThematicSettings = {
                 onChanged('showSpines', this.checked);
             });
         }
-    },
-
-    // =========================================================================
-    // STATE UPDATES (delegated to TreeGrowth orchestrator)
-    // =========================================================================
-
-    /**
-     * Update button states after a tree is built or cleared.
-     *
-     * @param {boolean} built - True if a tree has been generated
-     * @param {number} [nodeCount] - Number of positioned nodes
-     * @param {number} [totalPool] - Total nodes in pool
-     */
-    setTreeBuilt: function (built, nodeCount, totalPool) {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setTreeBuilt(built, nodeCount, totalPool);
-    },
-
-    /**
-     * Set the status text element's content and color.
-     *
-     * @param {string} text - Status message
-     * @param {string} color - CSS color value
-     */
-    setStatusText: function (text, color) {
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.setStatusText(text, color);
-    },
-
-    /**
-     * Called when spell scan data changes.
-     *
-     * @param {boolean} hasSpells - True if spell data is available
-     */
-    updateScanStatus: function (hasSpells) {
-        this._hasSpells = hasSpells;
-        if (typeof TreeGrowth !== 'undefined') TreeGrowth.updateScanStatus(hasSpells);
     }
 };
+
+GrowthModeUtils.mixinSettingsDelegation(ThematicSettings, true, false);
 
 console.log('[ThematicSettings] Loaded');

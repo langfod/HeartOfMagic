@@ -10,7 +10,7 @@
  *   var refined = ClassicThemeEngine.discoverAndAssign(schoolTree.nodes, spells);
  *   // refined = { "0x00012FCD": "fire", "0x0001C789": "frost", ... }
  *
- * Called by classicLayout.js when spellMatching === 'smart'.
+ * Called by classicLayoutGrid.js when spellMatching === 'smart'.
  */
 var ClassicThemeEngine = {
 
