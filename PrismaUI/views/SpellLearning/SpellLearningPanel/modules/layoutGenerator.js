@@ -362,38 +362,64 @@ function generateFullGrid(sliceInfo, spellCount, shape, config) {
     }
     
     // =========================================================================
-    // SIMPLE OVERLAP RESOLUTION (matching web harness approach)
+    // SIMPLE OVERLAP RESOLUTION (spatial hash, O(n) amortized per iteration)
     // =========================================================================
-    var minDist = LAYOUT_CONFIG.nodeSize * 1.0;  // Reduced from 1.2 to minimize pushing
-    var spreadIterations = 3;  // Fewer iterations
-    
+    var minDist = LAYOUT_CONFIG.nodeSize * 1.0;
+    var spreadIterations = 3;
+
     for (var iter = 0; iter < spreadIterations; iter++) {
         var moved = false;
+
+        // Build spatial hash for this iteration
+        var cells = {};
+        var cs = minDist;
+        for (var bi = 0; bi < positions.length; bi++) {
+            var bcx = Math.floor(positions[bi].x / cs);
+            var bcy = Math.floor(positions[bi].y / cs);
+            var bkey = bcx + ',' + bcy;
+            if (!cells[bkey]) cells[bkey] = [];
+            cells[bkey].push(bi);
+        }
+
         for (var i = 0; i < positions.length; i++) {
             var pi = positions[i];
             if (pi.isRoot) continue;
-            
-            for (var j = i + 1; j < positions.length; j++) {
-                var pj = positions[j];
-                var dx = pj.x - pi.x;
-                var dy = pj.y - pi.y;
-                var dist = Math.sqrt(dx * dx + dy * dy);
-                
-                if (dist < minDist && dist > 0.01) {
-                    // Simple push along connecting line (like web harness)
-                    var overlap = minDist - dist;
-                    var pushX = (dx / dist) * overlap * 0.4;  // Reduced push factor
-                    var pushY = (dy / dist) * overlap * 0.4;
-                    
-                    if (!pj.isRoot) {
-                        pj.x += pushX;
-                        pj.y += pushY;
+
+            var pcx = Math.floor(pi.x / cs);
+            var pcy = Math.floor(pi.y / cs);
+
+            for (var dcx = -1; dcx <= 1; dcx++) {
+                for (var dcy = -1; dcy <= 1; dcy++) {
+                    var nkey = (pcx + dcx) + ',' + (pcy + dcy);
+                    var cell = cells[nkey];
+                    if (!cell) continue;
+
+                    for (var ci = 0; ci < cell.length; ci++) {
+                        var j = cell[ci];
+                        if (j <= i) continue;
+
+                        var pj = positions[j];
+                        var dx = pj.x - pi.x;
+                        var dy = pj.y - pi.y;
+                        var distSq = dx * dx + dy * dy;
+
+                        if (distSq < minDist * minDist && distSq > 0.0001) {
+                            var dist = Math.sqrt(distSq);
+                            var overlap = minDist - dist;
+                            var pushX = (dx / dist) * overlap * 0.4;
+                            var pushY = (dy / dist) * overlap * 0.4;
+
+                            if (!pj.isRoot) {
+                                pj.x += pushX;
+                                pj.y += pushY;
+                            }
+                            if (!pi.isRoot) {
+                                pi.x -= pushX;
+                                pi.y -= pushY;
+                            }
+                            moved = true;
+                        }
                     }
-                    if (!pi.isRoot) {
-                        pi.x -= pushX;
-                        pi.y -= pushY;
-                    }
-                    moved = true;
                 }
             }
         }

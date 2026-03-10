@@ -55,6 +55,9 @@ var WebGLRenderer = {
     _shapeBuffers: null,
     _nodeInstanceBuffer: null,
     _nodeInstanceData: null,
+    _perShapeInstances: null,  // {shapeIndex: {data, buffer, count}} - cached per-shape instance buffers
+    _nodeDataDirty: true,      // true when node instance data needs rebuilding
+    _colorCache: null,         // {formId+state -> {r,g,b,a}} - cached node colors
     _edgeBuffer: null,
     _edgeColorBuffer: null,
     _hubBuffer: null,
@@ -287,6 +290,7 @@ var WebGLRenderer = {
                 this.hoveredNode = node;
                 this.canvas.style.cursor = node ? 'pointer' : 'grab';
                 this._needsRender = true;
+                this._nodeDataDirty = true;
                 
                 if (node && typeof WheelRenderer !== 'undefined' && WheelRenderer.showTooltip) {
                     WheelRenderer.showTooltip(node, e);
@@ -332,11 +336,12 @@ var WebGLRenderer = {
         if (clickedNode) {
             this.selectedNode = clickedNode;
             this._needsRender = true;
-            
+            this._nodeDataDirty = true;
+
             console.log('[WebGLRenderer] Node clicked:', clickedNode.name || clickedNode.id);
-            
+
             this.handleNodeClickRotation(clickedNode);
-            
+
             if (typeof WheelRenderer !== 'undefined' && WheelRenderer.onNodeClick) {
                 WheelRenderer.onNodeClick(clickedNode);
             }
@@ -344,6 +349,7 @@ var WebGLRenderer = {
             if (this.selectedNode) {
                 this.selectedNode = null;
                 this._needsRender = true;
+                this._nodeDataDirty = true;
             }
         }
     },

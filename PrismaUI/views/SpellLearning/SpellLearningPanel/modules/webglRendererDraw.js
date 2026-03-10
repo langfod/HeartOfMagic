@@ -203,63 +203,29 @@ WebGLRenderer.renderNodes = function(viewMatrix, resolution) {
     gl.uniformMatrix3fv(this._programs.nodeUniforms.u_viewMatrix, false, viewMatrix);
     gl.uniform2fv(this._programs.nodeUniforms.u_resolution, resolution);
 
-    // Group nodes by shape for instanced rendering
-    var nodesByShape = {};
-    for (var i = 0; i < this.nodes.length; i++) {
-        var node = this.nodes[i];
-        if (settings.schoolVisibility && settings.schoolVisibility[node.school] === false) continue;
-
-        var shapeIndex = WebGLShapes.getShapeIndex(node.school);
-        if (!nodesByShape[shapeIndex]) {
-            nodesByShape[shapeIndex] = [];
-        }
-        nodesByShape[shapeIndex].push(i);
+    // Rebuild per-shape instance data if dirty (hover/select/data change)
+    if (this._nodeDataDirty || !this._perShapeInstances) {
+        this.updateNodeBuffer();
     }
 
-    // Render each shape type with instancing
-    for (var shapeIndex in nodesByShape) {
-        var nodeIndices = nodesByShape[shapeIndex];
-        var shapeInfo = this._shapeBuffers.byIndex[shapeIndex];
+    var perShape = this._perShapeInstances;
+    if (!perShape) return;
 
+    // Render each shape type using pre-built per-shape buffers
+    for (var shapeIndex in perShape) {
+        var shapeInfo = this._shapeBuffers.byIndex[shapeIndex];
         if (!shapeInfo) continue;
+
+        var inst = perShape[shapeIndex];
+        if (!inst || inst.count === 0) continue;
 
         // Bind shape template
         gl.bindBuffer(gl.ARRAY_BUFFER, shapeInfo.buffer);
         gl.enableVertexAttribArray(this._programs.nodeAttribs.a_shapeVertex);
         gl.vertexAttribPointer(this._programs.nodeAttribs.a_shapeVertex, 2, gl.FLOAT, false, 0, 0);
 
-        // Create per-shape instance data
-        var instanceData = new Float32Array(nodeIndices.length * 8);
-        for (var j = 0; j < nodeIndices.length; j++) {
-            var srcOffset = nodeIndices[j] * 8;
-            var dstOffset = j * 8;
-            // Copy from main instance data (but we need to recalculate for visible nodes)
-            var node = this.nodes[nodeIndices[j]];
-
-            instanceData[dstOffset + 0] = node.x;
-            instanceData[dstOffset + 1] = node.y;
-
-            var size = node.state === 'unlocked' ? 12 : (node.state === 'available' ? 9 : 7);
-            if (this.selectedNode && this.selectedNode.id === node.id) size += 4;
-            else if (this.hoveredNode && this.hoveredNode.id === node.id) size += 3;
-            instanceData[dstOffset + 2] = size;
-
-            var color = this.getNodeColor(node);
-            instanceData[dstOffset + 3] = color.r;
-            instanceData[dstOffset + 4] = color.g;
-            instanceData[dstOffset + 5] = color.b;
-            instanceData[dstOffset + 6] = color.a;
-
-            var stateVal = node.state === 'unlocked' ? 2 : (node.state === 'available' ? 1 : 0);
-            if (this.selectedNode && this.selectedNode.id === node.id) stateVal = 3;
-            if (settings.discoveryMode && !settings.cheatMode && node.state === 'locked') stateVal = 4;
-            instanceData[dstOffset + 7] = stateVal;
-        }
-
-        // Upload instance data
-        var instanceBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, instanceData, gl.DYNAMIC_DRAW);
+        // Bind cached instance buffer
+        gl.bindBuffer(gl.ARRAY_BUFFER, inst.buffer);
 
         // Set up instanced attributes
         var stride = 8 * 4;  // 8 floats * 4 bytes
@@ -281,16 +247,13 @@ WebGLRenderer.renderNodes = function(viewMatrix, resolution) {
         gl.vertexAttribDivisor(this._programs.nodeAttribs.a_state, 1);
 
         // Draw instanced
-        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, shapeInfo.vertexCount, nodeIndices.length);
+        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, shapeInfo.vertexCount, inst.count);
 
         // Reset divisors
         gl.vertexAttribDivisor(this._programs.nodeAttribs.a_position, 0);
         gl.vertexAttribDivisor(this._programs.nodeAttribs.a_size, 0);
         gl.vertexAttribDivisor(this._programs.nodeAttribs.a_color, 0);
         gl.vertexAttribDivisor(this._programs.nodeAttribs.a_state, 0);
-
-        // Clean up temp buffer
-        gl.deleteBuffer(instanceBuffer);
     }
 };
 

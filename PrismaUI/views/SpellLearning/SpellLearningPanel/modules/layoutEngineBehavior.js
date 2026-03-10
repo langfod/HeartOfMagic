@@ -132,35 +132,64 @@ LayoutEngine.nodesOverlap = function(n1, n2, minSpacing) {
 };
 
 /**
- * Resolve overlaps by nudging nodes
+ * Resolve overlaps by nudging nodes.
+ * Uses spatial hashing for O(n) amortized per iteration instead of O(n^2).
  */
 LayoutEngine.resolveOverlaps = function(positions, iterations) {
     var cfg = this.getConfig();
     var minSpacing = cfg.minNodeSpacing;
     iterations = iterations || 3;
+    if (positions.length < 2) return positions;
 
     for (var iter = 0; iter < iterations; iter++) {
         var moved = false;
 
+        // Build spatial hash for this iteration
+        var cells = {};
+        var cs = minSpacing;  // cell size = overlap radius
+        for (var bi = 0; bi < positions.length; bi++) {
+            var cx = Math.floor(positions[bi].x / cs);
+            var cy = Math.floor(positions[bi].y / cs);
+            var key = cx + ',' + cy;
+            if (!cells[key]) cells[key] = [];
+            cells[key].push(bi);
+        }
+
+        // Check only neighboring cells (3x3)
         for (var i = 0; i < positions.length; i++) {
-            for (var j = i + 1; j < positions.length; j++) {
-                var dist = this.distance(positions[i], positions[j]);
+            var pi = positions[i];
+            var pcx = Math.floor(pi.x / cs);
+            var pcy = Math.floor(pi.y / cs);
 
-                if (dist < minSpacing && dist > 0) {
-                    // Calculate push direction
-                    var dx = positions[j].x - positions[i].x;
-                    var dy = positions[j].y - positions[i].y;
-                    var pushDist = (minSpacing - dist) / 2;
-                    var pushX = (dx / dist) * pushDist;
-                    var pushY = (dy / dist) * pushDist;
+            for (var dcx = -1; dcx <= 1; dcx++) {
+                for (var dcy = -1; dcy <= 1; dcy++) {
+                    var nkey = (pcx + dcx) + ',' + (pcy + dcy);
+                    var cell = cells[nkey];
+                    if (!cell) continue;
 
-                    // Push nodes apart
-                    positions[i].x -= pushX;
-                    positions[i].y -= pushY;
-                    positions[j].x += pushX;
-                    positions[j].y += pushY;
+                    for (var ci = 0; ci < cell.length; ci++) {
+                        var j = cell[ci];
+                        if (j <= i) continue;  // avoid duplicate pairs
 
-                    moved = true;
+                        var pj = positions[j];
+                        var dx = pj.x - pi.x;
+                        var dy = pj.y - pi.y;
+                        var distSq = dx * dx + dy * dy;
+
+                        if (distSq < minSpacing * minSpacing && distSq > 0) {
+                            var dist = Math.sqrt(distSq);
+                            var pushDist = (minSpacing - dist) / 2;
+                            var pushX = (dx / dist) * pushDist;
+                            var pushY = (dy / dist) * pushDist;
+
+                            pi.x -= pushX;
+                            pi.y -= pushY;
+                            pj.x += pushX;
+                            pj.y += pushY;
+
+                            moved = true;
+                        }
+                    }
                 }
             }
         }

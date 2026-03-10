@@ -29,6 +29,68 @@ function logTreeParser(message, isWarning) {
 }
 
 // =============================================================================
+// SHARED UNLOCK SIMULATION (Kahn's-style queue, O(V+E))
+// =============================================================================
+
+/**
+ * Simulate which nodes are unlockable starting from rootId.
+ * Uses a queue-based approach (Kahn's algorithm pattern) instead of fixpoint
+ * iteration, reducing worst-case from O(n^2) to O(V+E).
+ *
+ * @param {string} rootId - The root node id
+ * @param {Array} schoolNodeIds - Array of all node ids in the school
+ * @param {Map} nodes - Map of nodeId -> node objects (each with .prerequisites array)
+ * @returns {Set} - Set of unlockable node ids
+ */
+function _simulateUnlocks(rootId, schoolNodeIds, nodes) {
+    var unlocked = new Set();
+    var queue = [];
+
+    // Build remaining-prereq counts and dependent maps
+    var remainingPrereqs = {};  // nodeId -> count of unsatisfied prereqs
+    var dependents = {};        // nodeId -> array of nodeIds that depend on it
+
+    for (var i = 0; i < schoolNodeIds.length; i++) {
+        var nodeId = schoolNodeIds[i];
+        var node = nodes.get(nodeId);
+        if (!node) continue;
+
+        var prereqs = node.prerequisites;
+        if (nodeId === rootId || prereqs.length === 0) {
+            remainingPrereqs[nodeId] = 0;
+            queue.push(nodeId);
+        } else {
+            remainingPrereqs[nodeId] = prereqs.length;
+            for (var j = 0; j < prereqs.length; j++) {
+                var pid = prereqs[j];
+                if (!dependents[pid]) dependents[pid] = [];
+                dependents[pid].push(nodeId);
+            }
+        }
+    }
+
+    // Process queue: unlock nodes and propagate
+    var head = 0;
+    while (head < queue.length) {
+        var uid = queue[head++];
+        unlocked.add(uid);
+
+        var deps = dependents[uid];
+        if (deps) {
+            for (var k = 0; k < deps.length; k++) {
+                var depId = deps[k];
+                remainingPrereqs[depId]--;
+                if (remainingPrereqs[depId] === 0) {
+                    queue.push(depId);
+                }
+            }
+        }
+    }
+
+    return unlocked;
+}
+
+// =============================================================================
 // TREE PARSER
 // =============================================================================
 
@@ -402,55 +464,13 @@ var TreeParser = {
     detectAndFixCycles: function(schoolName, rootId) {
         var self = this;
         var fixesMade = 0;
-        
+
         var rootNode = this.nodes.get(rootId);
         if (!rootNode) return 0;
-        
+
         var schoolNodeIds = this.schools[schoolName].nodeIds;
-        var totalNodes = schoolNodeIds.length;
-        
-        function simulateUnlocks() {
-            var unlocked = new Set();
-            unlocked.add(rootId);
-            
-            var changed = true;
-            var iterations = 0;
-            var maxIterations = totalNodes + 10;
-            
-            while (changed && iterations < maxIterations) {
-                changed = false;
-                iterations++;
-                
-                schoolNodeIds.forEach(function(nodeId) {
-                    if (unlocked.has(nodeId)) return;
-                    
-                    var node = self.nodes.get(nodeId);
-                    if (!node) return;
-                    
-                    var prereqs = node.prerequisites;
-                    if (prereqs.length === 0) {
-                        // Nodes with no prerequisites are inherently unlockable
-                        // This includes additional root nodes in multi-root trees
-                        unlocked.add(nodeId);
-                        changed = true;
-                        return;
-                    }
 
-                    var allPrereqsUnlocked = prereqs.every(function(prereqId) {
-                        return unlocked.has(prereqId);
-                    });
-
-                    if (allPrereqsUnlocked) {
-                        unlocked.add(nodeId);
-                        changed = true;
-                    }
-                });
-            }
-
-            return unlocked;
-        }
-
-        var unlockable = simulateUnlocks();
+        var unlockable = _simulateUnlocks(rootId, schoolNodeIds, self.nodes);
 
         var unobtainable = [];
         schoolNodeIds.forEach(function(nodeId) {
@@ -503,51 +523,11 @@ var TreeParser = {
         var self = this;
         var rootNode = this.nodes.get(rootId);
         if (!rootNode) return { valid: true, unreachable: [] };
-        
+
         var schoolNodeIds = this.schools[schoolName].nodeIds;
         var totalNodes = schoolNodeIds.length;
-        
-        // Simulate unlocks
-        function simulateUnlocks() {
-            var unlocked = new Set();
-            unlocked.add(rootId);
-            
-            var changed = true;
-            var iterations = 0;
-            
-            while (changed && iterations < totalNodes + 10) {
-                changed = false;
-                iterations++;
-                
-                schoolNodeIds.forEach(function(nodeId) {
-                    if (unlocked.has(nodeId)) return;
-                    
-                    var node = self.nodes.get(nodeId);
-                    if (!node) return;
-                    
-                    var prereqs = node.prerequisites;
-                    if (prereqs.length === 0) {
-                        // Nodes with no prerequisites are inherently unlockable
-                        unlocked.add(nodeId);
-                        changed = true;
-                        return;
-                    }
 
-                    var allPrereqsUnlocked = prereqs.every(function(prereqId) {
-                        return unlocked.has(prereqId);
-                    });
-
-                    if (allPrereqsUnlocked) {
-                        unlocked.add(nodeId);
-                        changed = true;
-                    }
-                });
-            }
-
-            return unlocked;
-        }
-
-        var unlockable = simulateUnlocks();
+        var unlockable = _simulateUnlocks(rootId, schoolNodeIds, self.nodes);
         var unreachableInfo = [];
         
         schoolNodeIds.forEach(function(nodeId) {

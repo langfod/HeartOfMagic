@@ -14,11 +14,15 @@
 // =========================================================================
 
 /**
- * Update node instance buffer with current node data
+ * Update node instance buffer with current node data.
+ * Also builds per-shape instance buffers for renderNodes.
  */
 WebGLRenderer.updateNodeBuffer = function() {
     var gl = this.gl;
     var self = this;
+
+    // Reset color cache on data rebuild
+    this._colorCache = {};
 
     // Build visibility set for discovery mode
     // In discovery mode: show unlocked, available, and locked nodes that are ONE STEP from available/unlocked
@@ -53,6 +57,9 @@ WebGLRenderer.updateNodeBuffer = function() {
     // Format: [x, y, size, r, g, b, a, state] per node
     var instanceData = new Float32Array(visibleNodes.length * 8);
 
+    // Group nodes by shape index for per-shape buffers
+    var shapeGroups = {};  // shapeIndex -> [indices into visibleNodes]
+
     for (var i = 0; i < visibleNodes.length; i++) {
         var node = visibleNodes[i];
         var offset = i * 8;
@@ -80,7 +87,7 @@ WebGLRenderer.updateNodeBuffer = function() {
 
         instanceData[offset + 2] = size;
 
-        // Color
+        // Color (cached)
         var color = this.getNodeColor(node);
         instanceData[offset + 3] = color.r;
         instanceData[offset + 4] = color.g;
@@ -101,7 +108,11 @@ WebGLRenderer.updateNodeBuffer = function() {
         instanceData[offset + 7] = stateVal;
 
         // Store shape index on node for rendering
-        node._shapeIndex = WebGLShapes.getShapeIndex(node.school);
+        var shapeIdx = WebGLShapes.getShapeIndex(node.school);
+        node._shapeIndex = shapeIdx;
+
+        if (!shapeGroups[shapeIdx]) shapeGroups[shapeIdx] = [];
+        shapeGroups[shapeIdx].push(i);
     }
 
     this._nodeInstanceData = instanceData;
@@ -109,6 +120,50 @@ WebGLRenderer.updateNodeBuffer = function() {
     // Upload to GPU
     gl.bindBuffer(gl.ARRAY_BUFFER, this._nodeInstanceBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, instanceData, gl.DYNAMIC_DRAW);
+
+    // Build per-shape instance buffers (used by renderNodes)
+    var oldPerShape = this._perShapeInstances;
+    this._perShapeInstances = {};
+
+    for (var shapeIndex in shapeGroups) {
+        var indices = shapeGroups[shapeIndex];
+        var perShapeData = new Float32Array(indices.length * 8);
+
+        for (var j = 0; j < indices.length; j++) {
+            var srcOffset = indices[j] * 8;
+            var dstOffset = j * 8;
+            for (var f = 0; f < 8; f++) {
+                perShapeData[dstOffset + f] = instanceData[srcOffset + f];
+            }
+        }
+
+        // Reuse existing GL buffer if available, otherwise create
+        var glBuf;
+        if (oldPerShape && oldPerShape[shapeIndex]) {
+            glBuf = oldPerShape[shapeIndex].buffer;
+        } else {
+            glBuf = gl.createBuffer();
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, glBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, perShapeData, gl.DYNAMIC_DRAW);
+
+        this._perShapeInstances[shapeIndex] = {
+            data: perShapeData,
+            buffer: glBuf,
+            count: indices.length
+        };
+    }
+
+    // Delete buffers for shapes that no longer have nodes
+    if (oldPerShape) {
+        for (var oldIdx in oldPerShape) {
+            if (!this._perShapeInstances[oldIdx]) {
+                gl.deleteBuffer(oldPerShape[oldIdx].buffer);
+            }
+        }
+    }
+
+    this._nodeDataDirty = false;
 };
 
 /**
@@ -120,11 +175,17 @@ WebGLRenderer._buildDiscoveryVisibleSet = function() {
 };
 
 /**
- * Get color for a node
+ * Get color for a node (cached per school+state combination)
  * @param {Object} node
  * @returns {Object} {r, g, b, a} normalized 0-1
  */
 WebGLRenderer.getNodeColor = function(node) {
+    var disc = (settings.discoveryMode && !settings.cheatMode) ? 1 : 0;
+    var cacheKey = (node.school || '') + ':' + (node.state || '') + ':' + disc;
+    if (this._colorCache && this._colorCache[cacheKey]) {
+        return this._colorCache[cacheKey];
+    }
+
     var schoolColor = TREE_CONFIG.getSchoolColor(node.school);
     var rgb = this.parseColor(schoolColor);
 
@@ -159,7 +220,9 @@ WebGLRenderer.getNodeColor = function(node) {
         a = 0.6;
     }
 
-    return { r: r, g: g, b: b, a: a };
+    var result = { r: r, g: g, b: b, a: a };
+    if (this._colorCache) this._colorCache[cacheKey] = result;
+    return result;
 };
 
 WebGLRenderer.parseColor = function(color) {
