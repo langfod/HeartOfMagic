@@ -39,6 +39,14 @@ var STOP_WORDS = [
     'novice', 'apprentice', 'adept', 'expert', 'master', 'restore', 'restores'
 ];
 
+// O(1) lookup version of STOP_WORDS
+var STOP_WORDS_SET = {};
+(function() {
+    for (var i = 0; i < STOP_WORDS.length; i++) {
+        STOP_WORDS_SET[STOP_WORDS[i]] = true;
+    }
+})();
+
 // =============================================================================
 // BLACKLIST FILTER
 // =============================================================================

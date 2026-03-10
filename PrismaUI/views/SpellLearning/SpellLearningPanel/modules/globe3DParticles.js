@@ -133,6 +133,8 @@ Globe3D._updateOrbitingStars = function() {
 Globe3D._renderOrbitingStars = function(ctx) {
     if (this.orbitingStars.length === 0) return;
 
+    var whitePrefix = 'rgba(255,255,255,';
+
     for (var i = 0; i < this.orbitingStars.length; i++) {
         var star = this.orbitingStars[i];
         if (star.trail.length === 0) continue;
@@ -148,7 +150,7 @@ Globe3D._renderOrbitingStars = function(ctx) {
 
             ctx.beginPath();
             ctx.arc(pos.x, pos.y, Math.max(0.5, trailSize), 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 255, 255, ' + trailAlpha.toFixed(2) + ')';
+            ctx.fillStyle = whitePrefix + trailAlpha.toFixed(2) + ')';
             ctx.fill();
         }
 
@@ -159,13 +161,13 @@ Globe3D._renderOrbitingStars = function(ctx) {
             // Outer glow
             ctx.beginPath();
             ctx.arc(head.x, head.y, star.size * 2.5, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 255, 255, ' + (head.alpha * 0.3).toFixed(2) + ')';
+            ctx.fillStyle = whitePrefix + (head.alpha * 0.3).toFixed(2) + ')';
             ctx.fill();
 
             // Inner bright core
             ctx.beginPath();
             ctx.arc(head.x, head.y, star.size, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 255, 255, ' + head.alpha.toFixed(2) + ')';
+            ctx.fillStyle = whitePrefix + head.alpha.toFixed(2) + ')';
             ctx.fill();
         }
     }
@@ -308,6 +310,7 @@ Globe3D._renderDetachedParticles = function(ctx) {
     for (var i = 0; i < this.detachedParticles.length; i++) {
         var dp = this.detachedParticles[i];
         var rgb = dp.color || this.color;  // Use particle's color (learning color)
+        var rgbPrefix = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',';
 
         // Draw trail (fading behind the head) - only if enabled
         if (this.trailEnabled) {
@@ -319,7 +322,7 @@ Globe3D._renderDetachedParticles = function(ctx) {
 
                 ctx.beginPath();
                 ctx.arc(t.x, t.y, Math.max(1, trailSize), 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + trailAlpha.toFixed(2) + ')';
+                ctx.fillStyle = rgbPrefix + trailAlpha.toFixed(2) + ')';
                 ctx.fill();
             }
         }
@@ -331,13 +334,13 @@ Globe3D._renderDetachedParticles = function(ctx) {
             // Soft glow around head
             ctx.beginPath();
             ctx.arc(head.x, head.y, dp.size * 1.5, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + (dp.alpha * 0.3).toFixed(2) + ')';
+            ctx.fillStyle = rgbPrefix + (dp.alpha * 0.3).toFixed(2) + ')';
             ctx.fill();
 
             // Bright core
             ctx.beginPath();
             ctx.arc(head.x, head.y, dp.size, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + dp.alpha.toFixed(2) + ')';
+            ctx.fillStyle = rgbPrefix + dp.alpha.toFixed(2) + ')';
             ctx.fill();
         }
     }

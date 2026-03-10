@@ -108,10 +108,18 @@ function extractSpellKeywords(spell, stopWords) {
 /**
  * Get thematic keywords for a spell based on its name, effects, and description.
  * Uses extractSpellText() for consistent data extraction.
+ * Results are cached per formId for performance (cleared on tree rebuild).
  * @param {Object} spell - Spell object with name, effectNames, effects, description
  * @returns {Array} - Array of thematic group names this spell belongs to
  */
+var _spellThemeCache = {};
+
 function getSpellThemes(spell) {
+    if (!spell) return [];
+
+    var cacheKey = spell.formId;
+    if (cacheKey && _spellThemeCache[cacheKey]) return _spellThemeCache[cacheKey];
+
     var fullText = extractSpellText(spell);
     if (fullText.length === 0) return [];
 
@@ -127,7 +135,12 @@ function getSpellThemes(spell) {
         }
     }
 
+    if (cacheKey) _spellThemeCache[cacheKey] = themes;
     return themes;
+}
+
+function clearSpellThemeCache() {
+    _spellThemeCache = {};
 }
 
 /**
@@ -367,3 +380,4 @@ window.getSpellThemes = getSpellThemes;
 window.calculateThematicSimilarity = calculateThematicSimilarity;
 window.areThematicallyCompatible = areThematicallyCompatible;
 window.fixThematicInconsistencies = fixThematicInconsistencies;
+window.clearSpellThemeCache = clearSpellThemeCache;

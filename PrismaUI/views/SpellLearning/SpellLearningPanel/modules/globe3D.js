@@ -262,6 +262,7 @@ var Globe3D = {
         this.project();
 
         var rgb = this.color;
+        var rgbPrefix = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',';
         var centerZ = this.globeCenterZ;
         var radius = this.radius;
         var minScale = this._minScale || 0.5;
@@ -303,9 +304,9 @@ var Globe3D = {
                 // Radial gradient glow for frontmost particles
                 var glowRadius = size * 2.5;
                 var grad = ctx.createRadialGradient(p.projX, p.projY, 0, p.projX, p.projY, glowRadius);
-                grad.addColorStop(0, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + (alpha * 0.9).toFixed(2) + ')');
-                grad.addColorStop(0.4, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + (alpha * 0.4).toFixed(2) + ')');
-                grad.addColorStop(1, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0)');
+                grad.addColorStop(0, rgbPrefix + (alpha * 0.9).toFixed(2) + ')');
+                grad.addColorStop(0.4, rgbPrefix + (alpha * 0.4).toFixed(2) + ')');
+                grad.addColorStop(1, rgbPrefix + '0)');
                 ctx.beginPath();
                 ctx.arc(p.projX, p.projY, glowRadius, 0, Math.PI * 2);
                 ctx.fillStyle = grad;
@@ -314,7 +315,7 @@ var Globe3D = {
                 // Simple fill for back/mid particles
                 ctx.beginPath();
                 ctx.arc(p.projX, p.projY, Math.max(0.5, size), 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + alpha.toFixed(2) + ')';
+                ctx.fillStyle = rgbPrefix + alpha.toFixed(2) + ')';
                 ctx.fill();
             }
         }

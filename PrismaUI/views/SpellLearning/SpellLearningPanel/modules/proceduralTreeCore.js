@@ -46,7 +46,7 @@ function discoverThemes(spells, topN) {
         var seenInDoc = {};
 
         words.forEach(function(word) {
-            if (STOP_WORDS.indexOf(word) !== -1) return;
+            if (STOP_WORDS_SET[word]) return;
             wordCounts[word] = (wordCounts[word] || 0) + 1;
             if (!seenInDoc[word]) {
                 seenInDoc[word] = true;
@@ -94,15 +94,30 @@ function discoverThemesPerSchool(spells) {
 // SPELL GROUPING
 // =============================================================================
 
-function calculateThemeScore(spell, theme) {
+// Pre-compiled regex for word extraction
+var _wordRegex = /[a-z]+/g;
+
+// Cache for extractSpellText results (cleared per buildProceduralTrees call)
+var _spellTextCache = {};
+
+function _getCachedSpellText(spell) {
+    var key = spell.formId;
+    if (key && _spellTextCache[key] !== undefined) return _spellTextCache[key];
     var text = extractSpellText(spell);
+    if (key) _spellTextCache[key] = text;
+    return text;
+}
+
+function calculateThemeScore(spell, theme) {
+    var text = _getCachedSpellText(spell);
     var name = (spell.name || '').toLowerCase();
     var score = 0;
 
     if (text.indexOf(theme) !== -1) score += 40;
     if (name.indexOf(theme) !== -1) score += 50;
 
-    var words = text.match(/[a-z]+/g) || [];
+    _wordRegex.lastIndex = 0;
+    var words = text.match(_wordRegex) || [];
     words.forEach(function(word) {
         if (word.indexOf(theme) !== -1 || theme.indexOf(word) !== -1) score += 15;
     });
@@ -345,23 +360,46 @@ function connectOrphans(rootNode, nodes, connected) {
     }
     if (orphans.length > 0) console.log('[Procedural] Connecting ' + orphans.length + ' orphan nodes');
 
+    // Pre-compute available parents (connected nodes with room for children)
+    var availableByDepth = {};
+    for (var fid in nodes) {
+        if (!connected[fid]) continue;
+        var node = nodes[fid];
+        if (node.children.length >= PROCEDURAL_CONFIG.maxChildrenPerNode) continue;
+        var d = node.depth;
+        if (!availableByDepth[d]) availableByDepth[d] = [];
+        availableByDepth[d].push(node);
+    }
+
     orphans = sortByTier(orphans.map(function(n) { return n.spell; }));
     orphans.forEach(function(spell) {
         var orphanNode = nodes[spell.formId];
         var tierDepth = getTierIndex(orphanNode.tier);
         var bestParent = null;
 
-        for (var formId in nodes) {
-            if (!connected[formId]) continue;
-            var node = nodes[formId];
-            if (node.children.length >= PROCEDURAL_CONFIG.maxChildrenPerNode) continue;
-            if (node.depth > tierDepth) continue;
-            if (!bestParent || node.children.length < bestParent.children.length) bestParent = node;
+        // Search from target depth downward
+        for (var d = tierDepth; d >= 0; d--) {
+            var candidates = availableByDepth[d];
+            if (!candidates) continue;
+            for (var i = 0; i < candidates.length; i++) {
+                if (candidates[i].children.length >= PROCEDURAL_CONFIG.maxChildrenPerNode) continue;
+                if (!bestParent || candidates[i].children.length < bestParent.children.length) {
+                    bestParent = candidates[i];
+                }
+            }
+            if (bestParent) break;
         }
         if (!bestParent) bestParent = rootNode;
 
         linkNodes(bestParent, orphanNode);
         connected[orphanNode.formId] = true;
+
+        // Add newly connected orphan to available parents
+        if (orphanNode.children.length < PROCEDURAL_CONFIG.maxChildrenPerNode) {
+            var od = orphanNode.depth;
+            if (!availableByDepth[od]) availableByDepth[od] = [];
+            availableByDepth[od].push(orphanNode);
+        }
     });
 }
 
@@ -370,6 +408,7 @@ function connectOrphans(rootNode, nodes, connected) {
 // =============================================================================
 
 function buildProceduralTrees(spells) {
+    _spellTextCache = {};
     spells = filterBlacklistedSpells(spells);
     spells = filterWhitelistedSpells(spells);
     console.log('[Procedural] Building trees for ' + spells.length + ' spells');

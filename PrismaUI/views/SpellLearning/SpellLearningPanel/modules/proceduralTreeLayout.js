@@ -276,6 +276,7 @@ function addSimpleAlternatePaths(nodes, nodeById, nodesByTier, edges, rng, gridC
         baseProbability: 0.25,
         maxAlternatesPerNode: 2
     };
+    var maxDistSq = altPathConfig.maxSpatialDistance * altPathConfig.maxSpatialDistance;
 
     var addedCount = 0;
     var edgeSet = {};
@@ -302,11 +303,10 @@ function addSimpleAlternatePaths(nodes, nodeById, nodesByTier, edges, rng, gridC
                 var keyBA = nodeB.formId + '->' + nodeA.formId;
                 if (edgeSet[keyAB] || edgeSet[keyBA]) return;
 
-                // Check spatial distance
+                // Check spatial distance (squared to avoid Math.sqrt)
                 var dx = nodeA.x - nodeB.x;
                 var dy = nodeA.y - nodeB.y;
-                var dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist > altPathConfig.maxSpatialDistance) return;
+                if (dx * dx + dy * dy > maxDistSq) return;
 
                 // Random chance
                 if (rng() > altPathConfig.baseProbability) return;
@@ -354,15 +354,16 @@ function updateNodeConnections(nodes, nodeById, edges) {
 }
 
 /**
- * Check if a position overlaps with any placed positions
+ * Check if a position overlaps with any placed positions.
+ * Uses squared distance to avoid Math.sqrt.
  */
 function hasOverlap(x, y, placedPositions, minSpacing) {
+    var minSpacingSq = minSpacing * minSpacing;
     for (var i = 0; i < placedPositions.length; i++) {
         var p = placedPositions[i];
         var dx = x - p.x;
         var dy = y - p.y;
-        var dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < minSpacing) return true;
+        if (dx * dx + dy * dy < minSpacingSq) return true;
     }
     return false;
 }

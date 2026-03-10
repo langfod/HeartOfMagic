@@ -184,6 +184,28 @@ LayoutEngine._sitterNudge = function(ctx) {
         });
     });
 
+    // Build spatial hash for edges (cell size = threshold)
+    var cellSize = threshold;
+    var edgeHash = {};
+    for (var ei = 0; ei < edges.length; ei++) {
+        var e = edges[ei];
+        var minX = Math.min(e.from.x, e.to.x) - threshold;
+        var maxX = Math.max(e.from.x, e.to.x) + threshold;
+        var minY = Math.min(e.from.y, e.to.y) - threshold;
+        var maxY = Math.max(e.from.y, e.to.y) + threshold;
+        var cx0 = Math.floor(minX / cellSize);
+        var cx1 = Math.floor(maxX / cellSize);
+        var cy0 = Math.floor(minY / cellSize);
+        var cy1 = Math.floor(maxY / cellSize);
+        for (var cx = cx0; cx <= cx1; cx++) {
+            for (var cy = cy0; cy <= cy1; cy++) {
+                var key = cx + ',' + cy;
+                if (!edgeHash[key]) edgeHash[key] = [];
+                edgeHash[key].push(ei);
+            }
+        }
+    }
+
     // Track nudged positions to bias direction
     var nudgedPositions = [];
     var nudgeCount = 0;
@@ -191,29 +213,44 @@ LayoutEngine._sitterNudge = function(ctx) {
     school.nodes.forEach(function(node) {
         if (node.x === undefined || node.isRoot) return;
 
-        // Find the closest edge this node sits on
+        // Find the closest edge this node sits on (using spatial hash)
         var closestEdge = null;
         var closestDistSq = Infinity;
         var closestT = 0;
 
-        for (var ei = 0; ei < edges.length; ei++) {
-            var e = edges[ei];
-            if (e.from === node || e.to === node) continue;
-            if (connected.has(e.from.formId + '|' + node.formId) ||
-                connected.has(e.to.formId + '|' + node.formId)) continue;
+        var ncx = Math.floor(node.x / cellSize);
+        var ncy = Math.floor(node.y / cellSize);
+        var checked = {};
 
-            var dx = e.to.x - e.from.x, dy = e.to.y - e.from.y;
-            var lenSq = dx * dx + dy * dy;
-            if (lenSq < 25) continue;
-            var t = ((node.x - e.from.x) * dx + (node.y - e.from.y) * dy) / lenSq;
-            if (t < 0.05 || t > 0.95) continue;
-            var projX = e.from.x + t * dx, projY = e.from.y + t * dy;
-            var dSq = (node.x - projX) * (node.x - projX) + (node.y - projY) * (node.y - projY);
+        for (var dx = -1; dx <= 1; dx++) {
+            for (var dy = -1; dy <= 1; dy++) {
+                var hkey = (ncx + dx) + ',' + (ncy + dy);
+                var bucket = edgeHash[hkey];
+                if (!bucket) continue;
+                for (var bi = 0; bi < bucket.length; bi++) {
+                    var eidx = bucket[bi];
+                    if (checked[eidx]) continue;
+                    checked[eidx] = true;
 
-            if (dSq < thresholdSq && dSq < closestDistSq) {
-                closestDistSq = dSq;
-                closestEdge = e;
-                closestT = t;
+                    var e = edges[eidx];
+                    if (e.from === node || e.to === node) continue;
+                    if (connected.has(e.from.formId + '|' + node.formId) ||
+                        connected.has(e.to.formId + '|' + node.formId)) continue;
+
+                    var edx = e.to.x - e.from.x, edy = e.to.y - e.from.y;
+                    var lenSq = edx * edx + edy * edy;
+                    if (lenSq < 25) continue;
+                    var t = ((node.x - e.from.x) * edx + (node.y - e.from.y) * edy) / lenSq;
+                    if (t < 0.05 || t > 0.95) continue;
+                    var projX = e.from.x + t * edx, projY = e.from.y + t * edy;
+                    var dSq = (node.x - projX) * (node.x - projX) + (node.y - projY) * (node.y - projY);
+
+                    if (dSq < thresholdSq && dSq < closestDistSq) {
+                        closestDistSq = dSq;
+                        closestEdge = e;
+                        closestT = t;
+                    }
+                }
             }
         }
 

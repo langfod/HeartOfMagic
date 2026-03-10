@@ -284,11 +284,61 @@ function discoverFuzzyGroupsFromSpells(spells, rng) {
 // =============================================================================
 
 /**
+ * Build a spatial hash grid for fast neighbor lookups.
+ * @param {Array} nodes - Array of objects with x, y properties
+ * @param {number} cellSize - Size of each grid cell (should match minSpacing)
+ * @returns {Object} Hash map from "cx,cy" keys to arrays of nodes
+ */
+function buildSpatialHash(nodes, cellSize) {
+    var hash = {};
+    for (var i = 0; i < nodes.length; i++) {
+        var cx = Math.floor(nodes[i].x / cellSize);
+        var cy = Math.floor(nodes[i].y / cellSize);
+        var key = cx + ',' + cy;
+        if (!hash[key]) hash[key] = [];
+        hash[key].push(nodes[i]);
+    }
+    return hash;
+}
+
+/**
+ * Check if any node in the spatial hash is within minDist of (x, y).
+ * Uses squared distance to avoid Math.sqrt.
+ * @param {Object} hash - Spatial hash from buildSpatialHash
+ * @param {number} x - X coordinate to check
+ * @param {number} y - Y coordinate to check
+ * @param {number} cellSize - Cell size used when building the hash
+ * @param {number} minDistSq - Minimum distance squared
+ * @returns {boolean} true if a node is too close
+ */
+function hasNearby(hash, x, y, cellSize, minDistSq) {
+    var cx = Math.floor(x / cellSize);
+    var cy = Math.floor(y / cellSize);
+    for (var dx = -1; dx <= 1; dx++) {
+        for (var dy = -1; dy <= 1; dy++) {
+            var key = (cx + dx) + ',' + (cy + dy);
+            var bucket = hash[key];
+            if (!bucket) continue;
+            for (var i = 0; i < bucket.length; i++) {
+                var ndx = x - bucket[i].x;
+                var ndy = y - bucket[i].y;
+                if (ndx * ndx + ndy * ndy < minDistSq) return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
  * Find best position for a spell near its thematic neighbors.
  */
 function findBestPosition(spell, group, placedNodes, sliceInfo, shapeMask, currentRadius, nodeSize, minSpacing, rng, branchDistance) {
     var candidates = [];
     var searchRadius = nodeSize * branchDistance * 2;
+
+    // Build spatial hash for O(1) amortized collision checks
+    var spatialHash = buildSpatialHash(placedNodes, minSpacing);
+    var minSpacingSq = minSpacing * minSpacing;
 
     // Find placed nodes in same group (or all nodes if no group matches)
     var sameGroupNodes = group ? placedNodes.filter(function(n) {
@@ -321,17 +371,8 @@ function findBestPosition(spell, group, placedNodes, sliceInfo, shapeMask, curre
                 var x = Math.cos(rad) * radius;
                 var y = Math.sin(rad) * radius;
 
-                // Check not too close to existing nodes
-                var tooClose = false;
-                for (var i = 0; i < placedNodes.length; i++) {
-                    var dx = x - placedNodes[i].x;
-                    var dy = y - placedNodes[i].y;
-                    if (Math.sqrt(dx*dx + dy*dy) < minSpacing) {
-                        tooClose = true;
-                        break;
-                    }
-                }
-                if (tooClose) continue;
+                // Check not too close to existing nodes (spatial hash lookup)
+                if (hasNearby(spatialHash, x, y, minSpacing, minSpacingSq)) continue;
 
                 // Score this candidate
                 var distToParent = Math.sqrt(
@@ -372,6 +413,11 @@ function findFallbackPosition(sliceInfo, currentRadius, tier, rng, nodeSize, pla
     var tierSpacing = gridCfg.tierSpacing;
     var arcSpacing = gridCfg.arcSpacing;
 
+    // Build spatial hash for O(1) amortized collision checks
+    var effectiveSpacing = minSpacing || gridCfg.minNodeSpacing;
+    var spatialHash = placedNodes ? buildSpatialHash(placedNodes, effectiveSpacing) : null;
+    var effectiveSpacingSq = effectiveSpacing * effectiveSpacing;
+
     // Try multiple tiers until we find a free slot
     for (var tierOffset = 1; tierOffset <= 20; tierOffset++) {
         var nextTier = tier + tierOffset;
@@ -395,18 +441,8 @@ function findFallbackPosition(sliceInfo, currentRadius, tier, rng, nodeSize, pla
             var x = Math.cos(rad) * radius;
             var y = Math.sin(rad) * radius;
 
-            // Check if position is free
-            var isOccupied = false;
-            if (placedNodes) {
-                for (var j = 0; j < placedNodes.length; j++) {
-                    var dx = x - placedNodes[j].x;
-                    var dy = y - placedNodes[j].y;
-                    if (Math.sqrt(dx * dx + dy * dy) < (minSpacing || gridCfg.minNodeSpacing)) {
-                        isOccupied = true;
-                        break;
-                    }
-                }
-            }
+            // Check if position is free (spatial hash lookup)
+            var isOccupied = spatialHash ? hasNearby(spatialHash, x, y, effectiveSpacing, effectiveSpacingSq) : false;
 
             if (!isOccupied) {
                 return {

@@ -19,6 +19,10 @@
  */
 window.onPreReqMasterComplete = function(resultStr) {
     try {
+        // Clear BFS caches for fresh lock evaluation
+        _clearDescendantCache();
+        _cachedPosMap = null;
+
         // Respect PRM toggle -- if user disabled PRM while C++ was scoring, bail out
         if (!isEnabled()) {
             _prmLog('PRM disabled during C++ scoring -- discarding results');

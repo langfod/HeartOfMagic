@@ -149,30 +149,22 @@ function _getDescendants(nodeId, allNodes) {
  * Check if candidateId is a descendant of spellId (i.e. spellId can reach
  * candidateId through children). If so, locking spellId with candidateId
  * would create a deadlock.
+ *
+ * Uses _getDescendants (single BFS) for O(1) lookup per candidate.
+ * Results are cached per spellId via _descendantCache.
  */
+var _descendantCache = {};
+
+function _clearDescendantCache() {
+    _descendantCache = {};
+    _reachableWithoutCache = {};
+}
+
 function _isDescendant(spellId, candidateId, allNodes) {
-    var queue = [];
-    var startNode = allNodes.get(spellId);
-    if (!startNode || !startNode.children) return false;
-
-    for (var i = 0; i < startNode.children.length; i++) {
-        queue.push(startNode.children[i]);
+    if (!_descendantCache[spellId]) {
+        _descendantCache[spellId] = _getDescendants(spellId, allNodes);
     }
-
-    var visited = {};
-    while (queue.length > 0) {
-        var curId = queue.shift();
-        if (curId === candidateId) return true;
-        if (visited[curId]) continue;
-        visited[curId] = true;
-        var curNode = allNodes.get(curId);
-        if (curNode && curNode.children) {
-            for (var j = 0; j < curNode.children.length; j++) {
-                queue.push(curNode.children[j]);
-            }
-        }
-    }
-    return false;
+    return !!_descendantCache[spellId][candidateId];
 }
 
 /**
@@ -259,37 +251,46 @@ function _validateReachability(allNodes) {
  * If removing spellId from the tree makes candidate unreachable, then locking
  * spellId with candidate would create a deadlock (candidate can't be learned
  * without first progressing through spellId's branch).
+ *
+ * Caches the reachable set per spellId via _reachableWithoutCache.
+ *
  * @param {string} spellId - The spell being locked
  * @param {string} candidateId - The candidate lock target
  * @param {Map} allNodes - All tree nodes
  * @returns {boolean} True if candidate is ONLY reachable through spellId
  */
-function _isOnlyReachableThrough(spellId, candidateId, allNodes) {
-    // Find all roots
-    var roots = [];
-    allNodes.forEach(function(node, id) {
-        if (node.isRoot) roots.push(id);
-    });
-    if (roots.length === 0) return false;
+var _reachableWithoutCache = {};
 
-    // BFS from all roots, skipping spellId entirely
-    var reachable = {};
-    var queue = roots.slice();
-    while (queue.length > 0) {
-        var curId = queue.shift();
-        if (curId === spellId) continue; // Skip the spell being locked
-        if (reachable[curId]) continue;
-        reachable[curId] = true;
-        var curNode = allNodes.get(curId);
-        if (curNode && curNode.children) {
-            for (var i = 0; i < curNode.children.length; i++) {
-                queue.push(curNode.children[i]);
+function _isOnlyReachableThrough(spellId, candidateId, allNodes) {
+    if (!_reachableWithoutCache[spellId]) {
+        // Find all roots
+        var roots = [];
+        allNodes.forEach(function(node, id) {
+            if (node.isRoot) roots.push(id);
+        });
+
+        // BFS from all roots, skipping spellId entirely
+        var reachable = {};
+        if (roots.length > 0) {
+            var queue = roots.slice();
+            var head = 0;
+            while (head < queue.length) {
+                var curId = queue[head++];
+                if (curId === spellId) continue;
+                if (reachable[curId]) continue;
+                reachable[curId] = true;
+                var curNode = allNodes.get(curId);
+                if (curNode && curNode.children) {
+                    for (var i = 0; i < curNode.children.length; i++) {
+                        queue.push(curNode.children[i]);
+                    }
+                }
             }
         }
+        _reachableWithoutCache[spellId] = reachable;
     }
 
-    // If candidate is NOT reachable without spellId, this lock would deadlock
-    return !reachable[candidateId];
+    return !_reachableWithoutCache[spellId][candidateId];
 }
 
 /**

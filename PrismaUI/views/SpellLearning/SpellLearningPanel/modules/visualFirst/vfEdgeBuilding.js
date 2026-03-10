@@ -206,6 +206,11 @@ function buildEdges(positions, config, seed, fuzzyData) {
             var treeGen = config.treeGeneration || {};
             var scoring = treeGen.scoring || {};
 
+            // Pre-compute themes for current node (hoisted from inner loop)
+            var myThemes = getSpellThemes(pos.spell);
+            var elements = ['fire', 'frost', 'shock'];
+            var myElements = myThemes.filter(function(t) { return elements.indexOf(t) !== -1; });
+
             // Score candidates using tree generation settings
             var scoredCandidates = connectedPrevious.map(function(c) {
                 var cFormId = c.spell.formId;
@@ -215,12 +220,9 @@ function buildEdges(positions, config, seed, fuzzyData) {
 
                 // Calculate thematic similarity for element isolation
                 var thematicSim = calculateThematicSimilarity(pos.spell, c.spell);
-                var themes1 = getSpellThemes(pos.spell);
                 var themes2 = getSpellThemes(c.spell);
 
                 // Check for element conflict (fire vs frost, etc.)
-                var elements = ['fire', 'frost', 'shock'];
-                var myElements = themes1.filter(function(t) { return elements.indexOf(t) !== -1; });
                 var candidateElements = themes2.filter(function(t) { return elements.indexOf(t) !== -1; });
                 var hasElementConflict = myElements.length > 0 && candidateElements.length > 0 &&
                     !myElements.some(function(e) { return candidateElements.indexOf(e) !== -1; });
@@ -251,7 +253,7 @@ function buildEdges(positions, config, seed, fuzzyData) {
                 if (scoring.themeCoherence !== false) {
                     // Theme overlap bonus (scaled by similarity)
                     var themeOverlap = 0;
-                    themes1.forEach(function(t) { if (themes2.indexOf(t) !== -1) themeOverlap++; });
+                    myThemes.forEach(function(t) { if (themes2.indexOf(t) !== -1) themeOverlap++; });
                     score += themeOverlap * 70;  // +70 per shared theme
                 }
 
