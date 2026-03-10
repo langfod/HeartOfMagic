@@ -261,68 +261,6 @@ function generateFullGrid(sliceInfo, spellCount, shape, config) {
     // Log tier breakdown
     console.log('[LayoutGen] Tier breakdown: ' + tierCounts.join(', ') + ' = ' + positions.length + ' total');
     
-    // NO SPREADING - keep nodes in their grid positions
-    var innerNodes = []; // Empty - no spreading needed
-    var minSpreadDist = 0;
-    var spreadIterations = 0;
-    
-    for (var iter = 0; iter < spreadIterations; iter++) {
-        for (var ni = 0; ni < innerNodes.length; ni++) {
-            var node = innerNodes[ni];
-            
-            // Find the closest neighbor (not self)
-            var closestDist = Infinity;
-            var closestNode = null;
-            for (var nj = 0; nj < innerNodes.length; nj++) {
-                if (ni === nj) continue;
-                var other = innerNodes[nj];
-                var dx = node.x - other.x;
-                var dy = node.y - other.y;
-                var dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < closestDist) {
-                    closestDist = dist;
-                    closestNode = other;
-                }
-            }
-            
-            // Also check distance to root
-            var rootNode = positions.find(function(p) { return p.isRoot; });
-            if (rootNode) {
-                var dxRoot = node.x - rootNode.x;
-                var dyRoot = node.y - rootNode.y;
-                var distToRoot = Math.sqrt(dxRoot * dxRoot + dyRoot * dyRoot);
-                if (distToRoot < closestDist) {
-                    closestDist = distToRoot;
-                    closestNode = rootNode;
-                }
-            }
-            
-            // If too close to nearest neighbor, push apart
-            if (closestNode && closestDist < minSpreadDist) {
-                var dx = node.x - closestNode.x;
-                var dy = node.y - closestNode.y;
-                if (closestDist > 0.1) {
-                    // Gradient: closer to center = stronger push (tier 1 = 100%, tier 5 = 40%)
-                    var tierGradient = 1.0 - (node.tier - 1) * 0.15;
-                    tierGradient = Math.max(0.4, tierGradient);
-                    
-                    var pushStrength = (minSpreadDist - closestDist) * 0.5 * tierGradient;
-                    var nx = dx / closestDist;
-                    var ny = dy / closestDist;
-                    
-                    node.x += nx * pushStrength;
-                    node.y += ny * pushStrength;
-                    
-                    // Update angle and radius from new position
-                    node.angle = Math.atan2(node.y, node.x) * 180 / Math.PI;
-                    node.radius = Math.sqrt(node.x * node.x + node.y * node.y);
-                }
-            }
-        }
-    }
-    
-    console.log('[LayoutGen] Inner zone spreading applied to', innerNodes.length, 'nodes');
-    
     // =========================================================================
     // SECTOR BOUNDARY CLAMPING - Ensure all nodes stay within their pie slice
     // =========================================================================

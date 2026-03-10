@@ -9,7 +9,7 @@
 // UTILITIES
 // =============================================================================
 
-// seededRandom() is defined in layoutGenerator.js (loaded before this file)
+// seededRandom() is defined in layoutGeneratorShapes.js (loaded before this file)
 
 function shuffle(arr, rng) {
     for (var i = arr.length - 1; i > 0; i--) {

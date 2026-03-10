@@ -1,12 +1,12 @@
 # JavaScript Audit: Performance Opportunities
 
 **Date:** 2026-03-03
-**Last verified:** 2026-03-09 (all critical + high + medium-priority findings fixed)
+**Last verified:** 2026-03-09 (all findings resolved — critical + high + medium + low-priority)
 **Scope:** `PrismaUI/views/SpellLearning/SpellLearningPanel/modules/` (~120 files, ~72k lines)
 
 ## Executive Summary
 
-42 performance findings were identified across 10 anti-pattern categories. **All 4 critical, all 10 high-priority, and all 9 medium-priority findings have been fixed** (2026-03-09). See `PERF_HIGH_PROGRESS.md` and `PERF_MEDIUM_PROGRESS.md` for detailed change notes.
+42 performance findings were identified across 10 anti-pattern categories. **All 4 critical, all 10 high-priority, all 9 medium-priority, and 2 of 3 low-priority findings have been fixed** (2026-03-09). PERF-L3 was assessed and closed as won't-fix (negligible impact). See `PERF_HIGH_PROGRESS.md`, `PERF_MEDIUM_PROGRESS.md`, and `PERF_LOW_PROGRESS.md` for detailed change notes.
 
 1. ~~WebGL buffer recreation every frame~~ — **FIXED**
 2. ~~Missing element/theme caching in edge scoring~~ — **FIXED**
@@ -217,19 +217,25 @@
 
 ## Low-Priority Findings
 
-### PERF-L1: Dead Spreading Loop
+### PERF-L1: Dead Spreading Loop — FIXED
 
-**File:** `layoutGenerator.js:264-322`
+**File:** `layoutGenerator.js` (was lines 264-324)
 
-~50 lines of O(n^2) code with `spreadIterations = 0` -- never executes. Remove dead code.
+~~61 lines of O(n^2) spreading code with `spreadIterations = 0` — triple-dead (iterations=0, nodes=[], distance=0). Comment confirmed intentionally disabled.~~
 
-### PERF-L2: Duplicate seededRandom Implementations
+**Fixed:** Removed 61 lines of dead code. The live overlap resolution loop (`spreadIterations = 3`, spatial hash) is preserved.
 
-3 identical copies of the same LCG PRNG. No performance impact but maintenance risk.
+### PERF-L2: Duplicate seededRandom Implementations — FIXED
 
-### PERF-L3: treePreview _hitTestRootNode Linear Scan
+~~3 copies of LCG PRNG across `layoutGeneratorShapes.js`, `classicLayoutCore.js`, and `wheelLayout.js`, each with different constants.~~
 
-Linear scan of all root nodes (typically 5-8) on mousemove. Negligible impact.
+**Fixed:** Consolidated to use the canonical `seededRandom()` factory in `layoutGeneratorShapes.js`. `classicLayoutCore.js` now stores `this._rng = seededRandom(seed)` instead of a custom `_seededRandom` method. `wheelLayout.js` now uses `seededRandom(GrowthModeUtils.hashString(schoolName))` instead of an inline PRNG + inline DJB2 hash.
+
+### PERF-L3: treePreview _hitTestRootNode Linear Scan — WON'T FIX
+
+**File:** `treePreview.js:472-494`
+
+Linear scan of all root nodes (typically 5-8) on mousemove. Assessed and closed: 5-8 iterations of trivial arithmetic at 60 Hz is ~100ns/frame. Any optimization (spatial index, quadtree) would add complexity with zero measurable benefit. Early exit on drag already skips most events.
 
 ---
 
@@ -241,11 +247,12 @@ Linear scan of all root nodes (typically 5-8) on mousemove. Negligible impact.
 | Missing requestAnimationFrame | 0 | ~~1~~ **0 (fixed)** | 0 | 0 |
 | O(n^2)+ traversals | ~~2~~ **0 (fixed)** | ~~5~~ **0 (fixed)** | ~~2~~ **0 (fixed)** | 0 |
 | Missing caching/memoization | ~~1~~ **0 (fixed)** | ~~2~~ **0 (fixed)** | ~~2~~ **0 (fixed)** | 0 |
-| Inefficient event handlers | 0 | 0 | ~~1~~ **0 (fixed)** | 1 |
+| Inefficient event handlers | 0 | 0 | ~~1~~ **0 (fixed)** | ~~1~~ **0 (won't fix)** |
 | Expensive string operations | 0 | 0 | ~~2~~ **0 (fixed)** | 0 |
 | Redundant computation/redraws | 0 | 0 | ~~3~~ **0 (fixed)** | 0 |
-| Dead code | 0 | 0 | 0 | 1 |
-| **Total** | **0 (all fixed)** | **0 (all fixed)** | **0 (all fixed)** | **2** |
+| Dead code | 0 | 0 | 0 | ~~1~~ **0 (fixed)** |
+| Code duplication | 0 | 0 | 0 | ~~1~~ **0 (fixed)** |
+| **Total** | **0 (all fixed)** | **0 (all fixed)** | **0 (all fixed)** | **0 (all resolved)** |
 
 ---
 

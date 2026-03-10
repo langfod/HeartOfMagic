@@ -166,7 +166,7 @@ var ClassicLayout = {
             this._simulatedMaxRadius = 0;
             for (var p1i = 0; p1i < schoolDataList.length; p1i++) {
                 var sd1 = schoolDataList[p1i];
-                this._seed = this._hashString(sd1.name);
+                this._rng = seededRandom(this._hashString(sd1.name));
                 var pass1Nodes = this._layoutOnGrid(
                     sd1.tree, sd1.info, sd1.roots, grid, sd1.gridPts, mode
                 );
@@ -188,7 +188,7 @@ var ClassicLayout = {
             var sd2 = schoolDataList[p2i];
             // Set per-school simulated max radius for tier zone scoring
             this._simulatedMaxRadius = schoolHeights[sd2.name] || 0;
-            this._seed = this._hashString(sd2.name);
+            this._rng = seededRandom(this._hashString(sd2.name));
             var positioned = this._layoutOnGrid(
                 sd2.tree, sd2.info, sd2.roots, grid, sd2.gridPts, mode
             );
@@ -418,16 +418,11 @@ var ClassicLayout = {
 
     _shuffleArray: function (arr) {
         for (var i = arr.length - 1; i > 0; i--) {
-            var j = Math.floor(this._seededRandom() * (i + 1));
+            var j = Math.floor(this._rng() * (i + 1));
             var tmp = arr[i];
             arr[i] = arr[j];
             arr[j] = tmp;
         }
-    },
-
-    _seededRandom: function () {
-        this._seed = (this._seed * 1664525 + 1013904223) & 0xFFFFFFFF;
-        return (this._seed >>> 0) / 4294967296;
     },
 
     /**

@@ -223,15 +223,7 @@ WheelRenderer.layoutSchoolNodes = function(schoolName, school, spokeAngle, secto
     school.maxRadius = tierRadii[school.maxDepth] || cumulativeRadius;
 
     // Seeded random for consistent jitter (based on school name hash)
-    var seedHash = 0;
-    for (var i = 0; i < schoolName.length; i++) {
-        seedHash = ((seedHash << 5) - seedHash) + schoolName.charCodeAt(i);
-        seedHash |= 0;
-    }
-    var seededRandom = function() {
-        seedHash = (seedHash * 9301 + 49297) % 233280;
-        return seedHash / 233280;
-    };
+    var rng = seededRandom(GrowthModeUtils.hashString(schoolName));
 
     // Multi-root detection: find all root nodes at depth 0
     var multiRoot = false;
@@ -357,8 +349,8 @@ WheelRenderer.layoutSchoolNodes = function(schoolName, school, spokeAngle, secto
                         }
 
                         var symmetryDamper = visMod.symmetry;
-                        var angleJitter = visMod.angleJitter * (1 - symmetryDamper * 0.8) * (seededRandom() - 0.5) * 2;
-                        var radiusJitter = visMod.radiusJitter * (1 - symmetryDamper * 0.7) * radius * (seededRandom() - 0.5) * 2;
+                        var angleJitter = visMod.angleJitter * (1 - symmetryDamper * 0.8) * (rng() - 0.5) * 2;
+                        var radiusJitter = visMod.radiusJitter * (1 - symmetryDamper * 0.7) * radius * (rng() - 0.5) * 2;
 
                         var nodeAngle = centerAngle + angleOffset + angleJitter;
                         var nodeRadius = radius + radiusJitter;
@@ -388,12 +380,12 @@ WheelRenderer.layoutSchoolNodes = function(schoolName, school, spokeAngle, secto
                     if (tier.length > 1) {
                         angleOffset = (j - (tier.length - 1) / 2) * (spreadAngle / (tier.length - 1));
                     } else if (fillTriangle) {
-                        angleOffset = (seededRandom() - 0.5) * spreadAngle * 0.5;
+                        angleOffset = (rng() - 0.5) * spreadAngle * 0.5;
                     }
 
                     var symmetryDamper = visMod.symmetry;
-                    var angleJitter = visMod.angleJitter * (1 - symmetryDamper * 0.8) * (seededRandom() - 0.5) * 2;
-                    var radiusJitter = visMod.radiusJitter * (1 - symmetryDamper * 0.7) * radius * (seededRandom() - 0.5) * 2;
+                    var angleJitter = visMod.angleJitter * (1 - symmetryDamper * 0.8) * (rng() - 0.5) * 2;
+                    var radiusJitter = visMod.radiusJitter * (1 - symmetryDamper * 0.7) * radius * (rng() - 0.5) * 2;
 
                     var nodeAngle = spokeAngle + angleOffset + angleJitter;
                     var nodeRadius = radius + radiusJitter;
